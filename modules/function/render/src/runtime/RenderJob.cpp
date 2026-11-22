@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <exec/create.hpp>
@@ -98,26 +99,41 @@ namespace lux::render
         return {};
     }
 
-    void RenderServer::Impl::releaseExecutionResources(std::unique_ptr<JobExecution> execution) noexcept
+    void RenderServer::Impl::releaseExecutionResources(
+        std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
+    ) noexcept
     {
+        if (!physical || physical->generation != execution->binding_identity.generation) std::terminate();
         auto resources = std::move(execution->resource_ids);
         execution.reset();
+        physical.reset();
         for (const auto id : resources) runtime_->resources_.releaseExecution(id);
     }
 
-    void RenderServer::Impl::destroyExecution(std::unique_ptr<JobExecution> execution) noexcept
+    void RenderServer::Impl::destroyExecution(
+        std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
+    ) noexcept
     {
-        if (!execution) return;
+        if (!execution)
+        {
+            if (physical) std::terminate();
+            return;
+        }
         for (const auto& link : execution->storage_bindings)
             if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
-        releaseExecutionResources(std::move(execution));
+        releaseExecutionResources(std::move(execution), std::move(physical));
     }
 
     void RenderServer::Impl::retireStoppedExecution(RenderJob& job) noexcept
     {
         if (!job.control.running() && canChangeExecution(job))
         {
-            destroyExecution(std::move(job.execution));
+            if (job.execution)
+            {
+                auto* device = runtime_->device(job.execution->device);
+                auto native = device->takeJobResources(job.execution->binding_identity);
+                destroyExecution(std::move(job.execution), std::move(native));
+            }
             job.binding = {};
         }
     }
@@ -162,7 +178,7 @@ namespace lux::render
         }
         auto& view = *runtime_->scenes_.find(job->content.scene)->views.find(job->content.view);
         std::erase(view.jobs, id);
-        destroyExecution(std::move(job->execution));
+        retireStoppedExecution(*job);
         runtime_->jobs_.erase(id);
         ++job_structure_revision_;
         reply = {};
@@ -286,10 +302,14 @@ namespace lux::render
             return AckResponse{RenderError{kDeviceArgument}};
         auto resources = bindEffectResources(*entry, selected->storage_imports, binding.resources);
         if (!resources) return AckResponse{resources.error()};
-        const JobExecution::Installation installation{effect_id, target_id, {id, *generation}};
-        auto candidate = std::make_unique<JobExecution>(*entry, *selected, installation, targetOutput(target));
+        const JobExecution::Installation installation{device, effect_id, target_id, {id, *generation}};
+        auto physical = entry->prepareJobResources(installation.identity);
+        auto candidate = std::make_unique<JobExecution>(*physical, *selected, installation, targetOutput(target));
         ResourceRegistry::GraphInstallation subscriptions{runtime_->resources_, *candidate};
-        cxx::scope_exit rollback([&]() noexcept { releaseExecutionResources(std::move(candidate)); });
+        cxx::scope_exit rollback([&]() noexcept
+        {
+            releaseExecutionResources(std::move(candidate), std::move(physical));
+        });
         candidate->view_parameters = view_parameters;
         if (auto assembled = assembleExecution(subscriptions, binding, *effect, *resources); !assembled)
             return AckResponse{assembled.error()};
@@ -308,6 +328,7 @@ namespace lux::render
         if (auto capacity = subscriptions.reservePublication(); !capacity) return AckResponse{capacity.error()};
 
         auto* previous = job.execution.get();
+        auto retired_resources = entry->installJobResources(id, std::move(physical));
         subscriptions.publish();
         job.control.publishGeneration(*generation);
         candidate->instance.bindPreparationOwner(id, job.control.executionGeneration());
@@ -323,7 +344,7 @@ namespace lux::render
         job.last_run_error = {};
         running_jobs_ = std::move(*ordered);
         ++job_structure_revision_;
-        destroyExecution(std::move(retired));
+        destroyExecution(std::move(retired), std::move(retired_resources));
         return AckResponse{};
     }
 

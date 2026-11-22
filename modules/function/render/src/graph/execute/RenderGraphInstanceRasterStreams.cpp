@@ -207,7 +207,7 @@ namespace lux::render::detail
             range.layer_count = 1;
             auto* texture = frame.bindings[access.version.resource.index].image;
             if (!texture) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
-            auto& views = frame.raster_attachment_views;
+            auto& views = frame.native.raster_attachment_views;
             const auto found = std::ranges::find_if(views, [&](const auto& entry) noexcept
             {
                 return entry.image == texture && entry.range == range && entry.depth == depth;

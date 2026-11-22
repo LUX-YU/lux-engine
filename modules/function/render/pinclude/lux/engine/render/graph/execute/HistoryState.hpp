@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/render/device/JobGpuResources.hpp>
 
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
@@ -14,26 +15,12 @@ namespace lux::render::detail
             EImageViewTarget target;
         };
 
-        struct HistorySlot final
-        {
-            nri::Texture* image = nullptr;
-            nri::Buffer* buffer = nullptr;
-            std::uint64_t buffer_size = 0;
-            const nri::TextureDesc* image_description = nullptr;
-            const nri::BufferDesc* buffer_description = nullptr;
-            std::vector<nri::Descriptor*> views;
-            std::vector<nri::Descriptor*> initial_views;
-            SubmissionFrontiers last_use;
-            std::uint64_t sample_sequence = 0;
-            bool initialized = false;
-        };
-
-        void release(const nri::CoreInterface&) noexcept;
         [[nodiscard]] bool select(const DeviceSession&) noexcept;
         void publish() noexcept;
 
         const HistoryPlan* plan = nullptr;
-        std::vector<HistorySlot> slots;
+        std::span<JobHistoryResources::Slot> slots;
+        std::vector<std::uint64_t> sample_sequences;
         std::vector<View> views;
         std::uint64_t sequence = 0;
         std::uint32_t retained_samples = 0;

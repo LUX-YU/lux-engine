@@ -18,7 +18,7 @@ namespace lux::render::detail
         std::uint64_t generation;
     };
 
-    class DeviceEntry;
+    class JobGpuResources;
     struct GraphBindingTag;
     class ViewParameterStorage;
 }
@@ -42,11 +42,17 @@ namespace lux::render::runtime_detail
     {
         struct Installation final
         {
+            DeviceSessionId device;
             EffectId effect;
             TargetId target;
             detail::ExecutionBindingId identity;
         };
-        JobExecution(detail::DeviceEntry&, const compiled::RenderGraph&, Installation, detail::TargetOutput) noexcept;
+        JobExecution(
+            detail::JobGpuResources&,
+            const compiled::RenderGraph&,
+            Installation,
+            detail::TargetOutput
+        ) noexcept;
         ~JobExecution() noexcept;
         JobExecution(const JobExecution&) = delete;
         JobExecution& operator=(const JobExecution&) = delete;

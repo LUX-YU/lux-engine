@@ -282,23 +282,23 @@ namespace lux::render::detail
             }
             else
             {
-                *std::ranges::find(frame.views, previous) = replacement.descriptor;
+                *std::ranges::find(frame.native.views, previous) = replacement.descriptor;
             }
             core.DestroyDescriptor(previous);
         }
         for (auto* previous : selected->views)
         {
-            std::erase(frame.views, previous);
+            std::erase(frame.native.views, previous);
             core.DestroyDescriptor(previous);
         }
         selected->views = std::move(layer_views);
-        frame.views.insert(frame.views.end(), selected->views.begin(), selected->views.end());
+        frame.native.views.insert(frame.native.views.end(), selected->views.begin(), selected->views.end());
         if (replace_image)
         {
             std::vector<nri::Descriptor*> stream_views;
             collectRasterViews(frame, nullptr, binding.image, stream_views);
             for (auto* view : stream_views) core.DestroyDescriptor(view);
-            *std::ranges::find(frame.images, binding.image) = image;
+            *std::ranges::find(frame.native.images, binding.image) = image;
             auto* old_image = binding.image;
             binding.select(nullptr, image, core);
             core.DestroyTexture(old_image);
@@ -373,7 +373,7 @@ namespace lux::render::detail
                 {
                     return created;
                 }
-                frame.images.push_back(binding.image);
+                frame.native.images.push_back(binding.image);
                 frame.layered_images.push_back({GraphResourceId{i}});
                 continue;
             }
@@ -432,7 +432,7 @@ namespace lux::render::detail
             }
             if (binding.image)
             {
-                frame.images.push_back(binding.image);
+                frame.native.images.push_back(binding.image);
                 if (alias_memory)
                 {
                     core.GetTextureMemoryDesc(*binding.image, nri::MemoryLocation::DEVICE, requirements[s]);
@@ -440,7 +440,7 @@ namespace lux::render::detail
             }
             else
             {
-                frame.buffers.push_back(binding.buffer);
+                frame.native.buffers.push_back(binding.buffer);
                 if (alias_memory)
                 {
                     core.GetBufferMemoryDesc(*binding.buffer, nri::MemoryLocation::DEVICE, requirements[s]);
@@ -480,8 +480,8 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(nativeError(allocated));
             }
-            root_to_group[s] = {static_cast<std::uint32_t>(frame.memories.size())};
-            frame.memories.push_back({memory, descriptions[s].size});
+            root_to_group[s] = {static_cast<std::uint32_t>(frame.native.memories.size())};
+            frame.native.memories.push_back({memory, descriptions[s].size});
         }
         std::vector<nri::BindBufferMemoryDesc> buffers;
         std::vector<nri::BindTextureMemoryDesc> images;
@@ -491,7 +491,7 @@ namespace lux::render::detail
             const auto& placement = placements[s];
             const auto group = root_to_group[placement.root.index];
             frame.memory_bindings[s] = {group, placement.reason};
-            auto* memory = frame.memories[group.index].memory;
+            auto* memory = frame.native.memories[group.index].memory;
             const auto& binding = frame.bindings[physical.slots[s].resource.index];
             if (binding.image)
             {
@@ -693,7 +693,7 @@ namespace lux::render::detail
             const auto& frame = frames_[i];
             std::uint64_t bytes = 0;
             std::size_t prepared_buffers = 0;
-            for (const auto& prepared : frame.prepared_buffers)
+            for (const auto& prepared : frame.native.prepared_buffers)
             {
                 if (!prepared.buffer) continue;
                 nri::MemoryDesc memory{};
@@ -701,26 +701,26 @@ namespace lux::render::detail
                 bytes += memory.size;
                 ++prepared_buffers;
             }
-            for (auto* buffer : frame.buffers)
+            for (auto* buffer : frame.native.buffers)
             {
                 nri::MemoryDesc memory{};
                 session_->nriCore().GetBufferMemoryDesc(*buffer, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
-            for (auto* image : frame.images)
+            for (auto* image : frame.native.images)
             {
                 nri::MemoryDesc memory{};
                 session_->nriCore().GetTextureMemoryDesc(*image, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
             const auto allocated = std::accumulate(
-                frame.memories.begin(),
-                frame.memories.end(),
+                frame.native.memories.begin(),
+                frame.native.memories.end(),
                 std::uint64_t{0},
                 [](auto sum, const auto& allocation) { return sum + allocation.bytes; }
             );
             std::size_t command_count = 0;
-            for (const auto& batch : frame.command_batches)
+            for (const auto& batch : frame.native.batches)
                 command_count += std::ranges::count_if(
                     batch.commands, [](auto* command) noexcept { return command != nullptr; }
                 );
@@ -728,10 +728,10 @@ namespace lux::render::detail
                       ",\"imported_revision\":" + std::to_string(frame.imported_revision) +
                       ",\"owned_command_buffers\":" + std::to_string(command_count) +
                       ",\"owned_buffers\":" +
-                          std::to_string(frame.buffers.size() + prepared_buffers) +
-                      ",\"owned_textures\":" + std::to_string(frame.images.size()) +
+                          std::to_string(frame.native.buffers.size() + prepared_buffers) +
+                      ",\"owned_textures\":" + std::to_string(frame.native.images.size()) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
-                      ",\"explicit_memory_count\":" + std::to_string(frame.memories.size()) +
+                      ",\"explicit_memory_count\":" + std::to_string(frame.native.memories.size()) +
                       ",\"explicit_memory_bytes\":" + std::to_string(allocated) + ",\"memory_bindings\":[";
             constexpr std::array
                 reasons{
@@ -792,7 +792,7 @@ namespace lux::render::detail
                 {
                     session_->nriCore().GetBufferMemoryDesc(*slot.buffer, nri::MemoryLocation::DEVICE, memory);
                 }
-                output += "{\"sample\":" + std::to_string(slot.sample_sequence) +
+                output += "{\"sample\":" + std::to_string(history.sample_sequences[s]) +
                           ",\"initialized\":" + (slot.initialized ? "true" : "false") +
                           ",\"allocation_requirement_bytes\":" + std::to_string(memory.size) + ",\"last_use\":[";
                 for (std::size_t q = 0; q < session_->queueCount(); ++q)
@@ -823,14 +823,14 @@ namespace lux::render::detail
         if (!buffer && !image) return;
         if (image)
         {
-            std::erase_if(frame.raster_attachment_views, [&](const auto& attachment) noexcept
+            std::erase_if(frame.native.raster_attachment_views, [&](const auto& attachment) noexcept
             {
                 if (attachment.image != image) return false;
                 views.push_back(attachment.view);
                 return true;
             });
         }
-        for (auto& record : frame.raster_bindings)
+        for (auto& record : frame.native.raster_bindings)
         {
             for (std::size_t i = 0; i < record.inputs.size(); ++i)
             {

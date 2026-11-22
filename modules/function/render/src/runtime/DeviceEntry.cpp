@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <exception>
 #include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
@@ -58,7 +59,45 @@ namespace lux::render::detail
         return entry;
     }
 
-    DeviceEntry::~DeviceEntry() noexcept = default;
+    DeviceEntry::~DeviceEntry() noexcept
+    {
+        if (!job_resources_.empty()) std::terminate();
+    }
+
+    std::unique_ptr<JobGpuResources> DeviceEntry::prepareJobResources(ExecutionBindingId identity) noexcept
+    {
+        if (!job_resources_.contains(identity.job))
+            job_resources_.prepareCapacity(job_resources_.size() + 1, std::size_t(identity.job.index) + 1);
+        return std::make_unique<JobGpuResources>(session(), frame_progress_.frameCount(), identity.generation);
+    }
+
+    std::unique_ptr<JobGpuResources>
+    DeviceEntry::installJobResources(RenderJobId job, std::unique_ptr<JobGpuResources> candidate) noexcept
+    {
+        if (auto* current = job_resources_.tryGet(job))
+        {
+            if ((*current)->generation >= candidate->generation) std::terminate();
+            return std::exchange(*current, std::move(candidate));
+        }
+        job_resources_.emplace(job, std::move(candidate));
+        return {};
+    }
+
+    JobGpuResources& DeviceEntry::jobResources(ExecutionBindingId identity) & noexcept
+    {
+        const auto* resources = job_resources_.tryGet(identity.job);
+        if (!resources || (*resources)->generation != identity.generation) std::terminate();
+        return **resources;
+    }
+
+    std::unique_ptr<JobGpuResources> DeviceEntry::takeJobResources(ExecutionBindingId identity) noexcept
+    {
+        auto* current = job_resources_.tryGet(identity.job);
+        if (!current || (*current)->generation != identity.generation) std::terminate();
+        auto retired = std::move(*current);
+        job_resources_.erase(identity.job);
+        return retired;
+    }
 
     DeviceEntry::UniformPoolRecord::UniformPoolRecord(
         EffectId owner, graph::NodeId source_node, std::string_view block_name, DeviceSession& device,
@@ -164,7 +203,7 @@ namespace lux::render::detail
     bool DeviceEntry::hasBorrows() const noexcept
     {
         const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
-        return has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
+        return !job_resources_.empty() || has_uploads || resources_.hasBorrows() || scopedResourceBorrows() ||
             round.operation || !nativeIdle();
     }
 } // namespace lux::render::detail

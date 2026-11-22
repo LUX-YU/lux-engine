@@ -13,6 +13,7 @@
 namespace lux::render::detail
 {
     class NativeExecution;
+    class JobGpuResources;
 
     // The session and its workers outlive all native uses on this device.
     class DeviceEntry final
@@ -37,6 +38,11 @@ namespace lux::render::detail
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
+        [[nodiscard]] std::unique_ptr<JobGpuResources> prepareJobResources(ExecutionBindingId) noexcept;
+        [[nodiscard]] std::unique_ptr<JobGpuResources>
+        installJobResources(RenderJobId, std::unique_ptr<JobGpuResources>) noexcept;
+        [[nodiscard]] JobGpuResources& jobResources(ExecutionBindingId) & noexcept;
+        [[nodiscard]] std::unique_ptr<JobGpuResources> takeJobResources(ExecutionBindingId) noexcept;
         struct UniformPoolRecord final
         {
             UniformPoolId id;
@@ -77,6 +83,7 @@ namespace lux::render::detail
         FrameProgress frame_progress_;
         FrameOperation::Workspace frame_workspace_;
         ResourceSet resources_;
+        cxx::SlotKeySparseSet<RenderJobId, std::unique_ptr<JobGpuResources>> job_resources_;
         cxx::StableSlotMap<UniformPoolRecord, UniformPoolTag> uniform_pools_;
         using ScopeKey = std::pair<std::uint32_t, std::uint32_t>;
         struct SceneResources final

@@ -7,43 +7,24 @@
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/graph/execute/RenderGraphInstance.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include <atomic>
 #include <exception>
 #include <utility>
 
 namespace lux::render::detail
 {
-    struct RasterDescriptorInput final
-    {
-        nri::Buffer* buffer = nullptr;
-        std::uint64_t offset = 0, size = 0;
-        nri::Texture* image = nullptr;
-        nri::Descriptor* sampler = nullptr;
-        nri::Format format = nri::Format::UNKNOWN;
-        GraphImageRange range;
-        bool operator==(const RasterDescriptorInput&) const noexcept = default;
-    };
-
-    // These are physical GPU objects, independent of the Context's subscriptions and CPU recipes.
-    // Stable descriptor banks are never rewritten while their prior submission is in flight.
+    // CPU state for one Job and FIF slot. Native ownership stays in the device's stable Job row.
     struct RenderGraphInstance::FrameResources final
     {
-        FrameResources() noexcept = default;
+        explicit FrameResources(JobFrameResources& frame) noexcept : native(frame) {}
+        JobFrameResources& native;
         FrameResources(FrameResources&&) noexcept = default;
-        FrameResources& operator=(FrameResources&&) noexcept = default;
+        FrameResources& operator=(FrameResources&&) = delete;
         FrameResources(const FrameResources&) = delete;
         FrameResources& operator=(const FrameResources&) = delete;
 
-        void release(const nri::CoreInterface&) noexcept;
         void invalidateImportedBindings() noexcept;
-
-        struct RasterBinding final
-        {
-            nri::DescriptorSet* set = nullptr;
-            RasterBindingKey program;
-            std::vector<nri::Descriptor*> views;
-            std::vector<RasterDescriptorInput> inputs;
-        };
 
         struct StreamDescriptorRows final
         {
@@ -58,16 +39,6 @@ namespace lux::render::detail
             std::size_t input_count = 0;
         };
 
-        struct RasterAttachmentView final
-        {
-            nri::Texture* image;
-            GraphImageRange range;
-            bool depth;
-            nri::Descriptor* view;
-        };
-
-        std::vector<RasterAttachmentView> raster_attachment_views;
-        std::vector<RasterBinding> raster_bindings;
         std::vector<StreamDescriptorRows> stream_descriptor_rows;
         nri::DescriptorPoolDesc descriptor_capacity{}, descriptor_reserved{};
 
@@ -136,8 +107,6 @@ namespace lux::render::detail
         // A recording lease protects the whole batch; distinct batches never share an allocator.
         struct CommandBatch final
         {
-            std::array<nri::CommandAllocator*, 2> allocators{};
-            std::array<nri::CommandBuffer*, 2> commands{};
             std::uint64_t revision = 1, recorded_revision = 0;
             std::atomic<bool> recording{false};
 
@@ -157,8 +126,6 @@ namespace lux::render::detail
             {
                 // Only cold construction may relocate a batch. Published batches keep stable addresses.
                 if (other.recording.load(std::memory_order_acquire)) std::terminate();
-                allocators = std::exchange(other.allocators, {});
-                commands = std::exchange(other.commands, {});
                 revision = other.revision;
                 recorded_revision = other.recorded_revision;
             }
@@ -178,21 +145,6 @@ namespace lux::render::detail
         RasterViewport viewport;
         std::vector<std::uint32_t> changed_resources;
         std::size_t unavailable_buffers = 0;
-        std::vector<nri::Buffer*> buffers;
-        struct PreparedBufferReplica final
-        {
-            nri::Buffer* buffer = nullptr;
-            std::uint64_t capacity = 0, generation = 0;
-            std::uint64_t accepted_revision = 0, accepted_size = 0;
-            std::size_t staged_bytes = 0;
-
-            [[nodiscard]] bool contains(std::uint64_t revision, std::uint64_t size) const noexcept
-            {
-                return buffer && revision != 0 && accepted_revision == revision && accepted_size == size;
-            }
-        };
-        std::vector<PreparedBufferReplica> prepared_buffers;
-        std::vector<nri::Texture*> images;
 
         struct LayeredImage final
         {
@@ -202,19 +154,10 @@ namespace lux::render::detail
         };
 
         std::vector<LayeredImage> layered_images;
-        std::vector<nri::Descriptor*> views;
         // Stable addresses of output attachment fields, built once after all Pass arrays are fixed.
         std::vector<nri::Descriptor**> output_views;
 
-        struct MemoryAllocation final
-        {
-            nri::Memory* memory;
-            std::uint64_t bytes;
-        };
-
-        std::vector<MemoryAllocation> memories;
         std::vector<BoundMemoryPlacement> memory_bindings;
-        nri::DescriptorPool* descriptor_pool = nullptr;
         std::vector<nri::TextureBarrierDesc> final_images;
         std::vector<nri::BufferBarrierDesc> final_buffers;
     };

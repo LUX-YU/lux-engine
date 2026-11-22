@@ -103,17 +103,17 @@ namespace lux::render::detail
                 const auto ordinal = by_program.used++;
                 if (ordinal == by_program.records.size())
                 {
-                    if (frame.raster_bindings.size() >= kGraphInvalidIndex)
+                    if (frame.native.raster_bindings.size() >= kGraphInvalidIndex)
                         return cxx::unexpected(RenderError{kDeviceCapacity});
-                    by_program.records.push_back(static_cast<std::uint32_t>(frame.raster_bindings.size()));
-                    auto& record = frame.raster_bindings.emplace_back();
+                    by_program.records.push_back(static_cast<std::uint32_t>(frame.native.raster_bindings.size()));
+                    auto& record = frame.native.raster_bindings.emplace_back();
                     record.program = {p, id.index, revision};
                     record.views.resize(bindings.uses.size());
                     record.inputs.resize(bindings.uses.size());
                 }
                 const auto index = by_program.records[ordinal];
                 rows.draws[d] = index;
-                if (!frame.raster_bindings[index].set)
+                if (!frame.native.raster_bindings[index].set)
                 {
                     if (auto counted = addPrivateDescriptors(additional, bindings); !counted) return counted;
                 }
@@ -121,7 +121,8 @@ namespace lux::render::detail
         }
         if (resize_pool) return growRasterDescriptorPool(slot);
         if (!additional.descriptorSetMaxNum) return {};
-        const bool fits = frame.descriptor_pool && std::ranges::all_of(descriptor_counts, [&](auto field) noexcept
+        const bool fits = frame.native.descriptor_pool &&
+            std::ranges::all_of(descriptor_counts, [&](auto field) noexcept
         {
             return additional.*field <= frame.descriptor_capacity.*field - frame.descriptor_reserved.*field;
         });
@@ -134,7 +135,7 @@ namespace lux::render::detail
     ) noexcept
     {
         auto& frame = frames_[slot];
-        auto& record = frame.raster_bindings[index];
+        auto& record = frame.native.raster_bindings[index];
         const auto& core = session_->nriCore();
         if (!record.set)
         {
@@ -143,7 +144,7 @@ namespace lux::render::detail
                 return cxx::unexpected(counted.error());
             nri::DescriptorSet* created = nullptr;
             const auto status = core.AllocateDescriptorSets(
-                *frame.descriptor_pool, *bindings.layout, bindings.private_set, &created, 1, 0
+                *frame.native.descriptor_pool, *bindings.layout, bindings.private_set, &created, 1, 0
             );
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             record.set = created;
@@ -194,7 +195,7 @@ namespace lux::render::detail
         const auto& core = session_->nriCore();
         auto required = plan_->binding_plan_->private_pool;
         if (auto counted = session_->descriptors().addSnapshotDescriptors(required); !counted) return counted;
-        for (const auto& item : frame.raster_bindings)
+        for (const auto& item : frame.native.raster_bindings)
         {
             if (auto counted = addPrivateDescriptors(required, rasterBindings(item.program)); !counted)
                 return cxx::unexpected(counted.error());
@@ -252,7 +253,7 @@ namespace lux::render::detail
             });
             if (!ready) return cxx::unexpected(ready.error());
         }
-        for (auto& item : frame.raster_bindings)
+        for (auto& item : frame.native.raster_bindings)
         {
             const auto& program = rasterBindings(item.program);
             if (program.private_bindings.empty()) continue;
@@ -281,7 +282,7 @@ namespace lux::render::detail
         };
         for (auto& list : frame.raster_draws) relocate(list);
         invalidateRecordings(slot);
-        auto* old_pool = std::exchange(frame.descriptor_pool, pool);
+        auto* old_pool = std::exchange(frame.native.descriptor_pool, pool);
         frame.descriptor_capacity = capacity;
         frame.descriptor_reserved = required;
         if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
@@ -303,7 +304,7 @@ namespace lux::render::detail
         {
             auto& frame = frames_[slot];
             invalidateRecording(slot, pass);
-            std::erase_if(frame.raster_bindings, [&](auto& record) noexcept
+            std::erase_if(frame.native.raster_bindings, [&](auto& record) noexcept
             {
                 if (record.program.pass != pass || record.program.generation != generation) return false;
                 views.insert(views.end(), record.views.begin(), record.views.end());
@@ -311,9 +312,9 @@ namespace lux::render::detail
             });
             for (auto& stream : frame.stream_descriptor_rows)
                 for (auto& program : stream.programs) program.records.clear();
-            for (std::uint32_t index = 0; index < frame.raster_bindings.size(); ++index)
+            for (std::uint32_t index = 0; index < frame.native.raster_bindings.size(); ++index)
             {
-                const auto& record = frame.raster_bindings[index];
+                const auto& record = frame.native.raster_bindings[index];
                 auto& rows = frame.stream_descriptor_rows[record.program.pass].programs[record.program.program].records;
                 rows.push_back(index);
             }
@@ -373,7 +374,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(nativeError(status));
             }
-            frame.views.push_back(result);
+            frame.native.views.push_back(result);
             return {};
         };
         auto attachment = [&](const RasterAttachment& input, bool depth, nri::AttachmentDesc& result
@@ -536,30 +537,35 @@ namespace lux::render::detail
             auto& frame = frames_[slot];
             if (pool.descriptorSetMaxNum)
             {
-                const auto status = session_->nriCore().CreateDescriptorPool(*device(), pool, frame.descriptor_pool);
+                const auto status =
+                    session_->nriCore().CreateDescriptorPool(*device(), pool, frame.native.descriptor_pool);
                 if (status != nri::Result::SUCCESS)
                 {
                     return cxx::unexpected(nativeError(status));
                 }
             }
             frame.descriptor_capacity = frame.descriptor_reserved = pool;
-            if (frame.descriptor_pool)
+            if (frame.native.descriptor_pool)
             {
-                auto shared = session_->descriptors().createSnapshot(*frame.descriptor_pool);
+                auto shared = session_->descriptors().createSnapshot(*frame.native.descriptor_pool);
                 if (!shared) return cxx::unexpected(shared.error());
                 if (session_->description().graphicsAPI == nri::GraphicsAPI::D3D12)
                     frame.shared_descriptors = *shared;
             }
-            for (auto& pass : frame.passes)
+            frame.native.private_views.resize(frame.passes.size());
+            for (std::size_t index = 0; index < frame.passes.size(); ++index)
             {
+                auto& pass = frame.passes[index];
                 const auto& program = layout.pass(pass.compiled_pass->binding_slot);
-                pass.private_views.resize(program.uses.size());
+                auto& owned_views = frame.native.private_views[index];
+                owned_views.resize(program.uses.size());
+                pass.private_views = owned_views;
                 pass.history_views.resize(program.uses.size());
                 if (program.has_private_set)
                 {
                     const auto& native = (*programs_)[pass.compiled_pass->binding_slot].descriptors;
                     const auto status = session_->nriCore().AllocateDescriptorSets(
-                        *frame.descriptor_pool,
+                        *frame.native.descriptor_pool,
                         *native.layout,
                         native.private_set,
                         &pass.private_descriptors,

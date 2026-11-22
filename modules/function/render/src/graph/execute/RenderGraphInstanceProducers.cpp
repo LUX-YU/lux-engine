@@ -351,7 +351,7 @@ namespace lux::render::detail
             const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
             if (!contract.upload || already_written || invalid_extent)
                 return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
-            const auto& replica = instance_.frames_[frame_slot_].prepared_buffers[slot];
+            const auto& replica = instance_.frames_[frame_slot_].native.prepared_buffers[slot];
             if (!contract.used) selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
             else if (replica.contains(revision, bytes.size()))
             {
@@ -506,7 +506,7 @@ namespace lux::render::detail
         prepared_buffer_inputs_.resize(plan.buffers.size());
         for (auto& frame : frames_)
         {
-            frame.prepared_buffers.resize(plan.buffers.size());
+            frame.native.prepared_buffers.resize(plan.buffers.size());
         }
         producers_ = std::move(producers);
         program_producers_ = std::move(program_producers);
@@ -709,7 +709,7 @@ namespace lux::render::detail
         }
 
         // Commit the complete selection only after every preparation callback has succeeded.
-        for (auto& replica : frames_[slot].prepared_buffers) replica.staged_bytes = 0;
+        for (auto& replica : frames_[slot].native.prepared_buffers) replica.staged_bytes = 0;
         for (std::size_t i = 0; i < linked_producers.size(); ++i)
         {
             const auto& linked = linked_producers[i];
@@ -744,7 +744,7 @@ namespace lux::render::detail
         std::uint32_t slot, ResourceUploader* uploads, std::vector<PreparedBufferCopy>& copies
     ) noexcept
     {
-        auto& replicas = frames_[slot].prepared_buffers;
+        auto& replicas = frames_[slot].native.prepared_buffers;
         for (std::size_t i = 0; i < replicas.size(); ++i)
         {
             const auto& contract = preparation_plan_->buffers[i];
@@ -810,7 +810,7 @@ namespace lux::render::detail
         std::uint32_t slot, const PreparedBufferCopy& copy, SubmissionPoint accepted, RenderError error
     ) noexcept
     {
-        auto& replica = frames_[slot].prepared_buffers[copy.buffer];
+        auto& replica = frames_[slot].native.prepared_buffers[copy.buffer];
         if (preparation_plan_->buffers[copy.buffer].producer != copy.producer) std::terminate();
         if (error.type)
         {
@@ -818,7 +818,7 @@ namespace lux::render::detail
             return;
         }
         if (!accepted.serial) std::terminate();
-        uses_.accept(accepted);
+        gpu_.accepted.accept(accepted);
         // An accepted prefix can overwrite bytes of the previous revision.
         const bool complete = replica.staged_bytes == copy.size;
         replica.accepted_revision = complete ? copy.revision : 0;

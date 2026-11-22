@@ -135,8 +135,10 @@ namespace lux::render
         auto requestJob(RequestRenderJob::Request&&) noexcept;
         void stopJob(RenderJob&) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
-        void releaseExecutionResources(std::unique_ptr<JobExecution>) noexcept;
-        void destroyExecution(std::unique_ptr<JobExecution>) noexcept;
+        void releaseExecutionResources(
+            std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
+        ) noexcept;
+        void destroyExecution(std::unique_ptr<JobExecution>, std::unique_ptr<detail::JobGpuResources>) noexcept;
         [[nodiscard]] RenderResult<void> retainExecutionResource(JobExecution&, ResourceInstanceId) noexcept;
         [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
         [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId) const noexcept;

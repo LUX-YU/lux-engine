@@ -105,6 +105,7 @@ struct Monitor final
     static inline std::atomic<bool> deny = false, hold = false, entered = false, destroyed = false;
     static inline std::atomic<bool> hold_lowering = false;
     static inline std::atomic<bool> hold_submit = false, submitted = false;
+    static inline std::atomic_bool hold_record{};
     static inline std::atomic<unsigned> accepted_submits = 0;
     static inline std::atomic<unsigned> retired_textures = 0;
     static inline std::atomic<unsigned> reject_after = 0;
@@ -126,6 +127,7 @@ struct Monitor final
         core->CmdBeginRendering = [](nri::CommandBuffer& command, const nri::RenderingDesc& desc)
         {
             record_entered.store(true);
+            hold_record.wait(true);
             if (require_overlap.load())
             {
                 CHECK(!on_server);
@@ -1727,6 +1729,39 @@ int main(int argc, char** argv)
     std::puts("EFFECT PREPARE PASS: an independent writer reused its graph while preparation was pending");
 
     verifyDeviceOwnership(client, session, device, effect.effect);
+
+    const auto install_job = [&]
+    {
+        const auto image = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}});
+        const auto job = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED});
+        CHECK(!image.error.type && !job.error.type);
+        CHECK(!call<StartRenderJob>(client, {session, job.job, image.target, binding}).error.type);
+        return std::pair{job.job, image.target};
+    };
+    const auto retire_job = [&](const auto& installed)
+    {
+        CHECK(!call<StopRenderJob>(client, installed.first).error.type);
+        CHECK(!call<RemoveRenderJob>(client, installed.first).error.type);
+        CHECK(!call<RemoveTarget>(client, installed.second).error.type);
+    };
+    const auto recording_job = install_job();
+    Monitor::record_entered.store(false);
+    Monitor::hold_record.store(true);
+    const auto recording = send<RequestRenderJob>(asynchronous, {recording_job.first});
+    await(Monitor::record_entered);
+    std::vector<std::pair<RenderJobId, TargetId>> neighbours;
+    for (unsigned i = 0; i < 16; ++i) neighbours.push_back(install_job());
+    for (const auto& neighbour : std::span{neighbours}.first(15)) retire_job(neighbour);
+    Monitor::hold_record.store(false);
+    Monitor::hold_record.notify_all();
+    const auto recorded = receive<RequestRenderJob>(asynchronous, recording);
+    CHECK(!recorded.error.type && recorded.job == recording_job.first);
+    CHECK(!call<RequestRenderJob>(client, {neighbours.back().first}).error.type);
+    CHECK(!call<RebindRenderJobEffect>(client, {session, recording_job.first, replacement.effect}).error.type);
+    CHECK(!call<RequestRenderJob>(client, {recording_job.first}).error.type);
+    retire_job(neighbours.back());
+    retire_job(recording_job);
+    std::puts("JOB GPU OWNER PASS: device table grew during native recording; the original and rebound Jobs submitted");
 
     const auto shutdown_effect = create();
     CHECK(!shutdown_effect.error.type);

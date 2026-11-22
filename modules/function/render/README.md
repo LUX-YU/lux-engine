@@ -382,11 +382,16 @@ Resource borrow and ResponseOutbox; an async request's source bytes remain borro
 `JobExecution` owns CPU input bindings and Resource subscriptions. The Effect's device graph owns each producer's immutable linked inputs.
 Register a kernel with `ProducerFactory::make<Kernel>()`. Its static `resolve` links configuration once,
 and `prepare(const LinkedData&, FramePreparation&, Workspace&)` receives the current Job's workspace.
-The instance owns each workspace and the per-FIF GPU bindings. A kernel may supply a fallible
+The Job owns each workspace, its CPU binding rows and their revisions. Each DeviceEntry owns the Job's native
+buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes
+the stable allocation by JobId and checks the execution generation at cold binding and retirement boundaries.
+A kernel may supply a fallible
 `createWorkspace` when construction depends on linked inputs or the target. Cold assembly
 resolves Resource borrows once; instance preparation uses those borrows and contributes copies to `Preparation`.
 After Target prefetch, FrameProgress opens the next strict FIF slice for the ready Jobs. FrameOperation prepares
-Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces while the Effect still owns the prepared graph. Physical cleanup uses the Session scope.
+Resources and instance data and submits preparation copies before graph work. Job teardown releases its workspaces while
+the Effect still owns the prepared graph. The CPU state releases its native borrows before the device queues the physical
+collection for retirement at its accepted queue frontiers. The retirement callback requires only NRI and owned objects.
 
 Each FIF freezes its physical resource rows and their dependent pass operands before recording.
 The physical bindings borrow immutable NRI descriptions for the selected buffer or texture. Draw sections and
@@ -609,10 +614,11 @@ pairs around two independent compute dispatches in their production command buff
 native waits and explicit graph allocation bytes across resize. Each extent has eight warmup frames and 32 measured
 frames with one frame in flight. Both compute outputs and the pixels from the aliased images undergo GPU readback.
 The multi-queue run exercises an eligible asynchronous schedule. Exit code 77 indicates unavailable topology or timers.
-Add `inflight-resize` to measure live, candidate and retiring allocations together. A host-signaled queue fence
-keeps the first resize's old allocation alive while a frame using the intermediate extent is pending and a second
-resize prepares its candidate. The probe records accepted and completed serials before and after the host signal,
-checks the intermediate frame, then adopts the candidate and verifies the final frame.
+Add `inflight-resize` to measure simultaneous live, candidate and retiring allocations. After the first resize,
+the old completed extent can retire while an unrelated queue wait is pending. The probe then submits a separate
+256-pixel Job behind the fence and retires it while preparing a resize from 384 to 512. It records the actual
+accepted and completed serials, checks that all three sets of allocations stay live until the fence is signaled,
+and validates the intermediate and final readbacks. Timestamp capture is disabled for this memory-only run.
 
 On Windows, `render_output_test --start-fairness <vulkan|d3d12> [reverse]` pairs a Start request on adapter 0
 with an exact frame request on adapter 1. The optional argument swaps the adapters. Each round creates a fresh

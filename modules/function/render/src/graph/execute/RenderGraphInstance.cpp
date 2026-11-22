@@ -9,18 +9,18 @@
 namespace lux::render::detail
 {
     RenderGraphInstance::RenderGraphInstance(
-        DeviceSession& session,
-        std::uint32_t frame_count,
+        JobGpuResources& gpu,
         const RenderGraphExecutable& plan,
         const NativeProgramBindings& programs,
         TargetOutput output
     ) noexcept
-        : session_(&session), uses_(session.makeFrontiers()), plan_(&plan), programs_(&programs), output_(output)
+        : session_(&gpu.session), gpu_(gpu), plan_(&plan), programs_(&programs), output_(output)
     {
         condition_values_.resize(plan.condition_count_);
         const auto parameter_bytes = plan.passes().empty() ? 0 :
             plan.passes().back().parameter_offset + plan.passes().back().parameter_size;
-        frames_.resize(frame_count);
+        frames_.reserve(gpu.frames.size());
+        for (auto& physical : gpu.frames) frames_.emplace_back(physical);
         for (std::uint32_t slot = 0; slot < frames_.size(); ++slot)
         {
             auto& frame = frames_[slot];
@@ -56,7 +56,7 @@ namespace lux::render::detail
                         runtime_bound;
                 }
             );
-            frame.images.reserve(std::ranges::count_if(
+            frame.native.images.reserve(std::ranges::count_if(
                 plan.resources(),
                 [](const auto& resource)
                 {
@@ -72,25 +72,12 @@ namespace lux::render::detail
 
     RenderGraphInstance::~RenderGraphInstance() noexcept
     {
+        for (const auto& frame : frames_)
+            for (const auto& batch : frame.command_batches)
+                if (batch.recording.load(std::memory_order_acquire)) std::terminate();
         while (!producers_.empty()) producers_.pop_back();
         for (std::uint32_t pass = 0; pass < dynamic_raster_programs_.size(); ++pass)
             releaseDynamicRasterPrograms(pass, false);
-        // Physical cleanup is owned by the Session; it never calls back into this instance.
-        session_->deferRelease(
-            uses_,
-            [frames = std::move(frames_), histories = std::move(histories_), nri_core = &session_->nriCore()](
-            ) mutable noexcept
-            {
-                for (auto& frame : frames)
-                {
-                    frame.release(*nri_core);
-                }
-                for (auto& history : histories)
-                {
-                    history.release(*nri_core);
-                }
-            }
-        );
     }
 
     RenderResult<void> RenderGraphInstance::initialize() noexcept
@@ -279,7 +266,7 @@ namespace lux::render::detail
             if (auto capacity = prepareRasterDescriptorCapacity(slot, resize_pool); !capacity)
                 return cxx::unexpected(capacity.error());
         }
-        if (is_d3d12 && frame.descriptor_pool)
+        if (is_d3d12 && frame.native.descriptor_pool)
         {
             if (auto synced = shared.updateSnapshot(frame.shared_descriptors); !synced)
                 return cxx::unexpected(synced.error());

@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include "BufferReadback.hpp"
 #include "FrameHarness.hpp"
 #include "GraphAliasLoad.hpp"
@@ -149,7 +150,7 @@ namespace
     class NativeCapture final
     {
     public:
-        explicit NativeCapture(DeviceSession& device) noexcept
+        NativeCapture(DeviceSession& device, bool timestamps) noexcept
             : device_(device), core_(const_cast<nri::CoreInterface&>(device.nriCore())), original_(core_)
         {
             CHECK(current_ == nullptr);
@@ -162,7 +163,7 @@ namespace
                 ) == nri::Result::SUCCESS);
             }
             current_ = this;
-            core_.CmdDispatch = dispatch;
+            if (timestamps) core_.CmdDispatch = dispatch;
             core_.QueueSubmit = submit;
             core_.AllocateMemory = allocate;
             core_.FreeMemory = release;
@@ -278,6 +279,7 @@ namespace
         DeviceSession& device;
         FrameHarness& frames;
         RenderGraphInstance& instance;
+        JobGpuResources& gpu;
         NativeCapture& capture;
         std::array<SubmissionQueue*, 2> queues;
     };
@@ -347,7 +349,9 @@ namespace
         }
     }
 
-    void measureInFlightResize(SampleContext& sample, const Workload& workload, TargetOutput final_target)
+    void measureInFlightResize(
+        SampleContext& sample, const Workload& workload, const PreparedRenderGraph& plan, TargetOutput final_target
+    )
     {
         auto& device = sample.device;
         auto& graph = sample.instance;
@@ -358,24 +362,38 @@ namespace
         auto middle = take(OffscreenTarget::create(device, middle_desc, 1));
         RetirementFence gate(device);
         const nri::FenceSubmitDesc wait{gate.fence, 1, nri::StageBits::ALL};
+        auto retiring_target = take(OffscreenTarget::create(device, graph.target(), 1));
         std::uint64_t gate_serial = 0;
         std::uint64_t before_retirement = 0;
         {
-            // The 256 frame is complete. An unrelated accepted wait keeps the baseline's
-            // session-wide deferred-release frontier open after the first resize is adopted.
-            auto first = take(graph.prepareResize(middle.output()));
+            // The 256 frame has completed. This later wait belongs to another submission.
+            auto first = take(RenderGraphInstance::ResizeResources::prepare(sample.gpu, graph, middle.output()));
             CHECK(graph.prepareResizeAdoption(first));
             graph.commitResize(std::move(first));
             gate_serial = take(runTask(queue.submit({}, std::span{&wait, 1})));
             before_retirement = capture.describeMemory("384-adopted-with-old-256");
         }
-        capture.resetQueries();
+        CHECK(device.progressCompletions());
+        const auto live_middle = capture.describeMemory("384-after-completed-256-release");
+        CHECK(live_middle < before_retirement && queue.completed() < gate_serial);
+        {
+            FrameHarness retiring_frames(device, 1);
+            JobGpuResources retiring_gpu(device, 1);
+            RenderGraphInstance retiring(retiring_gpu, plan.executable, plan.programs, retiring_target.output());
+            CHECK(retiring.initialize());
+            SampleContext pending{device, retiring_frames, retiring, retiring_gpu, capture, sample.queues};
+            submitFrame(pending);
+            CHECK(queue.submitted() > gate_serial);
+            before_retirement = capture.describeMemory("384-live-256-submitted");
+        }
+        CHECK(device.progressCompletions());
+        CHECK(capture.describeMemory("384-live-256-retiring") == before_retirement);
         submitFrame(sample);
         const auto accepted = queue.submitted();
         CHECK(accepted > gate_serial && queue.poll() && queue.completed() < gate_serial);
         CHECK(capture.describeMemory("384-accepted-with-retiring-256") == before_retirement);
         {
-            auto second = take(graph.prepareResize(final_target));
+            auto second = take(RenderGraphInstance::ResizeResources::prepare(sample.gpu, graph, final_target));
             const auto peak = capture.describeMemory("384-live-512-candidate-256-retiring");
             CHECK(peak > before_retirement);
             CHECK(device.progressCompletions() && queue.completed() < gate_serial);
@@ -428,9 +446,10 @@ namespace
         larger.width = larger.height = 512;
         auto replacement = take(OffscreenTarget::create(device, larger, 1));
         FrameHarness frames(device, 1);
-        NativeCapture capture(device);
+        NativeCapture capture(device, !inflight);
         {
-            RenderGraphInstance instance(device, 1, plan.executable, plan.programs, initial.output());
+            JobGpuResources instance_gpu(device, 1);
+            RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs, initial.output());
             CHECK(instance.initialize());
             std::string dump;
             CHECK(instance.dumpResources({&dump, [](void* p, std::string_view value) noexcept
@@ -441,7 +460,7 @@ namespace
             CHECK(dump.find("\"reason\":\"aliased\"") != std::string::npos);
             std::printf("PLACEMENT,%s\n", dump.c_str());
             capture.describeMemory("initial");
-            SampleContext sample{device, frames, instance, capture, queues};
+            SampleContext sample{device, frames, instance, instance_gpu, capture, queues};
             if (inflight)
             {
                 capture.resetQueries();
@@ -450,10 +469,12 @@ namespace
             }
             else measureExtent(sample, target.width);
             checkOutputs(device, instance, workload);
-            if (inflight) measureInFlightResize(sample, workload, replacement.output());
+            if (inflight) measureInFlightResize(sample, workload, plan, replacement.output());
             else
             {
-                auto resized = take(instance.prepareResize(replacement.output()));
+                auto resized = take(RenderGraphInstance::ResizeResources::prepare(
+                    instance_gpu, instance, replacement.output()
+                ));
                 capture.describeMemory("candidate");
                 CHECK(instance.prepareResizeAdoption(resized));
                 instance.commitResize(std::move(resized));

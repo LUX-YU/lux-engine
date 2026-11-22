@@ -30,13 +30,14 @@ namespace lux::render::detail
         auto& frame = frames_[frame_slot];
         if (!frame.record_ready) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& recording = frame.command_batches[batch];
+        auto& native = frame.native.batches[batch];
         if (recording.recording.exchange(true, std::memory_order_acquire))
             return cxx::unexpected(RenderError{kDeviceBusy});
         cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
         const FrameRecordInput input{
             *plan_, *programs_, frame.record_resources, frame.record_passes, frame.history_initializations.values(),
             frame.enabled_regions, frame.final_images, frame.final_buffers,
-            frame.descriptor_pool, frame.shared_descriptors.sets
+            frame.native.descriptor_pool, frame.shared_descriptors.sets
         };
         auto& device = *session_;
         const auto& description = plan_->submissions()[batch];
@@ -48,8 +49,8 @@ namespace lux::render::detail
             const bool reusable = part == 0 && description.reusable_recording;
             if (reusable && recording.revision == recording.recorded_revision) continue;
             if (part == 0) recording.recorded_revision = 0;
-            auto* command = recording.commands[part];
-            auto result = device.resetCommandAllocator(*recording.allocators[part]);
+            auto* command = native.commands[part];
+            auto result = device.resetCommandAllocator(*native.allocators[part]);
             if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
             BindingState bindings;
@@ -62,7 +63,7 @@ namespace lux::render::detail
             if (reusable) recording.recorded_revision = recording.revision;
         }
         return std::span<nri::CommandBuffer* const>{
-            recording.commands.data() + first_part, end_part - first_part
+            native.commands.data() + first_part, end_part - first_part
         };
     }
 
@@ -105,6 +106,7 @@ namespace lux::render::detail
         auto& frame = frames_[frame_slot];
         const auto batches = plan_->submissions();
         frame.command_batches.resize(batches.size());
+        frame.native.batches.resize(batches.size());
         const auto& core = session_->nriCore();
         for (std::size_t batch = 0; batch < batches.size(); ++batch)
         {
@@ -115,12 +117,12 @@ namespace lux::render::detail
             for (auto part = first_part; part < end_part; ++part)
             {
                 auto result = core.CreateCommandAllocator(
-                    session_->queue(description.queue).native(), frame.command_batches[batch].allocators[part]
+                    session_->queue(description.queue).native(), frame.native.batches[batch].allocators[part]
                 );
                 if (result == nri::Result::SUCCESS)
                 {
                     result = core.CreateCommandBuffer(
-                        *frame.command_batches[batch].allocators[part], frame.command_batches[batch].commands[part]
+                        *frame.native.batches[batch].allocators[part], frame.native.batches[batch].commands[part]
                     );
                 }
                 if (result != nri::Result::SUCCESS)

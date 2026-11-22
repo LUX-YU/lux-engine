@@ -7,23 +7,6 @@
 
 namespace lux::render::detail
 {
-    void RenderGraphInstance::HistoryState::release(const nri::CoreInterface& core) noexcept
-    {
-        for (auto& slot : slots)
-        {
-            for (auto* view : slot.views)
-            {
-                core.DestroyDescriptor(view);
-            }
-            for (auto* view : slot.initial_views)
-            {
-                core.DestroyDescriptor(view);
-            }
-            core.DestroyTexture(slot.image);
-            core.DestroyBuffer(slot.buffer);
-        }
-    }
-
     bool RenderGraphInstance::HistoryState::select(const DeviceSession& session) noexcept
     {
         if (invalidate)
@@ -40,9 +23,9 @@ namespace lux::render::detail
         for (std::uint32_t i = 0; i < slots.size(); ++i)
         {
             const auto& slot = slots[i];
-            if (oldest != 0 && slot.sample_sequence >= oldest)
+            if (oldest != 0 && sample_sequences[i] >= oldest)
             {
-                if (!clear_previous && slot.sample_sequence == oldest)
+                if (!clear_previous && sample_sequences[i] == oldest)
                 {
                     previous = i;
                 }
@@ -75,7 +58,7 @@ namespace lux::render::detail
         {
             std::terminate();
         }
-        slots[current].sample_sequence = ++sequence;
+        sample_sequences[current] = ++sequence;
         latest = current;
         if (retained_samples < plan->description.distance)
         {
@@ -86,6 +69,7 @@ namespace lux::render::detail
     RenderResult<void> RenderGraphInstance::createHistories() noexcept
     {
         histories_.resize(plan_->histories_.size());
+        gpu_.histories.resize(histories_.size());
         for (std::size_t index = 0; index < histories_.size(); ++index)
         {
             auto& history = histories_[index];
@@ -95,7 +79,10 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kDeviceCapacity});
             }
-            history.slots.resize(frames_.size() + distance);
+            auto& backing = gpu_.histories[index];
+            backing.slots.resize(frames_.size() + distance);
+            history.slots = backing.slots;
+            history.sample_sequences.resize(history.slots.size());
             for (auto& slot : history.slots)
             {
                 slot.last_use = session_->makeFrontiers();
@@ -456,10 +443,10 @@ namespace lux::render::detail
 
     void RenderGraphInstance::acceptedBatch(std::uint32_t slot, std::uint32_t batch, SubmissionPoint point) noexcept
     {
-        uses_.accept(point);
+        gpu_.accepted.accept(point);
         for (auto id : plan_->submissions_[batch].imported_images)
             if (auto* reads = frames_[slot].bindings[id.index].image_uses.reads) reads->accept(point);
-        const auto mark = [&](HistoryState::HistorySlot& slot)
+        const auto mark = [&](JobHistoryResources::Slot& slot)
         {
             slot.last_use.accept(point);
             slot.initialized = true;

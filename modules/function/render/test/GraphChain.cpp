@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "BufferReadback.hpp"
 #ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
@@ -321,8 +322,9 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     CHECK(dump.find("\"lifetimes\":[") != std::string::npos);
     CHECK(dump.find("\"final_image_transitions\":[") != std::string::npos);
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto instance = std::make_unique<RenderGraphInstance>(
-        *session, fif, plan.executable, plan.programs, physical->output()
+        *instance_gpu, plan.executable, plan.programs, physical->output()
     );
     CHECK(instance->initialize());
     CHECK(instance->dumpResources(sink));
@@ -338,10 +340,13 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     larger_target.width = larger_target.height = 128;
     CHECK(plan.executable.compatible(larger_target));
     auto larger = std::optional{take(OffscreenTarget::create(*session, larger_target, fif))};
+    auto second_instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto second_instance = std::make_unique<RenderGraphInstance>(
-        *session, fif, plan.executable, plan.programs, larger->output()
+        *second_instance_gpu, plan.executable, plan.programs, larger->output()
     );
     CHECK(second_instance->initialize());
+    auto foreign = RenderGraphInstance::ResizeResources::prepare(*second_instance_gpu, *instance, larger->output());
+    CHECK(!foreign && foreign.error().type == kFrameContract);
     const std::array instances{instance.get(), second_instance.get()};
     const auto submit = [&](std::span<RenderGraphInstance* const> selected)
     {
@@ -382,11 +387,13 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     }
     CHECK(submit(instances) > 0);
     instance.reset();
+    instance_gpu.reset();
     physical.reset();
     CHECK(session->drain());
     const std::array remaining{second_instance.get()};
     CHECK(submit(remaining) > 0);
     second_instance.reset();
+    second_instance_gpu.reset();
     larger.reset();
     CHECK(session->drain());
 }
@@ -444,7 +451,8 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 3, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, 3);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     const auto count_pass = plan.diagnostics.passSlot(generated.pass);
     CHECK(count_pass != kGraphInvalidIndex);
     CHECK(instance->initialize());
@@ -504,6 +512,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         );
     }
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -557,13 +566,15 @@ static void resolveAndCopy(Validation& validation, EGraphicsBackend backend)
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames->render(instances, {}))) == 1);
     CHECK(session->drain());
     checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 16, 256, {255, 0, 0, 255}, 256);
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -596,7 +607,8 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
         CHECK(builder.exportOutput({copy.written.front(), GraphBufferRange{0, 8}}));
         const auto graph = take(std::move(builder).finish());
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-        RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
+        JobGpuResources instance_gpu(*session, 1);
+        RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
         auto initialized = instance.initialize();
         if (!aligned)
         {
@@ -810,7 +822,8 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     }
     auto plan = compile(*session, graph, analysis, nullptr);
     FrameHarness frames(*session, 1);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 1, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, 1);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
@@ -882,7 +895,8 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     CHECK(builder.addTransferPass("recording", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}, {true}));
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     CHECK(take(instance->prepareFrame(0)));
     CHECK(take(instance->prepareFrame(1)));
@@ -945,6 +959,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     (void)session->progressCompletions();
     frames.reset();
     instance.reset();
+    instance_gpu.reset();
     std::printf(
         "RECORD OWNER PASS backend=%s: parallel batches/slices, same-batch rejection, FIF completion gate, terminal "
         "rejection\n",
@@ -1018,13 +1033,15 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         const auto duplicate = compile(*session, graph, analysis, nullptr);
         CHECK(duplicate.programs[0].pipeline == plan.programs[0].pipeline);
         CHECK(duplicate.programs[1].pipeline == plan.programs[1].pipeline);
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+        auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+        auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
         checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
         instance.reset();
+        instance_gpu.reset();
         CHECK(session->drain());
     }
     {
@@ -1045,13 +1062,15 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
         exportRows(builder, copied.written.front(), 32, 32, 256);
         const auto graph = take(std::move(builder).finish());
         auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+        auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+        auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
         CHECK(instance->initialize());
         auto frames = std::make_unique<FrameHarness>(*session, 2);
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) == 1 && session->drain());
         checkPixels(*session, *instance->nativeBuffer(pixels.index, 0), 32, 0, {255, 0, 0, 255}, 256);
         instance.reset();
+        instance_gpu.reset();
         CHECK(session->drain());
     }
     std::puts("TYPED RASTER PASS: target shaders, color/depth mip/layer, merged LOAD scope, MSAA resolve");
@@ -1109,7 +1128,8 @@ static void typedRecording(Validation& validation, bool d3d12)
             const auto graph = take(std::move(builder).finish());
             return compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
         }();
-        auto instance = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+        auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+        auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
         CHECK(instance->initialize());
         CHECK(take(instance->prepareFrame(0)));
         auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
@@ -1133,6 +1153,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         const std::array<std::uint32_t, 4> expected_zeros{0, 9, 0, 9};
         CHECK(zeros == expected_zeros);
         instance.reset();
+        instance_gpu.reset();
         CHECK(session->drain());
     }
     std::printf("TYPED RECORDING PASS backend=%s: detached source, End retry and mixed FillBuffer readback\n",
@@ -1214,7 +1235,8 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
         return compile(*session, fixture.graph, analysis, nullptr);
     }();
     checkComputeSequence(executable.executable, intermediate);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, 2, executable.executable, executable.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, 2);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, executable.executable, executable.programs);
     CHECK(instance->initialize());
     auto frames = std::make_unique<FrameHarness>(*session, 2);
     const std::array instances{instance.get()};
@@ -1223,6 +1245,7 @@ static void multiCommandCompute(Validation& validation, bool d3d12)
     const auto values = readBufferWords<4>(*session, *instance->nativeBuffer(readback.index, 0));
     CHECK(std::ranges::all_of(values, [](auto value) { return value == 13; }));
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -1722,7 +1745,8 @@ static void conditionalHistorySamples(DeviceSession& session, std::uint32_t fif,
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
     const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    RenderGraphInstance instance(session, fif, plan.executable, plan.programs);
+    JobGpuResources instance_gpu(session, fif);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
     CHECK(instance.initialize());
     FrameHarness frames(session, fif);
     const std::array instances{&instance};
@@ -1775,7 +1799,8 @@ static void crossQueueChoice(DeviceSession& session, std::uint32_t fif)
         CHECK(std::ranges::any_of(batches, [](const auto& batch) { return batch.queue == EQueueRole::COMPUTE; }));
         CHECK(std::ranges::any_of(batches, [](const auto& batch) { return !batch.dependencies.empty(); }));
     }
-    RenderGraphInstance instance(session, fif, plan.executable, plan.programs);
+    JobGpuResources instance_gpu(session, fif);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
     CHECK(instance.initialize());
     FrameHarness frames(session, fif);
     const std::array instances{&instance};
@@ -1968,7 +1993,8 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     CHECK(builder.exportOutput({drawn.written.front()}));
     const auto graph = take(std::move(builder).finish());
     const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    RenderGraphInstance instance(session, 1, plan.executable, plan.programs);
+    JobGpuResources instance_gpu(session, 1);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
     CHECK(instance.initialize());
     FrameHarness frames(session, 1);
     const std::array instances{&instance};
@@ -2009,7 +2035,8 @@ static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, 
     CHECK(readBufferWords<4>(session, *instance.nativeBuffer(output.index, 0))[0] == 2);
     if (static_count == 4)
     {
-        RenderGraphInstance isolated(session, 2, plan.executable, plan.programs);
+        JobGpuResources isolated_gpu(session, 2);
+        RenderGraphInstance isolated(isolated_gpu, plan.executable, plan.programs);
         CHECK(isolated.initialize());
         CHECK(take(isolated.prepareFrame(1)));
         isolated.setViewport({0, 0, 0.5f, 1});
@@ -2075,7 +2102,8 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     exportRows(builder, copied.written.front(), 4, 4, 256);
     const auto graph = take(std::move(builder).finish());
     const auto plan = compile(session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    RenderGraphInstance instance(session, 1, plan.executable, plan.programs);
+    JobGpuResources instance_gpu(session, 1);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
     instance.bindImage(images, 0, *image.image);
     CHECK(instance.initialize());
     FrameHarness frames(session, 1);
@@ -2136,9 +2164,11 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     {
         CHECK(bounds[1].queue == EQueueRole::COMPUTE);
     }
-    RenderGraphInstance replacement(*session, 1, plan.executable, plan.programs);
+    JobGpuResources replacement_gpu(*session, 1);
+    RenderGraphInstance replacement(replacement_gpu, plan.executable, plan.programs);
     CHECK(replacement.initialize());
-    RenderGraphInstance instance(*session, 1, plan.executable, plan.programs);
+    JobGpuResources instance_gpu(*session, 1);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs);
     CHECK(instance.initialize());
     const std::array instances{&instance};
     CHECK(take(runTask(frames.render(instances, {}))) > 0);
@@ -2308,7 +2338,8 @@ static void historySequence(
     const auto graph = take(std::move(builder).finish());
     const auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, graph, analysis, nullptr);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     std::vector<std::uint32_t> published;
@@ -2378,6 +2409,7 @@ static void historySequence(
         readBufferWords(*session, *instance->nativeBuffer(output.index, instance->progress().last_submitted_slot));
     CHECK(values[0] == published.back());
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -2453,11 +2485,12 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
     TargetDesc target{9, 7, color_description.format, 1, ETargetKind::OFFSCREEN};
     auto plan = compile(*session, graph, analysis, &target);
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, fif))};
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto instance = std::make_unique<RenderGraphInstance>(
-        *session, fif, plan.executable, plan.programs, physical->output()
+        *instance_gpu, plan.executable, plan.programs, physical->output()
     );
     CHECK(instance->initialize());
-    for (std::uint32_t execution = 0; execution < 4; ++execution)
+    for (std::uint32_t execution = 0; execution < 6; ++execution)
     {
         if (execution == 2)
         {
@@ -2467,13 +2500,31 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
             target.width = 17;
             target.height = 11;
             auto replacement = std::optional{take(OffscreenTarget::create(*session, target, fif))};
+            auto candidate_gpu = std::make_unique<JobGpuResources>(*session, fif);
             auto candidate = std::make_unique<RenderGraphInstance>(
-                *session, fif, plan.executable, plan.programs, replacement->output()
+                *candidate_gpu, plan.executable, plan.programs, replacement->output()
             );
             CHECK(candidate->initialize());
             instance = std::move(candidate);
+            instance_gpu = std::move(candidate_gpu);
             physical.emplace(std::move(*replacement));
             CHECK(session->drain());
+        }
+        if (execution == 4)
+        {
+            const auto& bank = instance_gpu->histories.front();
+            const auto old_image = bank.slots.front().image;
+            target.width = 9;
+            target.height = 7;
+            auto replacement = take(OffscreenTarget::create(*session, target, fif));
+            auto changed = take(RenderGraphInstance::ResizeResources::prepare(
+                *instance_gpu, *instance, replacement.output()
+            ));
+            CHECK(instance->prepareResizeAdoption(changed));
+            instance->commitResize(std::move(changed));
+            CHECK(bank.slots.front().image != old_image);
+            for (const auto& slot : bank.slots) CHECK(slot.last_use.belongsTo(&*session, session->queueCount()));
+            physical.emplace(std::move(replacement));
         }
         const std::array instances{instance.get()};
         CHECK(take(runTask(frames->render(instances, {}))) > 0 && !frames->submitting());
@@ -2492,6 +2543,7 @@ static void hzbHistory(Validation& validation, EGraphicsBackend backend, std::ui
         }
     }
     instance.reset();
+    instance_gpu.reset();
     physical.reset();
     CHECK(session->drain());
 }
@@ -2534,7 +2586,8 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
          }}
     ));
     CHECK(dump.find("\"conditional_regions\":[{\"first_pass\":1,\"pass_count\":2") != std::string::npos);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (const std::uint8_t enabled : {0, 1, 0, 1})
@@ -2550,6 +2603,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
         CHECK(std::ranges::equal(values, expected));
     }
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -2608,8 +2662,10 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     CHECK(builder.exportOutput({copied.written.front()}));
     const auto graph = take(std::move(builder).finish());
     auto plan = compile(*session, graph, take(analyzeRenderGraph(graph)), nullptr);
-    auto first = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
-    auto second = std::make_unique<RenderGraphInstance>(*session, 2, plan.executable, plan.programs);
+    auto first_gpu = std::make_unique<JobGpuResources>(*session, 2);
+    auto first = std::make_unique<RenderGraphInstance>(*first_gpu, plan.executable, plan.programs);
+    auto second_gpu = std::make_unique<JobGpuResources>(*session, 2);
+    auto second = std::make_unique<RenderGraphInstance>(*second_gpu, plan.executable, plan.programs);
     for (auto* instance : {first.get(), second.get()})
     {
         const std::uint64_t offset = separate_ranges && instance == second.get() ? 16 : 0;
@@ -2633,7 +2689,9 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     const auto second_value = write_back && !separate_ranges ? 2u : 1u;
     CHECK(a[0] == 1 && b[0] == second_value);
     first.reset();
+    first_gpu.reset();
     second.reset();
+    second_gpu.reset();
     CHECK(session->drain());
     core.DestroyBuffer(shared);
 }
@@ -2690,8 +2748,10 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         );
     }
 
-    auto first = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
-    auto second = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto first_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto first = std::make_unique<RenderGraphInstance>(*first_gpu, plan.executable, plan.programs);
+    auto second_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto second = std::make_unique<RenderGraphInstance>(*second_gpu, plan.executable, plan.programs);
     CHECK(first->initialize() && second->initialize());
     const std::array instances{first.get(), second.get()};
     for (unsigned frame = 0; frame < 2; ++frame)
@@ -2759,7 +2819,9 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         CHECK(!frames->submitting() && !first->prepareFrame(0));
     }
     first.reset();
+    first_gpu.reset();
     second.reset();
+    second_gpu.reset();
     CHECK(session->drain());
     const auto old_serial = session->queue().submitted();
     CHECK(submitFixtureCommands(*session, session->queue(),
@@ -2864,7 +2926,8 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     large_desc.width = large_desc.height = 64;
     auto larger = take(OffscreenTarget::create(*session, large_desc, 1));
     FrameHarness frames(*session, 1);
-    RenderGraphInstance instance(*session, 1, plan.executable, plan.programs, original.output());
+    JobGpuResources instance_gpu(*session, 1);
+    RenderGraphInstance instance(instance_gpu, plan.executable, plan.programs, original.output());
     CHECK(instance.initialize());
     const auto check = [&](bool split)
     {
@@ -2902,13 +2965,13 @@ static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend
     DedicatedResizeRequirement::describe = core.GetTextureDesc;
     DedicatedResizeRequirement::original = std::exchange(core.GetTextureMemoryDesc, &DedicatedResizeRequirement::query);
     DedicatedResizeRequirement::selected = 0;
-    auto split = instance.prepareResize(larger.output());
+    auto split = RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, larger.output());
     core.GetTextureMemoryDesc = DedicatedResizeRequirement::original;
     CHECK(split && DedicatedResizeRequirement::selected == 1);
     CHECK(instance.prepareResizeAdoption(*split));
     instance.commitResize(std::move(*split));
     check(true);
-    auto joined = take(instance.prepareResize(original.output()));
+    auto joined = take(RenderGraphInstance::ResizeResources::prepare(instance_gpu, instance, original.output()));
     CHECK(instance.prepareResizeAdoption(joined));
     instance.commitResize(std::move(joined));
     check(false);
@@ -2952,7 +3015,8 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         !alias_memory
     );
     CHECK(plan.executable.physicalResources().slots.size() == (alias_memory ? 4 : 3));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     if (alias_memory)
     {
@@ -2977,6 +3041,7 @@ static void physicalImageReuse(Validation& validation, EGraphicsBackend backend,
         checkPixels(*session, *instance->nativeBuffer(green.index, slot), extent, 0, {0, 255, 0, 255}, 256);
     }
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -3042,7 +3107,8 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     CHECK(plan.diagnostics.resource_reuse[output_a.index] == EResourceReuse::EXPORTED);
     CHECK(control.executable.physicalResources().slots.size() == 4);
     CHECK(plan.executable.physicalResources().slots.size() == (reuse && !alias_memory ? 3 : 4));
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     if (alias_memory)
     {
@@ -3100,6 +3166,7 @@ physicalReuse(Validation& validation, DeviceOptions options, std::uint32_t fif, 
     take(runTask(frames->render(instances, {})));
     finishSubmissions(*session, *frames);
     instance.reset(); // Accepted GPU work retains the unique physical collection through cleanup_scope_.
+    instance_gpu.reset();
     CHECK(session->drain());
 }
 
@@ -3142,7 +3209,8 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     CHECK(transition.native.layerOffset == 0 && transition.native.layerNum == 3);
     CHECK(transition.native.before.layout == nri::Layout::UNDEFINED);
     CHECK(transition.native.after.layout == nri::Layout::COLOR_ATTACHMENT);
-    auto instance = std::make_unique<RenderGraphInstance>(*session, fif, plan.executable, plan.programs);
+    auto instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
+    auto instance = std::make_unique<RenderGraphInstance>(*instance_gpu, plan.executable, plan.programs);
     CHECK(instance->initialize());
     const std::array instances{instance.get()};
     for (std::uint32_t frame = 0; frame < fif; ++frame)
@@ -3153,6 +3221,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
         checkPixels(*session, *instance->nativeBuffer(output.index, frame), 32, 0, {64, 128, 191, 255}, 256);
     }
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
     std::printf("COALESCED RANGE PASS cells=12 descriptors=1 FIF=%u last_layer_readback=correct\n", fif);
 }

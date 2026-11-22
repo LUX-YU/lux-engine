@@ -74,6 +74,7 @@ set(render_sources
     src/features/mesh/MeshGrouping.cpp
     src/device/Error.cpp
     src/device/NativeExecution.cpp
+    src/device/JobGpuResources.cpp
     src/device/DeviceSession.cpp
     src/device/DescriptorTable.cpp
     src/device/DeviceBackend.cpp

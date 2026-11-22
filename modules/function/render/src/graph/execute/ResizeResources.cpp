@@ -12,14 +12,15 @@
 
 namespace lux::render::detail
 {
-    RenderGraphInstance::ResizeResources::ResizeResources(RenderGraphInstance& owner) noexcept
-        : owner_(&owner), session_(owner.session_)
+    RenderGraphInstance::ResizeResources::ResizeResources(JobGpuResources& owner) noexcept
+        : native_frames_(owner.frames.size()), accepted_(owner.session.makeFrontiers()), owner_(&owner), session_(&owner.session)
     {
     }
 
     RenderGraphInstance::ResizeResources::ResizeResources(ResizeResources&& other) noexcept
         : output(other.output), frames(std::move(other.frames)), histories(std::move(other.histories)),
-          owner_(other.owner_), prepared_(std::exchange(other.prepared_, false)),
+          native_frames_(std::move(other.native_frames_)), native_histories_(std::move(other.native_histories_)),
+          accepted_(std::move(other.accepted_)), owner_(other.owner_), prepared_(std::exchange(other.prepared_, false)),
           session_(std::exchange(other.session_, nullptr))
     {
     }
@@ -30,67 +31,62 @@ namespace lux::render::detail
         {
             return;
         }
-        session_->deferRelease(
-            [frames = std::move(frames), histories = std::move(histories), core = &session_->nriCore()](
-            ) mutable noexcept
-            {
-                for (auto& frame : frames)
-                {
-                    frame.physical.release(*core);
-                }
-                for (auto& [index, history] : histories)
-                {
-                    history.release(*core);
-                }
-            }
-        );
+        auto release = [frames = std::move(native_frames_), histories = std::move(native_histories_),
+                        core = &session_->nriCore()]() mutable noexcept
+        {
+            for (auto& frame : frames) frame.release(*core);
+            for (auto& history : histories) history.release(*core);
+        };
+        session_->deferRelease(std::move(accepted_), std::move(release));
     }
 
-    RenderResult<RenderGraphInstance::ResizeResources> RenderGraphInstance::prepareResize(
-        TargetOutput output,
+    RenderResult<RenderGraphInstance::ResizeResources> RenderGraphInstance::ResizeResources::prepare(
+        JobGpuResources& gpu, RenderGraphInstance& execution, TargetOutput output,
         std::span<const ImageReplacement> inputs
     ) noexcept
     {
+        if (&execution.gpu_ != &gpu) return cxx::unexpected(RenderError{kFrameContract});
+        const auto& plan = *execution.plan_;
         const bool has_output = !output.frames.empty();
-        const bool needs_output = plan_->output() != kGraphInvalidIndex ||
-            std::ranges::any_of(plan_->resources(), [](const auto& resource) noexcept
+        const bool needs_output = plan.output() != kGraphInvalidIndex ||
+            std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept
             {
                 return resource.target_sized;
             });
         if (needs_output && !has_output) return cxx::unexpected(RenderError{kDeviceArgument});
         const bool is_incompatible_output =
-            has_output && (output.frames.size() != frames_.size() || !plan_->compatible(output.description));
+            has_output && (output.frames.size() != gpu.frames.size() || !plan.compatible(output.description));
         if (is_incompatible_output)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
-        auto& session = *session_;
-        ResizeResources result{*this};
+        ResizeResources result{gpu};
         result.output = output;
-        result.frames.resize(frames_.size());
+        result.frames.reserve(gpu.frames.size());
+        for (auto& physical : result.native_frames_) result.frames.emplace_back(physical);
         const auto& target = output.description;
 
-        if (auto prepared = prepareResizeHistories(result, target); !prepared)
+        if (auto prepared = execution.prepareResizeHistories(result, target); !prepared)
         {
             return cxx::unexpected(prepared.error());
         }
 
-        for (std::uint32_t f = 0; f < frames_.size(); ++f)
+        for (std::uint32_t f = 0; f < gpu.frames.size(); ++f)
         {
             auto& candidate = result.frames[f];
-            if (auto prepared = prepareResizePhysical(result, f, target); !prepared)
+            if (auto prepared = execution.prepareResizePhysical(result, f, target); !prepared)
             {
                 return cxx::unexpected(prepared.error());
             }
-            if (plan_->output() != kGraphInvalidIndex && !output.frames.empty())
+            if (plan.output() != kGraphInvalidIndex && !output.frames.empty())
             {
                 Binding binding;
                 binding.image = output.frames[f].image;
-                candidate.resources.push_back({plan_->output(), binding});
+                candidate.resources.push_back({plan.output(), binding});
             }
             for (const auto& input : inputs)
             {
-                if (auto valid = qualifyImportedImage(input.resource, *input.frames[f].image, target); !valid)
+                if (auto valid = execution.qualifyImportedImage(input.resource, *input.frames[f].image, target); !valid)
                     return cxx::unexpected(valid.error());
                 Binding binding;
                 binding.image = input.frames[f].image;
@@ -105,7 +101,7 @@ namespace lux::render::detail
                 candidate.resources.push_back({history.plan->description.previous.index, previous});
                 candidate.resources.push_back({history.plan->description.current.index, current});
             }
-            if (auto prepared = prepareResizeBindings(result, f); !prepared)
+            if (auto prepared = execution.prepareResizeBindings(result, f); !prepared)
             {
                 return cxx::unexpected(prepared.error());
             }
@@ -141,9 +137,13 @@ namespace lux::render::detail
             }
             auto& history = result.histories.emplace_back(h, HistoryState{}).second;
             history.plan = previous.plan;
-            history.slots.resize(previous.slots.size());
+            auto& backing = result.native_histories_.emplace_back();
+            backing.slots.resize(previous.slots.size());
+            history.slots = backing.slots;
+            history.sample_sequences.resize(history.slots.size());
             for (auto& slot : history.slots)
             {
+                slot.last_use = session_->makeFrontiers();
                 const auto status =
                     core.CreatePlacedTexture(session_->device(), NriDeviceHeap, *description, slot.image);
                 if (status != nri::Result::SUCCESS)
@@ -486,7 +486,7 @@ namespace lux::render::detail
         if (aliases)
         {
             candidate.alias_barriers = instantiateAliasBarriers(physical, candidate.placements, plan_->passes().size());
-            candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.memories.size());
+            candidate.physical.memories.reserve(candidate.physical.memories.size() + frame.native.memories.size());
         }
         return {};
     }
@@ -513,7 +513,7 @@ namespace lux::render::detail
 
     RenderResult<void> RenderGraphInstance::prepareResizeAdoption(ResizeResources& result) noexcept
     {
-        if (result.owner_ != this || result.frames.size() != frames_.size())
+        if (result.owner_ != &gpu_ || result.frames.size() != frames_.size())
             return cxx::unexpected(RenderError{kFrameContract});
         result.prepared_ = false;
         const auto& physical = plan_->physical_resources_;
@@ -545,10 +545,11 @@ namespace lux::render::detail
                 auto& adoptions = is_image ? candidate.image_adoptions : candidate.buffer_adoptions;
                 const auto swap = is_image
                     ? ResizeResources::OwnershipSlots{
-                        find_slot(frame.images, old.image), find_slot(candidate.physical.images, incoming.image)
+                        find_slot(frame.native.images, old.image), find_slot(candidate.physical.images, incoming.image)
                     }
                     : ResizeResources::OwnershipSlots{
-                        find_slot(frame.buffers, old.buffer), find_slot(candidate.physical.buffers, incoming.buffer)
+                        find_slot(frame.native.buffers, old.buffer),
+                        find_slot(candidate.physical.buffers, incoming.buffer)
                     };
                 if (swap.live == SIZE_MAX || swap.candidate == SIZE_MAX)
                     return cxx::unexpected(RenderError{kFrameContract, {f, index}});
@@ -560,7 +561,7 @@ namespace lux::render::detail
                 auto* previous = ResizeResources::destination(frame.passes[view.use.pass], view.use);
                 const bool is_attachment = view.use.target != EImageViewTarget::DESCRIPTOR;
                 view.ownership = {
-                    is_attachment ? find_slot(frame.views, previous) : SIZE_MAX,
+                    is_attachment ? find_slot(frame.native.views, previous) : SIZE_MAX,
                     find_slot(candidate.physical.views, view.descriptor)
                 };
                 if (view.ownership.candidate == SIZE_MAX || (is_attachment && view.ownership.live == SIZE_MAX))
@@ -581,36 +582,37 @@ namespace lux::render::detail
 
     void RenderGraphInstance::commitResize(ResizeResources&& result) noexcept
     {
-        if (result.owner_ != this || !std::exchange(result.prepared_, false)) std::terminate();
+        if (result.owner_ != &gpu_ || !std::exchange(result.prepared_, false)) std::terminate();
+        result.accepted_.merge(gpu_.accepted);
         const auto& core = session_->nriCore();
         for (std::uint32_t f = 0; f < frames_.size(); ++f)
         {
             auto& frame = frames_[f];
             auto& candidate = result.frames[f];
             for (const auto [live, incoming] : candidate.image_adoptions)
-                std::swap(frame.images[live], candidate.physical.images[incoming]);
+                std::swap(frame.native.images[live], candidate.physical.images[incoming]);
             for (const auto [live, incoming] : candidate.buffer_adoptions)
-                std::swap(frame.buffers[live], candidate.physical.buffers[incoming]);
+                std::swap(frame.native.buffers[live], candidate.physical.buffers[incoming]);
             if (!candidate.placements.empty())
             {
                 for (std::uint32_t group = 0; group < candidate.adopted_memories.size(); ++group)
                 {
                     const auto new_memory = candidate.allocation_candidates[group];
                     auto& incoming = new_memory == kGraphInvalidIndex
-                                         ? frame.memories[candidate.previous_allocations[group].index]
+                                         ? frame.native.memories[candidate.previous_allocations[group].index]
                                          : candidate.physical.memories[new_memory];
                     candidate.adopted_memories[group] = std::exchange(incoming, {});
                 }
                 // All new allocations have moved. Only abandoned old groups remain to be released.
                 candidate.physical.memories.clear();
-                for (auto& memory : frame.memories)
+                for (auto& memory : frame.native.memories)
                 {
                     if (memory.memory)
                     {
                         candidate.physical.memories.push_back(std::exchange(memory, {}));
                     }
                 }
-                frame.memories = std::move(candidate.adopted_memories);
+                frame.native.memories = std::move(candidate.adopted_memories);
                 frame.memory_bindings = std::move(candidate.placements);
                 for (std::uint32_t p = 0; p < frame.passes.size(); ++p)
                 {
@@ -674,7 +676,7 @@ namespace lux::render::detail
                 {
                     candidate.physical.views[view.ownership.candidate] = previous;
                     if (view.ownership.live != SIZE_MAX)
-                        frame.views[view.ownership.live] = view.descriptor;
+                        frame.native.views[view.ownership.live] = view.descriptor;
                 }
                 if (view.use.target == EImageViewTarget::DESCRIPTOR)
                 {
@@ -692,8 +694,9 @@ namespace lux::render::detail
             frame.invalidateImportedBindings();
             std::ranges::fill(frame.history_valid, 0);
         }
-        for (auto& [index, replacement] : result.histories)
+        for (std::size_t h = 0; h < result.histories.size(); ++h)
         {
+            auto& [index, replacement] = result.histories[h];
             for (std::size_t f = 0; f < frames_.size(); ++f)
             {
                 for (const auto& old : histories_[index].slots)
@@ -703,6 +706,7 @@ namespace lux::render::detail
                 frames_[f].pending_history_clears.mark(index);
                 frames_[f].pending_history_views.mark(index);
             }
+            std::swap(gpu_.histories[index], result.native_histories_[h]);
             std::swap(histories_[index], replacement);
         }
         for (auto& history : histories_)
@@ -751,7 +755,7 @@ namespace lux::render::detail
         }
         output_.frames = {};
         session_->deferRelease(
-            uses_,
+            gpu_.accepted,
             [views = std::move(views), core = &session_->nriCore()]() noexcept
             {
                 for (auto* view : views)

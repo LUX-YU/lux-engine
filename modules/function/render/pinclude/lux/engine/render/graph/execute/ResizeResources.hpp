@@ -4,11 +4,16 @@
 
 namespace lux::render::detail
 {
-    // One cold Resize transaction. References below are indices/borrowed handles; only physical owns objects.
-    // Before adoption it owns candidates, afterwards the replaced objects. Both use the Session cleanup scope.
+    // CPU changes reference a local native candidate. Adoption exchanges only affected physical objects.
+    // Only the native payload enters Session retirement after the accepted uses of the old backing.
     struct LUX_RENDER_PUBLIC RenderGraphInstance::ResizeResources final
     {
-        explicit ResizeResources(RenderGraphInstance&) noexcept;
+        [[nodiscard]] static RenderResult<ResizeResources> prepare(
+            JobGpuResources&,
+            RenderGraphInstance&,
+            TargetOutput,
+            std::span<const ImageReplacement> = std::span<const ImageReplacement>{}
+        ) noexcept;
         ResizeResources(ResizeResources&&) noexcept;
         ~ResizeResources() noexcept;
         ResizeResources(const ResizeResources&) = delete;
@@ -46,9 +51,10 @@ namespace lux::render::detail
             std::vector<BoundMemoryPlacement> placements;
             std::vector<std::uint32_t> allocation_candidates;
             std::vector<MemoryGroupId> previous_allocations;
-            std::vector<FrameResources::MemoryAllocation> adopted_memories;
+            std::vector<JobFrameResources::MemoryAllocation> adopted_memories;
             std::vector<std::optional<nri::GlobalBarrierDesc>> alias_barriers;
-            FrameResources physical;
+            explicit Frame(JobFrameResources& storage) noexcept : physical(storage) {}
+            JobFrameResources& physical;
         };
 
         TargetOutput output;
@@ -59,7 +65,11 @@ namespace lux::render::detail
         friend class RenderGraphInstance;
         [[nodiscard]] static nri::Descriptor*& destination(Pass&, const ImageViewBinding&) noexcept;
 
-        const RenderGraphInstance* owner_;
+        std::vector<JobFrameResources> native_frames_;
+        std::vector<JobHistoryResources> native_histories_;
+        SubmissionFrontiers accepted_;
+        explicit ResizeResources(JobGpuResources&) noexcept;
+        const JobGpuResources* owner_;
         bool prepared_ = false;
         DeviceSession* session_;
     };

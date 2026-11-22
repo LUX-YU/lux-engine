@@ -158,7 +158,9 @@ namespace lux::render
                     inputs.push_back({image.resource, output.frames});
                 }
             }
-            auto changed = execution.instance.prepareResize(
+            auto& gpu = runtime_->device(execution.device)->jobResources(execution.binding_identity);
+            auto changed = detail::RenderGraphInstance::ResizeResources::prepare(
+                gpu, execution.instance,
                 execution.target == target ? output : targetOutput(*runtime_->targets_.find(execution.target)),
                 inputs
             );
@@ -725,15 +727,11 @@ namespace lux::render
         {
             return targetState(target).device == id;
         });
-        const bool has_bound_jobs = std::ranges::any_of(runtime_->jobs_, [id](const auto& job) noexcept
-        {
-            return job.execution && job.execution->device == id;
-        });
         const bool preparing = std::ranges::any_of(runtime_->effects_, [id](const auto& effect) noexcept
         {
             return effect.preparing_device == id;
         });
-        if (has_targets || has_bound_jobs || preparing || entry->hasBorrows())
+        if (has_targets || preparing || entry->hasBorrows())
             co_return AckResponse{RenderError{kDeviceBusy}};
 
         entry->retiring = true;

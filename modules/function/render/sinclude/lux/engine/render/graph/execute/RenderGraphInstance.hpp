@@ -20,6 +20,8 @@ namespace lux::render::detail
     class DeviceSession;
     struct RasterDrawList;
     struct PassBindings;
+    class JobGpuResources;
+    struct RasterBindingKey;
     struct RasterDescriptorInput;
     struct LinkedUniformBlock;
     struct DynamicRasterPrograms;
@@ -31,11 +33,7 @@ namespace lux::render::detail
     {
     public:
         RenderGraphInstance(
-            DeviceSession&,
-            std::uint32_t frame_count,
-            const RenderGraphExecutable&,
-            const NativeProgramBindings&,
-            TargetOutput = {}
+            JobGpuResources&, const RenderGraphExecutable&, const NativeProgramBindings&, TargetOutput = TargetOutput{}
         ) noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept;
         struct SnapshotSource final
@@ -106,8 +104,6 @@ namespace lux::render::detail
         // Cold candidate only; instance identity, subscriptions and Feature bindings remain unchanged.
         // Empty output is valid only for graphs with no output or Target-relative resources.
         // Surface withdrawal uses releaseOutputReferences(), not an empty Resize candidate.
-        [[nodiscard]] RenderResult<ResizeResources>
-        prepareResize(TargetOutput, std::span<const ImageReplacement> inputs = {}) noexcept;
         // Revalidate dependent extents after suspension; concurrent Storage publication may change buffer ranges.
         [[nodiscard]] RenderResult<void> prepareResizeAdoption(ResizeResources&) noexcept;
         // Called only after affected accepted GPU uses complete, with no intervening suspension.
@@ -253,14 +249,6 @@ namespace lux::render::detail
         struct HistoryState;
         struct FrameResources;
 
-        struct RasterBindingKey final
-        {
-            std::uint32_t pass, program;
-            std::uint64_t generation;
-
-            bool operator==(const RasterBindingKey&) const noexcept = default;
-        };
-
         [[nodiscard]] RenderResult<void> prepareRasterDescriptorCapacity(std::uint32_t slot, bool resize_pool) noexcept;
         [[nodiscard]] RenderResult<nri::DescriptorSet*> prepareRasterDescriptorSet(
             std::uint32_t slot, const PassBindings&, std::uint32_t record, std::span<const RasterDescriptorInput>
@@ -308,7 +296,7 @@ namespace lux::render::detail
             std::vector<nri::BufferBarrierDesc> buffers;
             std::optional<nri::GlobalBarrierDesc> alias_barrier;
             nri::DescriptorSet* private_descriptors = nullptr;
-            std::vector<nri::Descriptor*> private_views;
+            std::span<nri::Descriptor*> private_views;
             std::vector<nri::Descriptor*> history_views;
             std::vector<nri::AttachmentDesc> colors;
             nri::AttachmentDesc depth{};
@@ -327,7 +315,7 @@ namespace lux::render::detail
         };
 
         DeviceSession* session_;
-        SubmissionFrontiers uses_;
+        JobGpuResources& gpu_;
 
         class ProducerFrame;
         class ProgramSelection;

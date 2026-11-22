@@ -11,14 +11,14 @@
 namespace lux::render::runtime_detail
 {
     JobExecution::JobExecution(
-        detail::DeviceEntry& entry,
+        detail::JobGpuResources& gpu,
         const compiled::RenderGraph& selected,
         Installation installation,
         detail::TargetOutput physical
     ) noexcept
-        : effect(installation.effect), device(entry.id), target(installation.target),
+        : effect(installation.effect), device(installation.device), target(installation.target),
           graph(selected), executable(graph.executable),
-          instance(entry.session(), entry.frameProgress().frameCount(), executable, graph.programs, physical),
+          instance(gpu, executable, graph.programs, physical),
           binding_identity(installation.identity)
     {
     }

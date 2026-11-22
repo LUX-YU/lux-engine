@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "SceneCapture.hpp"
 #include "EffectGraphColor.hpp"
@@ -193,15 +194,18 @@ static void graphOutput(Validation& validation)
     CHECK(ready_result);
     auto graph = take(std::move(std::get<0>(*ready_result)));
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
+    auto execution_gpu = std::make_unique<JobGpuResources>(*session, frames->frameCount());
     auto execution = std::make_unique<RenderGraphInstance>(
-        *session, frames->frameCount(), graph.executable, graph.programs, physical->output()
+        *execution_gpu, graph.executable, graph.programs, physical->output()
     );
     CHECK(execution->initialize());
     auto incompatible_output = physical->output();
     incompatible_output.description.format = lux::rdesc::ETextureFormat::BGRA8_UNORM;
-    auto rejected_resize = execution->prepareResize(incompatible_output, {});
+    auto rejected_resize = RenderGraphInstance::ResizeResources::prepare(
+        *execution_gpu, *execution, incompatible_output, {}
+    );
     CHECK(!rejected_resize && rejected_resize.error().type == kDeviceArgument);
-    auto missing_output = execution->prepareResize({});
+    auto missing_output = RenderGraphInstance::ResizeResources::prepare(*execution_gpu, *execution, {});
     CHECK(!missing_output && missing_output.error().type == kDeviceArgument);
     CHECK(execution->target() == target); // Rejection must not withdraw the adopted output.
     const std::array contexts{execution.get()};
@@ -245,7 +249,8 @@ static void graphOutput(Validation& validation)
     auto last_uses = session->makeFrontiers();
     physical->appendUses(last_uses);
     CHECK(last_uses != prior_uses);
-    execution.reset(); // Physical resources outlive the business Context through Session cleanup.
+    execution.reset();
+    execution_gpu.reset(); // Physical resources outlive the business Context through Session cleanup.
     physical.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(output);
@@ -297,13 +302,15 @@ static void importedIdentityReuse(Validation& validation)
         CHECK(frames->dumpSubmissions(sink));
         return number("\"dependency_rebuilds\":");
     };
+    std::optional<JobGpuResources> instance_gpu;
     std::optional<RenderGraphInstance> instance;
-    instance.emplace(*session, 1, plan.executable, plan.programs);
+    instance.emplace(instance_gpu.emplace(*session, 1), plan.executable, plan.programs);
     CHECK(instance->initialize());
     const auto initial_revision = revision(*instance);
     std::uint64_t creation_revisions = 0;
     {
-        RenderGraphInstance probe{*session, 1, plan.executable, plan.programs};
+        JobGpuResources probe_gpu(*session, 1);
+        RenderGraphInstance probe{probe_gpu, plan.executable, plan.programs};
         CHECK(probe.initialize());
         creation_revisions = revision(probe) - initial_revision;
     }
@@ -335,8 +342,9 @@ static void importedIdentityReuse(Validation& validation)
     const auto cached_rebuilds = rebuilds();
     const auto* address = &*instance;
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
-    instance.emplace(*session, 1, plan.executable, plan.programs);
+    instance.emplace(instance_gpu.emplace(*session, 1), plan.executable, plan.programs);
     CHECK(&*instance == address);
     CHECK(instance->initialize());
     render();
@@ -346,6 +354,7 @@ static void importedIdentityReuse(Validation& validation)
     render();
     CHECK(rebuilds() == adopted_rebuilds); // Stable inputs still reuse the dependency cache.
     instance.reset();
+    instance_gpu.reset();
     CHECK(session->drain());
     session->nriCore().DestroyBuffer(buffer);
     std::puts("IMPORTED IDENTITY PASS: same address rebuilt; unchanged inputs reused dependencies");
@@ -445,25 +454,31 @@ static void importedExtentContracts(Validation& validation)
                   nri::Result::SUCCESS);
         }
         {
-            RenderGraphInstance invalid{*session, 1, plan.executable, plan.programs};
+            JobGpuResources invalid_gpu(*session, 1);
+            RenderGraphInstance invalid{invalid_gpu, plan.executable, plan.programs};
             invalid.bindImage(source, 0, *images[0]);
             invalid.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid.initialize();
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
         }
         {
-            RenderGraphInstance instance{*session, 1, plan.executable, plan.programs};
+            JobGpuResources instance_gpu(*session, 1);
+            RenderGraphInstance instance{instance_gpu, plan.executable, plan.programs};
             instance.bindImage(source, 0, *images[0]);
             instance.bindImage(destination, 0, *images[2]);
             CHECK(instance.initialize());
             const std::array<TargetFrame, 1> smaller_frames{{{images[1]}}};
             const RenderGraphInstance::ImageReplacement replacement{destination, smaller_frames};
-            const auto rejected = instance.prepareResize({}, {&replacement, 1});
+            const auto rejected = RenderGraphInstance::ResizeResources::prepare(
+                instance_gpu, instance, {}, {&replacement, 1}
+            );
             CHECK(!rejected && rejected.error().type == kInvalidTargetExtent);
             // A graph with only imported resources legitimately accepts an empty output.
             const std::array<TargetFrame, 1> original{{{images[2]}}};
             const RenderGraphInstance::ImageReplacement valid{destination, original};
-            auto unchanged = take(instance.prepareResize({}, {&valid, 1}));
+            auto unchanged = take(RenderGraphInstance::ResizeResources::prepare(
+                instance_gpu, instance, {}, {&valid, 1}
+            ));
             CHECK(instance.prepareResizeAdoption(unchanged));
             instance.commitResize(std::move(unchanged));
         }

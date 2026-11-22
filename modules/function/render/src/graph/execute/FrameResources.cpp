@@ -83,7 +83,7 @@ namespace lux::render::detail
         parameters = plan.bindingPlan().initial_parameters;
         bindings.resize(plan.resources().size());
         record_resources.resize(plan.resources().size());
-        record_passes.resize(plan.passes().size());
+        dispatches.resize(plan.recordingProgram().compute.size());
         pending_resources.initialize(plan.resources().size());
         pending_passes.initialize(plan.passes().size());
         pending_operand_fields.initialize(plan.bindingPlan().recordings.operand_fields.size());
@@ -314,7 +314,6 @@ namespace lux::render::detail
     {
         const auto& pass = passes[p];
         auto& draws = raster_draws[dynamic.data_index];
-        const auto& native = record_passes[p].native;
         if (draws.has_explicit_sections || !draws.sections.empty())
         {
             draws.implicit_section.reset();
@@ -324,10 +323,10 @@ namespace lux::render::detail
         auto& section = draws.implicit_section.emplace();
         section.color_count = static_cast<std::uint32_t>(draws.colors.size());
         section.depth = pass.depth;
-        section.viewport = native.viewport;
+        section.viewport = pass.viewport;
         section.parameter_size = dynamic.producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
         section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
-        for (auto& packet : draws.packets) packet.scissor = native.scissor;
+        for (auto& packet : draws.packets) packet.scissor = pass.scissor;
     }
 
     namespace
@@ -388,28 +387,13 @@ namespace lux::render::detail
         binding_choices.reserve(recording.binding_joins.size());
         for (const auto& join : recording.binding_joins)
             binding_choices.push_back({join.enabled_predecessor, join.enabled});
-        for (std::uint32_t i = 0; i < passes.size(); ++i)
-        {
-            const auto& pass = passes[i];
-            auto& record = record_passes[i];
-            record.images = pass.images;
-            record.buffers = pass.buffers;
-            record.parameters = pass.parameters;
-            auto& native = record.native;
-            native.colors = pass.colors;
-            if (const auto* compute = recording.computeCommands(*pass.compiled_pass))
-            {
-                if (const auto* fixed = std::get_if<nri::DispatchDesc>(&compute->dispatch)) native.dispatch = *fixed;
-                continue;
-            }
-            const auto* raster = recording.rasterCommands(*pass.compiled_pass);
-            const auto* list = raster ? std::get_if<RasterListCommands>(&raster->draw) : nullptr;
-            if (list) native.draws = &raster_draws[list->data_index];
-        }
-        linked_recording_.emplace(FrozenRecordingFrame{{
-            graph, transfers, record_resources, record_passes, history_initializations.values(), enabled_regions,
-            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets
-        }, command_batches, native.batches});
+        for (std::size_t i = 0; i < recording.compute.size(); ++i)
+            if (const auto* fixed = std::get_if<nri::DispatchDesc>(&recording.compute[i].dispatch))
+                dispatches[i].dispatch = *fixed;
+        linked_recording_.emplace(FrozenRecordingFrame{
+            graph, transfers, record_resources, passes, dispatches, raster_draws, history_initializations.values(), enabled_regions,
+            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets,
+            command_batches, native.batches});
     }
 
     void FrameResources::patchRecordResource(std::uint32_t i, std::uint32_t history) noexcept
@@ -433,11 +417,6 @@ namespace lux::render::detail
     void FrameResources::patchRecordPass(const RecordingProgram& program, std::uint32_t i) noexcept
     {
         auto& pass = passes[i];
-        auto& record = record_passes[i];
-        record.alias_barrier = pass.alias_barrier;
-        record.private_descriptors = pass.private_descriptors;
-        auto& native = record.native;
-        native.depth = pass.depth;
         if (const auto* scope = program.rasterScope(*pass.compiled_pass))
         {
             const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
@@ -446,20 +425,17 @@ namespace lux::render::detail
             const auto width = std::max(1u, image.width >> mip);
             const auto height = std::max(1u, image.height >> mip);
             const auto& area = scope->viewport ? *scope->viewport : viewport;
-            native.viewport = {
+            pass.viewport = {
                 area.x * width, area.y * height, area.width * width, area.height * height,
                 area.min_depth, area.max_depth, true
             };
-            native.scissor = {
+            pass.scissor = {
                 static_cast<std::int16_t>(area.x * width), static_cast<std::int16_t>(area.y * height),
                 static_cast<nri::Dim_t>(area.width * width), static_cast<nri::Dim_t>(area.height * height)
             };
         }
-        if (native.draws)
-        {
-            const auto& raster = *program.rasterCommands(*pass.compiled_pass);
-            patchDrawSection(i, std::get<RasterListCommands>(raster.draw));
-        }
+        if (const auto* raster = program.rasterCommands(*pass.compiled_pass))
+            if (const auto* stream = std::get_if<RasterListCommands>(&raster->draw)) patchDrawSection(i, *stream);
     }
 
     void TransferOperands::initialize(const TransferProgram& program) noexcept
@@ -514,8 +490,8 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 const auto offset = buffer.buffer_offset + location.offset;
                 if (offset % 4) return cxx::unexpected(RenderError{kDeviceArgument});
-                record_passes[p].native.indirect_buffer = buffer.buffer;
-                record_passes[p].native.indirect_offset = offset;
+                dispatches[row].indirect_buffer = buffer.buffer;
+                dispatches[row].indirect_offset = offset;
                 ++patched.compute;
                 continue;
             }
@@ -525,7 +501,7 @@ namespace lux::render::detail
                 const auto& image = record_resources[extent.image];
                 auto groups = dispatchGroups(extent, {image.width, image.height}, limits);
                 if (!groups) return cxx::unexpected(groups.error());
-                record_passes[p].native.dispatch = *groups;
+                dispatches[row].dispatch = *groups;
                 ++patched.compute;
                 continue;
             }
@@ -597,7 +573,7 @@ namespace lux::render::detail
     {
         record_ready = false;
         if (!linked_recording_) return cxx::unexpected(RenderError{kDeviceArgument});
-        auto& input = linked_recording_->input;
+        auto& input = *linked_recording_;
         const auto& graph = input.plan;
         for (const auto i : pending_resources.slots()) patchRecordResource(i, graph.resources()[i].history);
         for (const auto i : pending_passes.slots()) patchRecordPass(graph.recordingProgram(), i);

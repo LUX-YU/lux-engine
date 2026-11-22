@@ -1,6 +1,5 @@
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
-#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include "NativeDevice.hpp"
@@ -1683,7 +1682,7 @@ public:
                     CHECK(predicate.source == EConditionSource::INPUT && predicate.input_slot < conditions.size());
                     if (static_cast<bool>(conditions[predicate.input_slot]) != predicate.expected) continue;
                 }
-                CHECK(recordBlock(program, pass.commands, [&](const auto& packet) noexcept
+                CHECK(recordBlock(program, pass.commands, [&](const auto& packet, std::uint32_t) noexcept
                 {
                     return replay(packet, pass);
                 }));

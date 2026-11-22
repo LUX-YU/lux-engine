@@ -5,6 +5,14 @@
 
 namespace lux::render::detail
 {
+    struct PassDescriptorBindings final
+    {
+        nri::PipelineLayout* layout = nullptr;
+        std::uint32_t private_set = 0;
+        std::array<std::uint32_t, 3> shared_sets{UINT32_MAX, UINT32_MAX, UINT32_MAX};
+        bool operator==(const PassDescriptorBindings&) const noexcept = default;
+    };
+
     struct ImageDispatchExtent final
     {
         std::uint32_t image, mip;

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
-
 #include <lux/cxx/core/function_ref.hpp>
 
 #include <lux/engine/core/execution/Scheduler.hpp>
@@ -17,6 +15,7 @@ namespace lux::render::runtime_detail { struct JobExecution; }
 namespace lux::render::detail
 {
     class SubmissionQueue;
+    struct FrozenRecordingFrame;
 
     struct SubmissionOrder final
     {

@@ -4,7 +4,7 @@
 #include <bit>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>
-#include <lux/engine/render/graph/execute/FrameRecordInput.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/PassBindings.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 
@@ -12,7 +12,7 @@ namespace lux::render::detail
 {
     void
     FrameExecutor::recordHistoryInitialization(
-        const FrameRecordInput& input,
+        const FrozenRecordingFrame& input,
         const nri::CoreInterface& core,
         nri::CommandBuffer& command
     ) noexcept
@@ -56,14 +56,14 @@ namespace lux::render::detail
     ) noexcept
     {
         const bool invalid_batch = batch >= frame.revisions.size() || batch >= frame.native_batches.size() ||
-            batch >= frame.input.plan.submissions().size();
+            batch >= frame.plan.submissions().size();
         if (invalid_batch) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& recording = frame.revisions[batch];
         const auto& native = frame.native_batches[batch];
         if (recording.recording.exchange(true, std::memory_order_acquire))
             return cxx::unexpected(RenderError{kDeviceBusy});
         cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
-        const auto& description = frame.input.plan.submissions()[batch];
+        const auto& description = frame.plan.submissions()[batch];
         const bool has_tail = description.output_begin != kGraphInvalidIndex;
         const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
         const std::uint32_t end_part = has_tail ? 2u : 1u;
@@ -76,9 +76,8 @@ namespace lux::render::detail
             auto result = device.resetCommandAllocator(*native.allocators[part]);
             if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
-            auto encoded = recordBatchPart(frame.input, device.nriCore(), *command, {batch, part == 1});
+            recordBatchPart(frame, device.nriCore(), *command, {batch, part == 1});
             result = device.nriCore().EndCommandBuffer(*command);
-            if (!encoded) return cxx::unexpected(encoded.error());
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
             if (reusable) recording.recorded_revision = recording.revision;
         }
@@ -87,9 +86,8 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<void>
-    FrameExecutor::recordBatchPart(
-        const FrameRecordInput& frame,
+    void FrameExecutor::recordBatchPart(
+        const FrozenRecordingFrame& frame,
         const nri::CoreInterface& core,
         nri::CommandBuffer& command,
         BatchPart part
@@ -97,6 +95,7 @@ namespace lux::render::detail
     {
         const auto [batch_index, output_tail] = part;
         BindingState binding_state;
+        const RasterEncoder raster{core, command, frame, binding_state};
         const auto& plan = frame.plan;
         const auto& batch = plan.submissions_[batch_index];
         const bool has_tail = batch.output_begin != kGraphInvalidIndex;
@@ -161,44 +160,44 @@ namespace lux::render::detail
             }
             const auto* scope = plan.recordingProgram().rasterScope(compiled);
             const bool owns_draw_sections = scope && scope->exclusive;
-            auto native = pass.native;
-            native.bindings = &binding_state;
-            const PassRecordInput input{frame.resources, frame.shared_descriptors, &native};
             const auto* group = scope && !owns_draw_sections ? &plan.recording_.groups[compiled.rendering_group] : nullptr;
             if (group && group->first_pass == p)
             {
                 nri::RenderingDesc rendering{};
-                rendering.colors = native.colors.data();
-                rendering.colorNum = static_cast<std::uint32_t>(native.colors.size());
-                rendering.depth = native.depth;
+                rendering.colors = pass.colors.data();
+                rendering.colorNum = static_cast<std::uint32_t>(pass.colors.size());
+                rendering.depth = pass.depth;
                 core.CmdBeginRendering(command, rendering);
             }
             if (group)
             {
                 if (scope->reset_viewport || !binding_state.scissor)
                 {
-                    core.CmdSetViewports(command, &native.viewport, 1);
-                    setPassScissor(core, command, native.scissor, binding_state);
+                    core.CmdSetViewports(command, &pass.viewport, 1);
+                    setPassScissor(core, command, pass.scissor, binding_state);
                 }
                 if (binding_state.depth_bias)
                     setPassDepthBias(core, command, scope->depth_bias, binding_state);
             }
             if (owns_draw_sections) binding_state.invalidate();
-            const auto recorded = recordBlock(plan.recording_, compiled.commands, [&](const auto& packet) noexcept
+            recordBlock(plan.recording_, compiled.commands, [&](const auto& packet, std::uint32_t row) noexcept
             {
                 using Packet = std::remove_cvref_t<decltype(packet)>;
-                if constexpr (std::same_as<Packet, RasterCommands>) return packet.record(input, command, core);
-                else
+                if constexpr (std::same_as<Packet, RasterCommands>) raster.record(packet, pass);
+                else if constexpr (std::same_as<Packet, ComputeCommands>)
                 {
-                    if constexpr (std::same_as<Packet, ComputeCommands>) recordCompute(native, command, core);
-                    else recordTransfers(packet, frame, command, core);
-                    return RenderResult<void>{};
+                    binding_state.vertices = {};
+                    binding_state.index = nullptr;
+                    const auto& dispatch = frame.dispatches[row];
+                    if (dispatch.indirect_buffer)
+                        core.CmdDispatchIndirect(command, *dispatch.indirect_buffer, dispatch.indirect_offset);
+                    else core.CmdDispatch(command, dispatch.dispatch);
                 }
+                else recordTransfers(packet, frame, command, core);
             });
             const bool clobbers = owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands);
             if (clobbers) binding_state.invalidate();
-            if (group && (group->first_pass + group->pass_count == p + 1 || !recorded)) core.CmdEndRendering(command);
-            if (!recorded) return recorded;
+            if (group && group->first_pass + group->pass_count == p + 1) core.CmdEndRendering(command);
         }
         if (last_part && batch_index + 1 == plan.submissions_.size() &&
             (!frame.final_images.empty() || !frame.final_buffers.empty()))
@@ -213,7 +212,6 @@ namespace lux::render::detail
             };
             core.CmdBarrier(command, barrier);
         }
-        return {};
     }
 
 } // namespace lux::render::detail

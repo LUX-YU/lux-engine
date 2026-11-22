@@ -13,7 +13,6 @@
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/PassValues.hpp>
 #include <lux/engine/render/graph/CommandPackets.hpp>
-#include <lux/engine/render/graph/execute/PassRecordInput.hpp>
 #include <memory>
 
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
@@ -150,9 +149,6 @@ namespace lux::render::detail
 
     struct RasterCommands final
     {
-        [[nodiscard]] RenderResult<void>
-        record(const PassRecordInput&, nri::CommandBuffer&, const nri::CoreInterface&) const noexcept;
-
         // Fixed raster program. Dynamic raster lists carry the program on each draw packet.
         std::vector<VertexSource> vertices;
         VRasterDraw draw;
@@ -283,14 +279,13 @@ namespace lux::render::detail
     };
 
     template <class Recorder>
-    [[nodiscard]] RenderResult<void>
-    recordBlock(const RecordingProgram& program, VCommandSlot block, Recorder recorder) noexcept
+    decltype(auto) recordBlock(const RecordingProgram& program, VCommandSlot block, Recorder recorder) noexcept
     {
-        return std::visit([&](auto slot) noexcept -> RenderResult<void>
+        return std::visit([&](auto slot) noexcept -> decltype(auto)
         {
-            if constexpr (slot.kind == EGraphPassKind::GRAPHICS) return recorder(program.raster[slot.index]);
-            else if constexpr (slot.kind == EGraphPassKind::COMPUTE) return recorder(program.compute[slot.index]);
-            else return recorder(program.transfer[slot.index]);
+            if constexpr (slot.kind == EGraphPassKind::GRAPHICS) return recorder(program.raster[slot.index], slot.index);
+            else if constexpr (slot.kind == EGraphPassKind::COMPUTE) return recorder(program.compute[slot.index], slot.index);
+            else return recorder(program.transfer[slot.index], slot.index);
         }, block);
     }
 

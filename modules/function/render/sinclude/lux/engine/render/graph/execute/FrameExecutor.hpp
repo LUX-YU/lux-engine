@@ -10,8 +10,6 @@ namespace lux::render::detail
 {
     class DeviceSession;
     struct FrozenRecordingFrame;
-    struct BindingState;
-    struct FrameRecordInput;
 
     // A worker records one native batch from a frozen frame. Each command buffer has independent binding state.
     class LUX_RENDER_PUBLIC FrameExecutor final
@@ -26,13 +24,13 @@ namespace lux::render::detail
             std::uint32_t index;
             bool output_tail;
         };
-        [[nodiscard]] static RenderResult<void> recordBatchPart(
-            const FrameRecordInput&, const nri::CoreInterface&, nri::CommandBuffer&, BatchPart
+        static void recordBatchPart(
+            const FrozenRecordingFrame&, const nri::CoreInterface&, nri::CommandBuffer&, BatchPart
         ) noexcept;
 
         static void
         recordHistoryInitialization(
-            const FrameRecordInput&,
+            const FrozenRecordingFrame&,
             const nri::CoreInterface&,
             nri::CommandBuffer&
         ) noexcept;

@@ -1455,7 +1455,7 @@ remaining reflected bytes; ordinary exact-size bindings remain strict. UI and fu
 target-dependent constant-block padding.
 
 Producers write complete parameter blocks into the writable FIF slice. `prepareFrame` freezes its physical
-bindings, pass inputs and History initialization commands for `FrameRecordInput`. `FrameExecutor` borrows those
+bindings, pass inputs and History initialization commands for `FrozenRecordingFrame`. `FrameExecutor` borrows those
 stable slices during synchronous recording; it has no GraphInstance access and performs no texture-description
 queries. Changing author parameter bytes after preparation affects the next preparation, not this recording.
 Physical binding or recording invalidation requires preparation again. The caller retains exclusive access to

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/extensions/execution/InstanceLink.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/resources/instance/Data.hpp>
 #include <lux/engine/render/resources/material/Resource.hpp>
 #include <map>

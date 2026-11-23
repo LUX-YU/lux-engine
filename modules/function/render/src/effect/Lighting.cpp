@@ -103,55 +103,34 @@ namespace lux::render
 
         struct ClusterPreparation final
         {
-            struct Configuration final
-            {
-                GraphPassId pass;
-                ClusterGrid grid;
-            };
+            using Configuration = detail::ClusterBuildConstants;
+            using LinkedData = Configuration;
 
-            struct LinkedData final
-            {
-                InlineConstantWriter<detail::ClusterBuildConstants> writer;
-                detail::ClusterBuildConstants constants;
-            };
-
-            static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& context) noexcept
-            {
-                auto writer = context.resolveInlineConstants<detail::ClusterBuildConstants>(config.pass);
-                if (!writer) return cxx::unexpected(writer.error());
-                return LinkedData{*writer, detail::clusterBuildConstants(config.grid)};
-            }
-
-            static RenderResult<void>
-            prepare(const LinkedData& linked, const CpuFrameInputs<const ViewGpuParameters&>& inputs) noexcept
+            static RenderResult<std::tuple<detail::ClusterBuildConstants>>
+            prepare(const LinkedData& base, const CpuFrameInputs<const ViewGpuParameters&>& inputs) noexcept
             {
                 const auto& view = std::get<0>(inputs.values).value.get();
-                auto constants = linked.constants;
+                auto constants = base;
                 constants.inverse_view_projection = view.inverse_view_projection;
                 constants.position_near = view.position_near;
                 constants.direction_far = view.direction_far;
-                return inputs.frame.write(linked.writer, constants);
+                return std::tuple{constants};
             }
         };
 
         struct LightingPreparation final
         {
-            using Configuration = GraphPassId;
-            using LinkedData = InlineConstantWriter<detail::LightingConstants>;
+            using Configuration = std::monostate;
+            using LinkedData = Configuration;
 
-            static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& context) noexcept
-            {
-                return context.resolveInlineConstants<detail::LightingConstants>(pass);
-            }
-
-            static RenderResult<void>
-            prepare(const LinkedData& writer, const CpuFrameInputs<LightingState, const ViewGpuParameters&>& inputs) noexcept
+            static RenderResult<std::tuple<detail::LightingConstants>>
+            prepare(const LinkedData&, const CpuFrameInputs<LightingState, const ViewGpuParameters&>& inputs) noexcept
             {
                 const auto& [state, camera] = inputs.values;
                 const auto& view = camera.value.get();
-                return inputs.frame.write(writer, {
+                return std::tuple{detail::LightingConstants{
                     view.inverse_view_projection, view.position_near, view.viewport, view.background, state.value.environment
-                });
+                }};
             }
         };
 
@@ -287,7 +266,7 @@ namespace lux::render
                     if (auto published = context.publish(Lighting::cluster_lists, std::move(bundle)); !published)
                         return published;
                 }
-                auto prepared = context.addCpuCall<ClusterPreparation>({lists->build, *grid}, {
+                auto prepared = context.addCpuCall<ClusterPreparation>(detail::clusterBuildConstants(*grid), {
                     .inline_blocks = {lists->build}, .storage_inputs = {*camera}
                 });
                 if (!prepared) return prepared;
@@ -304,7 +283,7 @@ namespace lux::render
                 if (!pass) return cxx::unexpected(pass.error());
                 auto state = context.importEffectState<LightingState>();
                 if (!state) return cxx::unexpected(state.error());
-                auto prepared = context.addCpuCall<LightingPreparation>(pass->pass, {
+                auto prepared = context.addCpuCall<LightingPreparation>({}, {
                     .inputs = {*state}, .inline_blocks = {pass->pass}, .storage_inputs = {*camera}
                 });
                 if (!prepared) return prepared;

@@ -12,6 +12,7 @@ namespace lux::render::detail
 {
     class JobGpuResources;
     struct FrameResources;
+    struct InputSlot;
 
     // CPU inputs and reusable workspaces for the linked call sequence of one installed Job.
     class JobCpuPreparation final
@@ -42,12 +43,7 @@ namespace lux::render::detail
         const RasterProgramInputs& program_inputs_;
         friend class lux::render::CpuCallFrame;
 
-        struct PreparedInlineBlock final
-        {
-            std::span<std::byte> bytes;
-            std::uint64_t source_revision = 0;
-            bool written = false;
-        };
+        [[nodiscard]] std::span<std::byte> valueBytes(InputSlot) noexcept;
 
         struct StorageSnapshot final
         {
@@ -64,9 +60,7 @@ namespace lux::render::detail
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
         std::vector<std::byte> selected_bytes_;
-        std::vector<PreparedInlineBlock> constants_;
         std::vector<OwnedRasterStream> streams_;
-        std::vector<std::span<std::byte>> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
         std::uint64_t preparation_revision_ = 0;
         std::vector<BoundConstantBuffer> constant_buffers_;

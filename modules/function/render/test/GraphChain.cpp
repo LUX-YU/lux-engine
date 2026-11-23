@@ -480,7 +480,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     CHECK(!rejected_extent && rejected_extent.error().type == kDeviceArgument);
     CHECK(!recordFrame(*instance_job, *session, 0, 0) && session->queue().submitted() == 0);
     instance_job->bindResource(pixels, 0, pixel_binding);
-    CHECK(instance_job->frame(0).writeInlineConstant(instance_job->graph(), count_pass, bytes, 1));
+    instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 1);
     CHECK(take(instance_job->freezeFrame(0)));
     CHECK(instance_job->frame(0).last_operands.compute == 1);
     count_input.requested = 0;
@@ -496,8 +496,8 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     }
     CHECK(RecordTextureQueries::count == 0);
     count_input.requested = 1;
-    CHECK(instance_job->frame(0).writeInlineConstant(instance_job->graph(), count_pass, bytes, 2));
-    CHECK(instance_job->frame(0).writeInlineConstant(instance_job->graph(), count_pass, bytes, 2));
+    instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 2);
+    instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 2);
     CHECK(take(instance_job->freezeFrame(0)));
     CHECK(instance_job->frame(0).last_operands.compute == 0);
     std::puts("DISPATCH FIELDS PASS: first freeze patched one indirect dispatch; stable freeze patched none");
@@ -505,7 +505,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     core.GetTextureDesc = RecordTextureQueries::original;
     checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 32, 0, {255, 0, 0, 255}, 256);
     count_input.requested = 2;
-    CHECK(instance_job->frame(0).writeInlineConstant(instance_job->graph(), count_pass, bytes, 3));
+    instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 3);
     CHECK(take(instance_job->freezeFrame(0)));
     CHECK(instance_job->frame(0).last_patches.passes == 1 && instance_job->frame(0).last_operands.compute == 0);
     std::puts("INLINE UPDATE PASS: one dirty Compute pass, zero indirect dispatch fields rewritten");
@@ -516,7 +516,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
         count_input.requested = requested;
         for (std::uint32_t slot = 0; slot < instance_job->frameCount(); ++slot)
         {
-            CHECK(instance_job->frame(slot).writeInlineConstant(instance_job->graph(), count_pass, bytes, 0));
+            instance_job->frame(slot).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 0);
         }
         CHECK(take(runTask(frames->render(instances, {}))) == 1);
         CHECK(session->drain());

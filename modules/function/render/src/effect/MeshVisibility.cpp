@@ -43,7 +43,6 @@ namespace lux::render
         public:
             struct Configuration final
             {
-                GraphPassId view;
                 std::array<std::uint32_t, 2> dispatch_limit;
                 std::optional<detail::MeshSurfaceStream::Configuration> surface;
                 std::optional<detail::ShadowProjectionSettings> shadow;
@@ -51,7 +50,6 @@ namespace lux::render
 
             struct LinkedData final
             {
-                std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
                 std::array<std::uint32_t, 2> dispatch_limit;
                 std::optional<detail::MeshSurfaceStream::Inputs> surface;
                 std::optional<detail::ShadowProjectionSettings> shadow;
@@ -60,13 +58,6 @@ namespace lux::render
             [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
-                if constexpr (!ShadowPass)
-                {
-                    const auto writer = context.resolveInlineConstants<detail::VisibilityViewConstants>(config.view);
-                    if (!writer) return cxx::unexpected(writer.error());
-                    view = *writer;
-                }
                 std::optional<detail::MeshSurfaceStream::Inputs> surface;
                 if (config.surface)
                 {
@@ -74,7 +65,7 @@ namespace lux::render
                     if (!resolved) return cxx::unexpected(resolved.error());
                     surface = *resolved;
                 }
-                return LinkedData{view, config.dispatch_limit, surface, config.shadow};
+                return LinkedData{config.dispatch_limit, surface, config.shadow};
             }
 
             struct Workspace final
@@ -115,7 +106,9 @@ namespace lux::render
                 CpuFrameInputs<const MeshInstanceSnapshot&, const ViewGpuParameters&>
             >;
 
-            static RenderResult<void>
+            using Result = std::conditional_t<ShadowPass, std::tuple<>, std::tuple<detail::VisibilityViewConstants>>;
+
+            static RenderResult<Result>
             prepare(
                 const LinkedData& linked,
                 const FrameInputs& inputs,
@@ -145,13 +138,8 @@ namespace lux::render
                         const auto written = frame.writeBuffer(
                             first_shadow + i, payloads[i], workspace.shadow->revision()
                         );
-                        if (!written) return written;
+                        if (!written) return cxx::unexpected(written.error());
                     }
-                }
-                else
-                {
-                    auto constants = frame.write(*linked.view, {view.view, view.projection});
-                    if (!constants) return constants;
                 }
                 const auto& selected = std::get<0>(inputs.values);
                 const auto& snapshot = selected.value.get();
@@ -161,27 +149,33 @@ namespace lux::render
                     workspace.selection = selected.revision;
                 }
                 auto packed = workspace.grouping.pack(&snapshot, lookupGeometry, linked.dispatch_limit);
-                if (!packed) return packed;
+                if (!packed) return cxx::unexpected(packed.error());
                 const auto payloads = workspace.grouping.uploads();
                 for (std::size_t i = 0; i < payloads.size(); ++i)
                 {
                     auto written = frame.writeBuffer(i, payloads[i], workspace.grouping.revision());
-                    if (!written) return written;
+                    if (!written) return cxx::unexpected(written.error());
                 }
                 auto sized = frame.sizeBuffer(0, workspace.grouping.visibleBytes());
-                if (!sized) return sized;
+                if (!sized) return cxx::unexpected(sized.error());
                 auto commands = frame.sizeBuffer(
                     1, workspace.grouping.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
                 );
-                if (!commands) return commands;
-                if (!workspace.surface) return {};
-                if (!mapping) return cxx::unexpected(RenderError{kFrameContract});
-                const detail::MeshSurfaceStream::DrawInputs draw_inputs{frame, workspace.grouping.source(), *mapping};
-                if constexpr (ShadowPass)
-                    return workspace.surface->prepareShadow(
-                        draw_inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
-                    );
-                else return workspace.surface->prepare(draw_inputs, view);
+                if (!commands) return cxx::unexpected(commands.error());
+                if (workspace.surface)
+                {
+                    if (!mapping) return cxx::unexpected(RenderError{kFrameContract});
+                    const Surface::DrawInputs draw_inputs{frame, workspace.grouping.source(), *mapping};
+                    RenderResult<void> prepared;
+                    if constexpr (ShadowPass)
+                        prepared = workspace.surface->prepareShadow(
+                            draw_inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
+                        );
+                    else prepared = workspace.surface->prepare(draw_inputs, view);
+                    if (!prepared) return cxx::unexpected(prepared.error());
+                }
+                if constexpr (ShadowPass) return Result{};
+                else return Result{detail::VisibilityViewConstants{view.view, view.projection}};
             }
 
         private:
@@ -388,7 +382,6 @@ namespace lux::render
             );
             if (!passes) return cxx::unexpected(passes.error());
             typename Kernel::Configuration config{
-                inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
                 {device.compute_dispatch_limit[0], device.compute_dispatch_limit[1]}, {}, shadow
             };
             EffectResourceBundle bundle;

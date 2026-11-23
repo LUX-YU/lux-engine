@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/extensions/execution/InstanceLink.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
+#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <vector>
 
 namespace lux::render
@@ -21,12 +22,43 @@ namespace lux::render
             CpuValueType{cxx::make_basic_type_info<std::remove_cvref_t<T>>(), std::is_reference_v<T> ? 0 : sizeof(T)}...
         }};
 
+        struct CpuResultType final
+        {
+            CpuValueType value;
+            const ConstantBlockContract* block = nullptr;
+            std::uint32_t revision_offset = kGraphInvalidIndex;
+        };
+
+        template <CpuPreparationValue T> constexpr CpuResultType resultType(std::type_identity<T>) noexcept
+        {
+            CpuResultType result{{cxx::make_basic_type_info<T>(), sizeof(T)}};
+            if constexpr (ShaderConstantBlock<T>) result.block = &kConstantBlockContract<T>;
+            return result;
+        }
+
+        template <ShaderConstantBlock T>
+        constexpr CpuResultType resultType(std::type_identity<RevisionedValue<T>>) noexcept
+        {
+            using Result = RevisionedValue<T>;
+            static_assert(std::is_standard_layout_v<Result> && offsetof(Result, value) == 0);
+            return {
+                {cxx::make_basic_type_info<Result>(), sizeof(Result)},
+                &kConstantBlockContract<T>, offsetof(Result, revision)
+            };
+        }
+
+        template <CpuPreparationValue... T>
+        inline constexpr std::array<CpuResultType, sizeof...(T)> cpu_result_types{
+            resultType(std::type_identity<T>{})...
+        };
+
         struct PreparationMethods final
         {
             RenderResult<void> (*prepare)(const void*, CpuCallFrame&, void*, const void*) noexcept;
             RenderResult<AlgorithmWorkspace> (*create_workspace)(const void*, const TargetDesc&) noexcept;
             cxx::basic_type_info mapping_type;
-            std::span<const CpuValueType> inputs, outputs;
+            std::span<const CpuValueType> inputs;
+            std::span<const CpuResultType> outputs;
         };
 
         struct PreparationCall final
@@ -55,15 +87,16 @@ namespace lux::render
             return cpu_value_types<T...>;
         }
 
-        constexpr std::span<const CpuValueType> outputTypes(std::type_identity<RenderResult<void>>) noexcept
+        constexpr std::span<const CpuResultType> outputTypes(std::type_identity<RenderResult<void>>) noexcept
         {
             return {};
         }
 
         template <CpuPreparationValue... T>
-        constexpr std::span<const CpuValueType> outputTypes(std::type_identity<RenderResult<std::tuple<T...>>>) noexcept
+        constexpr std::span<const CpuResultType>
+        outputTypes(std::type_identity<RenderResult<std::tuple<T...>>>) noexcept
         {
-            return cpu_value_types<T...>;
+            return cpu_result_types<T...>;
         }
 
         template <class T, class... Args>
@@ -158,7 +191,7 @@ namespace lux::render
             {
                 std::apply([&frame](const auto&... values) noexcept
                 {
-                    std::size_t ordinal = 0;
+                    std::uint32_t ordinal = 0;
                     (frame.storeOutput(ordinal++, std::as_bytes(std::span{std::addressof(values), 1})), ...);
                 }, *result);
             }
@@ -195,6 +228,7 @@ namespace lux::render
     {
         std::vector<GraphCpuDataId> inputs;
         std::vector<GraphCpuDataId> outputs;
+        // The result tuple supplies ordinary outputs first, then one complete block per listed pass.
         std::vector<GraphPassId> inline_blocks;
         // A live preparation retains all of its GPU passes. Inline block passes are included automatically.
         std::vector<GraphPassId> passes{};

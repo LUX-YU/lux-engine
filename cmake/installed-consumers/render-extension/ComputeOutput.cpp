@@ -444,7 +444,33 @@ namespace
         };
     }
 
-    RenderResult<void> buildCompute(EffectCompileContext& context, std::string_view) noexcept
+    struct ComputeRed final
+    {
+        using Configuration = std::monostate;
+        using LinkedData = Configuration;
+
+        static RenderResult<std::tuple<float, RevisionedValue<OutputConstants>>>
+        prepare(const LinkedData&, const CpuFrameInputs<OutputState>& inputs) noexcept
+        {
+            const auto& state = std::get<0>(inputs.values).value;
+            const float red = state.previous.red - state.constants.red;
+            return std::tuple{red, RevisionedValue<OutputConstants>{{red}, state.revision}};
+        }
+    };
+
+    struct CheckRed final
+    {
+        using Configuration = float;
+        using LinkedData = Configuration;
+
+        static RenderResult<void> prepare(const float& expected, const CpuFrameInputs<float>& inputs) noexcept
+        {
+            CHECK(std::get<0>(inputs.values).value == expected);
+            return {};
+        }
+    };
+
+    RenderResult<void> buildCompute(EffectCompileContext& context, std::string_view mode) noexcept
     {
         GraphImageDesc image{width, height};
         image.extent.source = EImageExtentSource::TARGET;
@@ -460,8 +486,21 @@ namespace
         work.interface.resources.back().setUniformConstant<OutputChannels>();
         work.dispatch = ImageDispatchArguments{generated};
         const auto dispatch = take(context.addComputePass("generate compute color", std::move(work)));
-        if (auto linked = context.copyInlineBlock<OutputConstants, OutputState, &OutputState::constants>(dispatch.pass);
-            !linked) return linked;
+        if (mode == "computed")
+        {
+            const auto red = take(context.declareCpuData<float>());
+            const auto state = take(context.importEffectState<OutputState>());
+            if (auto check = context.addCpuCall<CheckRed>(.5f, {.inputs = {red}, .passes = {dispatch.pass}}); !check)
+                return check;
+            if (auto result = context.addCpuCall<ComputeRed>({}, {
+                .inputs = {state}, .outputs = {red}, .inline_blocks = {dispatch.pass}
+            }); !result) return result;
+        }
+        else
+        {
+            auto copy = context.copyInlineBlock<OutputConstants, OutputState, &OutputState::constants>(dispatch.pass);
+            if (!copy) return copy;
+        }
         const auto copied = take(context.addTransferPass(
             "copy compute color", TransferWork{{CopyImage{{dispatch.written.front()}, {{output, 0}}}}}
         ));
@@ -718,7 +757,8 @@ namespace
         {
             if constexpr (Build == buildCompute)
             {
-                if (!arguments.empty()) return lux::cxx::unexpected(RenderError{kInvalidConfig});
+                if (!arguments.empty() && arguments != "computed")
+                    return lux::cxx::unexpected(RenderError{kInvalidConfig});
                 return context.initializeState<OutputState>();
             }
             if constexpr (Build == buildResidentRaster)
@@ -800,6 +840,7 @@ int main(int argc, char** argv)
         effect.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*effect.graph};
         std::string source_mode;
+        if (!resident_programs && mode == "computed") source_mode = std::exchange(mode, {});
         if (resident_programs && mode != "raster-pixels") source_mode = std::exchange(mode, "raster-pixels");
         const auto compute = take(edit.addNode(
             computeDefinition(), {std::string{compute_node}, 1}, std::move(source_mode)
@@ -1334,7 +1375,7 @@ int main(int argc, char** argv)
     auto successor_binding = binding;
     successor_binding.resources = {{"capture", successor_capture}, {"a_mutable", successor_source}};
     const auto successor = startRenderJob(
-        *client, commands, session, scene, successor_view, target, created, successor_binding
+        *client, commands, session, scene, successor_view, target, create_capture("computed"), successor_binding
     );
     CHECK(successor.index == job.index && successor.gen != job.gen);
     call<InitializeReplica>(*client, commands, {successor_source, successor_marker, InitializeReplica::EProbe::REPLACE});
@@ -1431,6 +1472,15 @@ int main(int argc, char** argv)
     std::uint32_t observed_successor = 0;
     std::memcpy(&observed_successor, successor_frame.data() + readback_bytes + sizeof(peer_marker), sizeof(peer_marker));
     CHECK(observed_successor == successor_marker);
+    for (std::size_t y = 0; y < height; ++y)
+    {
+        for (std::size_t x = 0; x < width; ++x)
+        {
+            const auto red = successor_frame[y * successor_pixels.pitch + x * 4];
+            CHECK(red == std::byte{127} || red == std::byte{128});
+        }
+    }
+    std::puts("INLINE RESULTS: CPU reader and GPU inline block agree on computed red across all pixels");
     std::printf("PROJECTION READER PASS: Job slot %u, generations %u/%u, peer=%08x successor=%08x\n",
         job.index, job.gen, successor.gen, peer_marker, observed_successor);
     // The later range writers replace the first 16 bytes. The next pixel still belongs to the peer Job.

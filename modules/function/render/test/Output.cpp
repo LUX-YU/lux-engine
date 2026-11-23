@@ -1609,16 +1609,14 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     class TestInlineProducer final
     {
     public:
-        using Configuration = GraphPassId;
-        using LinkedData = InlineConstantWriter<ProducerConstants>;
+        using Configuration = std::monostate;
+        using LinkedData = Configuration;
 
-        static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration&, InstanceLinkContext&) noexcept
         {
             ++sink_links;
-            auto constants = link.resolveInlineConstants<ProducerConstants>(pass);
-            if (!constants) return lux::cxx::unexpected(constants.error());
             if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return *constants;
+            return LinkedData{};
         }
 
         struct Workspace final
@@ -1633,15 +1631,26 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             return std::make_unique<Workspace>();
         }
 
-        static RenderResult<void>
-        prepare(const LinkedData& writer, const CpuFrameInputs<std::uint32_t>& inputs, Workspace& workspace) noexcept
+        static RenderResult<std::tuple<std::uint32_t, RevisionedValue<ProducerConstants>>>
+        prepare(const LinkedData&, const CpuFrameInputs<std::uint32_t>& inputs, Workspace& workspace) noexcept
         {
             const auto& [value] = inputs.values;
             CHECK(value.revision > workspace.revision);
             workspace.revision = value.revision;
             ++sink_preparations;
-            auto staged = inputs.frame.write(writer, ProducerConstants{value.value});
-            if (!staged) return staged;
+            const RevisionedValue<ProducerConstants> block{{value.value}, value.revision};
+            return std::tuple{value.value, block};
+        }
+    };
+
+    struct CheckStagedConstants final
+    {
+        using Configuration = std::monostate;
+        using LinkedData = Configuration;
+
+        static RenderResult<void> prepare(const LinkedData&, const CpuFrameInputs<std::uint32_t>& inputs) noexcept
+        {
+            CHECK(std::get<0>(inputs.values).value != 0);
             if (reject_staged_constants.exchange(false)) return lux::cxx::unexpected(RenderError{kFrameContract});
             return {};
         }
@@ -1749,6 +1758,17 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             ProducerConstants constants;
             TestSharedTextureIndices texture_indices;
         };
+        if (args == "inline-result-type")
+        {
+            const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
+                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}}
+            ));
+            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
+                ProducerSourceConfig{std::make_shared<const int>(0)},
+                {.inline_blocks = {produced.pass}, .storage_inputs = {camera}}
+            )));
+            return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
+        }
         if (args == "copy-type")
             CHECK((context.copyInlineBlock<TestSharedTextureIndices, BlockSource, &BlockSource::texture_indices>(
                 produced.pass
@@ -1770,10 +1790,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             "dormant undefined read", TransferWork{{CopyBuffer{{{undefined, 0}}, {{unused, 0}}}}}
         ));
 
+        const auto staged = take(context.declareCpuData<std::uint32_t>());
+        CHECK(context.addCpuCall<CheckStagedConstants>({}, {.inputs = {staged}, .passes = {produced.pass}}));
         CHECK((context.addCpuCall<TestInlineProducer, &TestInlineProducer::createWorkspace>(
-            produced.pass,
+            {},
             {.inputs = args == "input-count" ? std::vector<GraphCpuDataId>{} : std::vector{slot},
-             .inline_blocks = {produced.pass}}
+             .outputs = {staged}, .inline_blocks = {produced.pass}}
         )));
         if (args != "missing")
         {
@@ -3021,6 +3043,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         {"output-count", kGraphInvalidDescriptor},
         {"duplicate", kGraphAmbiguousProducer},
         {"copy-type", kGraphInvalidDescriptor},
+        {"inline-result-type", kGraphInvalidDescriptor},
         {"copy-source", kGraphInvalidDescriptor},
         {"copy-and-producer", kGraphAmbiguousProducer},
         {"joint-closure", kGraphUndefinedRead}

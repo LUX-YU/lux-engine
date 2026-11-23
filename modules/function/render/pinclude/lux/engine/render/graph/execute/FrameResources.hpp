@@ -303,8 +303,9 @@ namespace lux::render::detail
         bool frozen_for_submission = false;
         void retireRasterViews(DeviceSession&, nri::Buffer*, nri::Texture*) noexcept;
         void bindResource(const compiled::RenderGraph&, DeviceSession&, std::uint32_t resource, const ResourceInput&) noexcept;
-        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void> writeInlineConstant(
-            const compiled::RenderGraph&, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
+        // The compiler has qualified the destination and byte extent for this frame layout.
+        LUX_RENDER_PUBLIC void applyInlineConstant(
+            const compiled::RenderGraph&, CompiledPassSlot, std::span<const std::byte> bytes, std::uint64_t revision
         ) noexcept;
         bool record_ready = false;
 

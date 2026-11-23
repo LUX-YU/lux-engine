@@ -157,23 +157,20 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<void> FrameResources::writeInlineConstant(
-        const compiled::RenderGraph& graph, std::uint32_t pass, std::span<const std::byte> bytes, std::uint64_t revision
+    void FrameResources::applyInlineConstant(
+        const compiled::RenderGraph& graph, CompiledPassSlot pass,
+        std::span<const std::byte> bytes, std::uint64_t revision
     ) noexcept
     {
-        if (pass >= passes.size()) return cxx::unexpected(RenderError{kDeviceArgument});
-        auto& selected = passes[pass];
+        auto& selected = passes[pass.index];
         const auto destination = selected.parameters;
-        if (bytes.empty() || bytes.size() != destination.size())
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        if (revision != 0 && revision == selected.parameter_source_revision) return {};
+        if (revision != 0 && revision == selected.parameter_source_revision) return;
         selected.parameter_source_revision = revision;
         if (std::memcmp(destination.data(), bytes.data(), bytes.size()) != 0)
         {
             std::memcpy(destination.data(), bytes.data(), bytes.size());
-            invalidatePass(graph, pass);
+            invalidatePass(graph, pass.index);
         }
-        return {};
     }
 
     void FrameResources::prepareAliasBarriers(const PhysicalResourcePlan& plan) noexcept

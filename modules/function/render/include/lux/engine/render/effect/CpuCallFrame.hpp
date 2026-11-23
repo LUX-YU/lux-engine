@@ -5,7 +5,6 @@
 #include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
-#include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/graph/IndexedGeometry.hpp>
 #include <array>
@@ -25,20 +24,10 @@ namespace lux::render
     concept CpuPreparationValue = std::is_trivially_copyable_v<T> && std::same_as<T, std::remove_cv_t<T>> &&
         !std::is_array_v<T>;
 
-    class InstanceLinkContext;
-
     struct GraphCpuDataId final
     {
         std::uint32_t index = kGraphInvalidIndex;
         bool operator==(const GraphCpuDataId&) const noexcept = default;
-    };
-
-    template <ShaderConstantBlock T> class InlineConstantWriter final
-    {
-        friend class CpuCallFrame;
-        friend class InstanceLinkContext;
-        explicit constexpr InlineConstantWriter(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
     };
 
     class CpuCallFrame;
@@ -143,14 +132,6 @@ namespace lux::render
             return appendSampledImage(source.address_, image, range);
         }
 
-        // A nonzero revision identifies stable bytes from this writer's selected source.
-        template <ShaderConstantBlock T>
-        [[nodiscard]] RenderResult<void>
-        write(InlineConstantWriter<T> writer, const T& value, std::uint64_t revision = 0) noexcept
-        {
-            return writeInlineBlock(writer.slot_, std::as_bytes(std::span{&value, 1}), revision);
-        }
-
         // A nonzero revision identifies unchanged bytes from this writer across calls.
         [[nodiscard]] RenderResult<void>
         writeBuffer(std::size_t output, std::span<const std::byte>, std::uint64_t revision = 0) noexcept;
@@ -208,9 +189,7 @@ namespace lux::render
         }
 
         [[nodiscard]] std::uint64_t copyInput(std::size_t, std::span<std::byte>) const noexcept;
-        void storeOutput(std::size_t, std::span<const std::byte>) noexcept;
-        [[nodiscard]] RenderResult<void>
-        writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept;
+        void storeOutput(std::uint32_t, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t>
         drawList(std::uint32_t pass, std::optional<std::uint32_t> source = std::nullopt) const noexcept;
         [[nodiscard]] RenderResult<std::uint32_t> sampledImageList(extension_detail::DrawSourceAddress) const noexcept;

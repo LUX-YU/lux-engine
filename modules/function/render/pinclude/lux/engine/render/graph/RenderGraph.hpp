@@ -52,21 +52,9 @@ namespace lux::render::detail
         }
     };
 
-    struct LinkedInlineBlock final
-    {
-        std::uint32_t pass;
-        CpuByteRange bytes;
-        std::uint32_t alternate = kGraphInvalidIndex;
-    };
-
     struct PreparationRange final
     {
         std::uint32_t first = 0, count = 0;
-
-        [[nodiscard]] bool contains(std::uint32_t slot) const noexcept
-        {
-            return slot >= first && slot - first < count;
-        }
     };
 
     struct LinkedRasterStream final
@@ -92,7 +80,7 @@ namespace lux::render::detail
         extension_detail::PreparationCall call;
         std::uint32_t workspace_slot = kGraphInvalidIndex;
         std::uint32_t program_slot = kGraphInvalidIndex;
-        PreparationRange inline_blocks, streams, buffers;
+        PreparationRange streams, buffers;
         std::uint32_t upload_count = 0, first_snapshot = 0, first_input = 0, first_output = 0;
     };
 
@@ -123,6 +111,7 @@ namespace lux::render::detail
         {
             InputSlot input;
             CompiledPassSlot pass;
+            std::uint32_t bytes, revision_offset = kGraphInvalidIndex;
         };
 
         static_assert(std::is_standard_layout_v<ConstantCopy> && std::is_trivially_copyable_v<ConstantCopy>);
@@ -133,7 +122,6 @@ namespace lux::render::detail
         std::vector<CpuByteRange> cpu_values;
         std::size_t byte_count = 0;
         std::vector<InputSlot> cpu_reads;
-        std::vector<LinkedInlineBlock> inline_blocks;
         std::vector<Buffer> buffers;
         // Frame-selected sources are the leading range; program-only sources are bound for cold builds.
         std::uint32_t frame_snapshot_count = 0;

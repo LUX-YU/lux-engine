@@ -784,6 +784,10 @@ namespace lux::render::runtime_detail
             return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex}});
         if (!count && definition.inline_copies.empty()) return analyzeRenderGraph(source);
         std::vector<bool> inline_writers(source.passes().size());
+        const auto writerSlot = [&](GraphPassId pass) noexcept
+        {
+            return std::min(pass.index, source.passes()[pass.index].choice_peer.index);
+        };
         for (const auto& copy : definition.inline_copies)
         {
             if (copy.pass.index >= inline_writers.size())
@@ -793,9 +797,9 @@ namespace lux::render::runtime_detail
             const bool matches_block = parameters && sameBlockContract(parameters->inline_constant, block, target);
             if (!copy.input.bind || !matches_block)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {copy.pass.index}});
-            if (inline_writers[copy.pass.index])
+            if (inline_writers[writerSlot(copy.pass)])
                 return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {copy.pass.index}});
-            inline_writers[copy.pass.index] = true;
+            inline_writers[writerSlot(copy.pass)] = true;
         }
         if (!count) return analyzeRenderGraph(source);
         detail::PreparationLiveness liveness;
@@ -849,9 +853,9 @@ namespace lux::render::runtime_detail
                 const auto* parameters = source.passes()[pass.index].bindings().parameters;
                 if (!parameters || !parameters->inline_constant.layout)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
-                if (inline_writers[pass.index])
+                if (inline_writers[writerSlot(pass)])
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
-                inline_writers[pass.index] = true;
+                inline_writers[writerSlot(pass)] = true;
                 if (std::ranges::find(producer.passes, pass) == producer.passes.end())
                     producer.passes.push_back(pass);
             }

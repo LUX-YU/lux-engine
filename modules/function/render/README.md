@@ -154,7 +154,7 @@ Valid indices use bit 31 to select spot lights and the low 31 bits for the dense
 
 Use `declareCpuData<T>()` and `addCpuCall<Kernel>()` to declare CPU-only producer dependencies in an
 EffectGraph. A preparation declares its input values, unique outputs, associated GPU passes, and complete
-typed inline block writers. The compiler validates the whole CPU dependency graph, then finds the live
+inline constant destinations. The compiler validates the whole CPU dependency graph, then finds the live
 GPU passes and CPU producers together. A live GPU pass retains its associated preparations, which retain their
 declared passes and input producers. GPU execution order and synchronization follow the actual resource uses and
 explicit graph dependencies. The compiler links typed configurations to final slots. Resolved inputs contain
@@ -162,7 +162,8 @@ final slots and owned values. Each Job allocates a workspace for calls that decl
 share the device graph’s immutable inputs and function table.
 
 A preparation receives its upstream CPU values as typed arguments and returns its complete fixed outputs in a tuple.
-It supplies inline constants with `frame.write`. Values belong to the current Job preparation revision. Failure stops the chain before any
+Result elements address `outputs` first and then `inline_blocks`, in declaration order. Each inline result is a complete
+`ShaderConstantBlock` or a `RevisionedValue<Block>` with a nonzero revision for stable bytes. Failure stops the chain before any
 inline blocks are adopted into the writable frame. CPU-only slots are outside the GPU resource,
 descriptor and synchronization tables.
 
@@ -449,15 +450,16 @@ as the second template argument for fallible construction from the linked inputs
 Algorithms with a cold draw mapping receive that mapping as their final prepare argument.
 
 Declare graph value IDs in `CpuCallDependencies::inputs` and `outputs`. For example, a call with two outputs returns
-`RenderResult<std::tuple<float, std::uint32_t>>` and lists the float ID before the integer ID. A call with zero
-outputs can return `RenderResult<void>`. The compiler checks the arity and types of each live call against its
-declarations. A failed call supplies no output values. The compiler qualifies imported node state against its initialized type
+`RenderResult<std::tuple<float, std::uint32_t>>` and lists the float ID before the integer ID. For mixed results,
+a tuple such as `std::tuple<float, RevisionedValue<MyBlock>>` supplies one float ID in `outputs` and one pass ID in
+`inline_blocks`. A call with neither can return `RenderResult<void>`. The compiler checks each live result's type
+and the inline destination's shader ABI. A failed call supplies no output values. The compiler qualifies imported node state against its initialized type
 for live readers. A Job selects its bytes before invoking the first CPU call.
 Cold Raster builds receive their pass's declared snapshots in a typed tuple. Job installation binds snapshot names
 to concrete Resources. Only frame sources are captured per frame.
-The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.
-Each Job binds these byte ranges to a single staging allocation. All declared outputs must be written before
-the selection is published to the writable FIF.
+The device graph stores each call's output positions, byte ranges and destination passes. Each Job owns one staging
+allocation. After all live calls succeed, the frame applies the selected blocks and invalidates the affected recording
+units when their bytes change.
 
 The Job owns each workspace, its CPU binding rows and their revisions. Each DeviceEntry owns the Job's native
 buffers, images, memory allocations, descriptor pools, views, command buffers and History backing. The device indexes

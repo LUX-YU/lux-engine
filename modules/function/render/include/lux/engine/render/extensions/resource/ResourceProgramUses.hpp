@@ -15,7 +15,7 @@ namespace lux::render
     namespace detail
     {
         class DeviceSession;
-        struct RasterProgramUpdate;
+        class RasterProgramInputs;
     }
 
     // Embed one in the Resource item that owns these shader variants. Actual draw users have independent uses.
@@ -69,13 +69,12 @@ namespace lux::render
 
     private:
         friend class RasterProgramBuildContext;
-        friend struct detail::RasterProgramUpdate;
+        friend class detail::RasterProgramInputs;
 
         [[nodiscard]] bool available(const ResourceRegistry&, const detail::DeviceSession&) const noexcept;
         static void* borrow(const ResourceRegistry&, ResourceInstanceId, cxx::basic_type_info) noexcept;
         [[nodiscard]] ResourceProgramUses* find(const ResourceRegistry&, const detail::DeviceSession&) const noexcept;
-        [[nodiscard]] bool
-        tryPublish(const ResourceRegistry&, const detail::DeviceSession&, detail::NativeProgramId) const noexcept;
+        void retainAdopted(const ResourceRegistry&, const detail::DeviceSession&, detail::NativeProgramId) const noexcept;
         using Resolve = ResourceProgramUses* (*)(const ResourceRegistry&, const ResourceProgramSource&) noexcept;
         ResourceInstanceId resource_;
         cxx::SlotKey<> item_;

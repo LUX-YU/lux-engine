@@ -225,9 +225,7 @@ namespace lux::render
         detail::DeviceEntry& entry, JobExecution& execution, std::uint32_t build
     ) noexcept
     {
-        entry.program_update = std::make_unique<detail::RasterProgramUpdate>(
-            entry.session(), runtime_->resources_, execution.binding_identity
-        );
+        entry.program_update = std::make_unique<detail::RasterProgramUpdate>(entry.session(), execution.binding_identity);
         auto& update = *entry.program_update;
         update.build = build;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
@@ -284,11 +282,11 @@ namespace lux::render
         const bool running = installed && job->control.running();
         const bool stale = running && !execution->programs.current(*op);
         if (!running || stale || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
-        if (!op->returned || !op->publishReturnedUses()) return false;
+        if (!op->returned) return false;
         const bool discarded = op->stop.stop_requested();
-        if (running && !discarded && execution->programs.inputsBusy(op->build)) return false;
         const bool installs_bindings = running && !discarded && !op->returned->type;
-        if (installs_bindings && executionTargetsResizing(*execution)) return false;
+        if (installs_bindings && (execution->programs.inputsBusy(op->build) || executionTargetsResizing(*execution)))
+            return false;
         if (execution && !discarded) execution->settlePrograms(*op);
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(

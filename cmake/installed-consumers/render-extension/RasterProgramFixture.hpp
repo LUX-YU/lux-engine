@@ -253,18 +253,35 @@ namespace sdk_programs
               uses(context.device)
         {
             native_create = core.CreateGraphicsPipeline;
+            native_destroy = core.DestroyPipeline;
+            core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
+            {
+                auto tracked = pipeline;
+                const bool observed = pipeline && first_candidate.compare_exchange_strong(tracked, nullptr);
+                native_destroy(pipeline);
+                if (observed) ++candidate_destroys;
+            };
             core.CreateGraphicsPipeline = [](nri::Device& device, const nri::GraphicsPipelineDesc& desc,
                                              nri::Pipeline*& pipeline) noexcept
             {
                 auto expected = EDriverGate::ARMED;
                 if (gate.compare_exchange_strong(expected, EDriverGate::HELD)) gate.wait(EDriverGate::HELD);
+                if (fail_after_prefix && first_candidate.load()) return nri::Result::OUT_OF_MEMORY;
                 const auto result = native_create(device, desc, pipeline);
-                if (result == nri::Result::SUCCESS) ++created;
+                if (result == nri::Result::SUCCESS)
+                {
+                    if (watch_next.exchange(false)) first_candidate = pipeline;
+                    ++created;
+                }
                 return result;
             };
         }
 
-        ~CodeStorage() noexcept { core.CreateGraphicsPipeline = native_create; }
+        ~CodeStorage() noexcept
+        {
+            core.CreateGraphicsPipeline = native_create;
+            core.DestroyPipeline = native_destroy;
+        }
 
         static exec::task<AckResponse> hold(CodeStorage&, HoldCode::Request&&) noexcept
         {
@@ -348,11 +365,15 @@ namespace sdk_programs
         }
 
         static inline std::atomic gate{EDriverGate::OPEN};
+        static inline std::atomic_bool watch_next{}, fail_after_prefix{};
+        static inline std::atomic<unsigned> candidate_destroys{};
         static inline std::atomic<unsigned> created{}, builds{}, clear_builds{}, source_links{}, captures{};
         static inline std::atomic_bool held{};
 
     private:
         static inline decltype(nri::CoreInterface::CreateGraphicsPipeline) native_create{};
+        static inline decltype(nri::CoreInterface::DestroyPipeline) native_destroy{};
+        static inline std::atomic<nri::Pipeline*> first_candidate{};
         static inline void* pending = nullptr;
         static inline void (*resume)(void*) noexcept = nullptr;
         nri::CoreInterface& core;

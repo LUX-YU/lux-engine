@@ -224,6 +224,10 @@ namespace lux::render::detail
         }
         for (auto& stream : update.streams)
         {
+            // The whole build succeeded, still matches its installed inputs, and can be adopted on this owner.
+            const auto& ready = stream.candidate->programs;
+            for (std::size_t i = 0; i < ready.size(); ++i)
+                stream.programs[i].source.retainAdopted(*registry_, gpu_.session, ready[i].cache_id);
             const auto list = graph_.programs().rasterStream(stream.pass)->list;
             const auto* previous = gpu_.dynamicRasterPrograms(list);
             if (previous && previous->programs == stream.candidate->programs) continue;

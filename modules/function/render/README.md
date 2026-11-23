@@ -309,16 +309,17 @@ A failed or obsolete selection leaves the previous set resident, and requests fo
 complete with the preparation error.
 Use `readMeshLayout()` for an owned vertex layout. `readMaterialProgram()` accepts a material instance or code asset.
 The returned definition is borrowed during the selection callback. When a program derives from this asset, assign
-its returned `source` to the corresponding `RuntimeRasterProgram`. Each successful full native key then has an
-independent use owned by the material program until unregister. Restarted Jobs can reuse these variants with a zero
-idle-cache budget. Submitted draws retain their own uses until their accepted queue frontiers retire.
+its returned `source` to the corresponding `RuntimeRasterProgram`. Only a successful, current build can grant an
+asset a reference to an adopted native key. The candidate owns partial results until driver return. Failed and
+discarded candidates release those uses through the program cache. Submitted draws retain their own uses through
+their accepted queue frontiers.
 
 A custom Resource can keep a `ResourceProgramUses` member in each immutable code item and supply a
-`ResourceProgramSource::from<Storage, &Storage::lookup>(item_id)` for it. The noexcept lookup returns the item's
-use set after validating its generational ID. The renderer resolves the registered storage and item again on the owner
-before publishing. An exclusive Resource command defers that publication until its return. A new code identity
-gets a new item generation. A default source gives the selection its ordinary
-Job lifetime. Device compilation owns its shader bytes and binding, vertex and attachment ABI across worker hops.
+`ResourceProgramSource::from<Storage, &Storage::lookup>(item_id)` for it. The noexcept lookup validates the item
+generation and returns its use set. A current candidate waits for exclusive input commands before adoption.
+An item with a new generation receives its own use set. Adopted keys retained by a live asset can be reused after
+Job restart even with a zero idle-cache budget. With a default source, only the draw selection retains the key.
+Device compilation owns its shader bytes and binding, vertex and attachment ABI across worker hops.
 Use `CpuCallFrame::rasterProgram()` to obtain a slot for a selection index during the current call.
 Slots carry the published program-set revision, so a producer must resolve them again after replacement.
 

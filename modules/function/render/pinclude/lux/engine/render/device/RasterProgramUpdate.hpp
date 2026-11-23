@@ -38,10 +38,8 @@ namespace lux::render::detail
     // The device owns the selected inputs and every unpublished native use through driver return.
     struct RasterProgramUpdate final
     {
-        RasterProgramUpdate(
-            DeviceSession& device, const ResourceRegistry& registry, ExecutionBindingId binding
-        ) noexcept
-            : device(device), registry(registry), binding(binding) {}
+        RasterProgramUpdate(DeviceSession& device, ExecutionBindingId binding) noexcept
+            : device(device), binding(binding) {}
         ~RasterProgramUpdate() noexcept;
         RasterProgramUpdate(const RasterProgramUpdate&) = delete;
         RasterProgramUpdate& operator=(const RasterProgramUpdate&) = delete;
@@ -60,19 +58,10 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] exec::task<RenderResult<void>> compile(execution::CpuScheduler) noexcept;
-        [[nodiscard]] bool publishReturnedUses() noexcept;
 
         DeviceSession& device;
-        const ResourceRegistry& registry;
         const ExecutionBindingId binding;
         std::uint64_t input_revision = 0;
-        struct Publication final
-        {
-            ResourceProgramSource source;
-            NativeProgramId program;
-        };
-
-        std::vector<Publication> pending_publications;
         std::uint32_t build = kGraphInvalidIndex;
         RasterProgramBuilder::Mapping mapping{nullptr, nullptr};
         std::vector<Stream> streams;

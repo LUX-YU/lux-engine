@@ -510,9 +510,6 @@ namespace
     RenderResult<void> buildResidentRaster(EffectCompileContext& context, std::string_view mode) noexcept
     {
         using namespace sdk_programs;
-        const auto type = ResourceName{CodeStorage::descriptor.type.name()};
-        const auto code = take(context.importStorageSnapshot<CodeSnapshot>("shader_code", {type}));
-        const auto alias = take(context.importStorageSnapshot<CodeSnapshot>("shader_alias", {type}));
         auto image = take(context.declareResource({"raster output", GraphImageDesc{width, height}}));
         RasterPassTemplate background_stage;
         background_stage.purpose = "independent clear";
@@ -528,6 +525,10 @@ namespace
         const auto base = take(context.addRasterPass("clear background", std::move(background)));
         auto clear = context.addCpuCall<ClearBackground>({}, {.draw_streams = {base.pass}});
         if (!clear) return clear;
+        if (mode == "background-only") return context.publish(color, {{color, base.written.front()}});
+        const auto type = ResourceName{CodeStorage::descriptor.type.name()};
+        const auto code = take(context.importStorageSnapshot<CodeSnapshot>("shader_code", {type}));
+        const auto alias = take(context.importStorageSnapshot<CodeSnapshot>("shader_alias", {type}));
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
         DrawResourceType mask{ResourceName{DrawMask::descriptor.type.name()}, lux::cxx::make_basic_type_info<DrawMask>()};
@@ -764,7 +765,8 @@ namespace
             }
             if constexpr (Build == buildResidentRaster)
             {
-                const bool valid = arguments.empty() || arguments == "stale-code" || arguments == "no-build" ||
+                const bool valid = arguments.empty() || arguments == "background-only" || arguments == "stale-code" ||
+                    arguments == "no-build" ||
                     arguments == "wrong-inputs" || arguments == "missing-map" || arguments == "duplicate-program-input" ||
                     arguments == "unknown-program-input" || arguments == "wrong-program-input" ||
                     arguments == "short-program-input" || arguments == "duplicate-stream" ||
@@ -954,7 +956,57 @@ int main(int argc, char** argv)
         CHECK(Store::builds == failed_builds);
         stopAndRemoveJob(*client, commands, stale);
         const auto effect = create_capture("raster-pixels");
-        const auto job = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        const auto start = [&]
+        {
+            return startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        };
+        const auto partial = start();
+        Store::watch_next = true;
+        Store::fail_after_prefix = true;
+        const auto failure = call<RequestRenderJob>(*client, commands, {partial}, false);
+        Store::fail_after_prefix = false;
+        CHECK(failure.error.type == kDeviceFailure && Store::created == 1);
+        wait([] { return Store::candidate_destroys.load() == 1; });
+        CHECK(call<RequestRenderJob>(*client, commands, {partial}, false).error == failure.error);
+        stopAndRemoveJob(*client, commands, partial);
+
+        const auto clear_only = create_capture("background-only");
+        const auto stopped = start();
+        Store::watch_next = true;
+        Store::gate = Gate::ARMED;
+        auto cancelled = std::async(std::launch::async, [&]
+        {
+            return call<RequestRenderJob>(*frames, commands, {stopped}, false);
+        });
+        wait([] { return Store::gate == Gate::HELD; });
+        auto exclusive = std::async(std::launch::async, [&]
+        {
+            return call<sdk_programs::HoldCode>(*mutations, commands, code);
+        });
+        wait([] { return Store::held.load(); });
+        Store::gate = Gate::OPEN;
+        Store::gate.notify_all();
+        wait([] { return Store::created.load() == 3; });
+        stopAndRemoveJob(*client, commands, stopped);
+        CHECK(cancelled.get().error.type == kJobStopped);
+        JobBinding clear_binding;
+        clear_binding.resources = {{"capture", readback}, {"background", background, 0, EJobResourceUse::CPU_SNAPSHOT}};
+        const auto independent = startRenderJob(*client, commands, session, scene, view, target, clear_only, clear_binding);
+        const auto before_clear = Store::clear_builds.load();
+        auto progressed = std::async(std::launch::async, [&]
+        {
+            return call<RequestRenderJob>(*frames, commands, {independent});
+        });
+        const bool ready_while_exclusive = progressed.wait_for(5s) == std::future_status::ready;
+        if (ready_while_exclusive) wait([] { return Store::candidate_destroys.load() == 2; });
+        call<sdk_programs::ReleaseCode>(*client, commands, {});
+        CHECK(!exclusive.get().error.type && !progressed.get().error.type && ready_while_exclusive);
+        CHECK(Store::clear_builds == before_clear + 1 && Store::candidate_destroys == 2);
+        stopAndRemoveJob(*client, commands, independent);
+        call<RemoveEffect>(*client, commands, {clear_only});
+        std::puts("CANDIDATE RETIREMENT: failed native prefix retired; stopped draw released device while source exclusive");
+        const auto previous_creations = Store::created.load();
+        const auto job = start();
         Store::gate = Gate::ARMED;
         auto requested = std::async(std::launch::async, [&]
         {
@@ -977,7 +1029,7 @@ int main(int argc, char** argv)
         busy_packet.release();
         Store::gate = Gate::OPEN;
         Store::gate.notify_all();
-        wait([] { return Store::created.load() == 2; });
+        wait([&] { return Store::created.load() == previous_creations + 2; });
         CHECK(requested.wait_for(20ms) == std::future_status::timeout);
         call<sdk_programs::ReleaseCode>(*client, commands, {});
         CHECK(!holding.get().error.type && !requested.get().error.type);
@@ -996,7 +1048,7 @@ int main(int argc, char** argv)
         stopAndRemoveJob(*client, commands, job);
         const auto restarted = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
         renderFrame(*client, commands, restarted);
-        CHECK(Store::created.load() == 2);
+        CHECK(Store::created.load() == previous_creations + 2);
         const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
         const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
         auto broken = binding;
@@ -1046,7 +1098,7 @@ int main(int argc, char** argv)
             renderFrame(*client, commands, peer);
         }
         CHECK(Store::captures == stable_captures && Store::builds == stable_builds);
-        CHECK(Store::source_links == stable_links && Store::created == 2);
+        CHECK(Store::source_links == stable_links && Store::created == previous_creations + 2);
 
         const auto schema = call<QueryRenderJobInputLayout>(*client, commands, restarted).layout;
         auto packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(schema));
@@ -1059,13 +1111,13 @@ int main(int argc, char** argv)
         packet.release();
         renderFrame(*client, commands, restarted);
         renderFrame(*client, commands, peer);
-        CHECK(Store::builds == stable_builds + 2 && Store::created == 2);
+        CHECK(Store::builds == stable_builds + 2 && Store::created == previous_creations + 2);
         stopAndRemoveJob(*client, commands, peer);
         call<RemoveView>(*client, commands, {scene, peer_view});
         call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
         renderFrame(*client, commands, restarted);
         CHECK(Store::builds == stable_builds + 3 && Store::source_links == stable_links);
-        CHECK(Store::clear_builds == stable_clear_builds && Store::created == 2);
+        CHECK(Store::clear_builds == stable_clear_builds && Store::created == previous_creations + 2);
         stopAndRemoveJob(*client, commands, restarted);
         call<RemoveView>(*client, commands, {scene, view});
         server->stop();
@@ -1105,7 +1157,7 @@ int main(int argc, char** argv)
         if (records) std::puts("SDK RECORDS: yellow at byte 16, aligned and unaligned invalid ranges rejected, 4096 RGBA pixels");
         std::puts("SDK INDEXED GEOMETRY: 16-bit native indices, nonzero buffer offsets, copied vertex layout");
         std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
-        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive publication deferred, two resident PSOs");
+        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive source delayed adoption, two adopted PSOs retained");
         std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, zero program-input captures, relinks or builds; "
                   "partial FrameData rebuilt both readers, after Stop only one, "
                   "zero independent clear rebuilds, 4096 RGBA pixels");

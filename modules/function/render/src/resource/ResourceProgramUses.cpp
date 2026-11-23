@@ -36,14 +36,11 @@ namespace lux::render
         return uses && &uses->device_ == &device ? uses : nullptr;
     }
 
-    bool ResourceProgramSource::tryPublish(
+    void ResourceProgramSource::retainAdopted(
         const ResourceRegistry& registry, const detail::DeviceSession& device, detail::NativeProgramId id
     ) const noexcept
     {
-        if (!resolve_) return true;
-        if (registry.hasExclusiveCommand(resource_)) return false;
         if (auto* uses = find(registry, device)) uses->remember(id);
-        return true;
     }
 
     bool ResourceProgramSource::available(

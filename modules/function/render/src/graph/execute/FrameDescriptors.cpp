@@ -1,9 +1,9 @@
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <algorithm>
 #include <cstring>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>

@@ -1,3 +1,13 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include "FixtureCommands.hpp"
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
+#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
+#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
@@ -5,13 +15,13 @@
 #include "NativeDevice.hpp"
 #include "SceneCapture.hpp"
 #include "EffectGraphColor.hpp"
-#include <lux/engine/render/capabilities/ColorEncoding.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/effect/DepthPyramid.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/MeshVisibility.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
+#include <lux/engine/render/effect/builtin/Shadow.hpp>
+#include <lux/engine/render/effect/builtin/DepthPyramid.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
+#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
 #include "EffectGraphImport.hpp"
 #include "EffectGraphProducer.hpp"
 #include "EffectMeshImports.hpp"
@@ -30,16 +40,16 @@
 #include "EffectStreamVertex.hpp"
 #include <lux/engine/render/features/shadow/ShadowInputs.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
-#include <lux/engine/render/resources/lighting/Resource.hpp>
-#include <lux/engine/render/resources/instance/Resource.hpp>
-#include <lux/engine/render/resources/material/Resource.hpp>
+#include <lux/engine/render/resource/lighting/Resource.hpp>
+#include <lux/engine/render/resource/instance/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/resources/mesh/Resource.hpp>
-#include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
 #include <lux/engine/render/resource/transform/TransformRecords.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/resources/transform/Resource.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #ifdef _WIN32
 #include "RetirementFence.hpp"
 #pragma comment(lib, "user32.lib")
@@ -55,13 +65,13 @@
 #include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include "FrameHarness.hpp"
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <optional>
 #include <string>
@@ -190,7 +200,7 @@ static void graphOutput(Validation& validation)
     CHECK(builder.exportOutput({copied_pass.written.front()}));
     auto definition = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(definition));
-    const EffectOutputDesc output_description{target.format, target.samples, target.kind, target.sampled};
+    const GraphOutputRequirements output_description{target.format, target.samples};
     auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
         *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
         {definition, analysis}, {.target = output_description}
@@ -399,7 +409,9 @@ static void deviceLostDelivery(Validation& validation, bool enable_validation = 
     CHECK(!rejected && session->deviceLost());
     CHECK(rejected.error().args[0] == static_cast<std::uint32_t>(nri::Result::DEVICE_LOST));
     bool released = false;
-    session->deferRelease(queue, [&]() noexcept
+    auto frontier = session->makeFrontiers();
+    frontier.accept(session->submissionPoint(session->queueIndex(queue), queue.submitted()));
+    session->deferRelease(std::move(frontier), [&]() noexcept
     {
         core.DestroyBuffer(buffer);
         released = true;
@@ -518,7 +530,7 @@ namespace
     constexpr std::string_view hdr_import_name = "test.output.import_hdr";
     constexpr std::string_view hdr_binding = "author.hdr";
 
-    CapabilityDefinition outputSource(bool hdr)
+    EffectNodeDefinition outputSource(bool hdr)
     {
         const auto name = hdr ? hdr_source_name : display_clear_name;
         const auto type = hdr ? HdrColorBundle::type : ToneMapping::display_type;
@@ -551,7 +563,7 @@ namespace
     void registerOutputNodes(RenderServer& server)
     {
         const auto add = [&server](
-            const CapabilityDefinition& definition, std::string_view name, graph::PinSemanticId output,
+            const EffectNodeDefinition& definition, std::string_view name, graph::PinSemanticId output,
             EffectImplementation::Build build
         )
         {
@@ -586,12 +598,18 @@ namespace
         return request;
     }
 
-    graph::NodeId addOutputTone(EffectGraphEdit& edit, bool imported, EColorEncoding encoding, std::string exposure)
+    enum class EExpectedEncoding
+    {
+        LINEAR,
+        SRGB
+    };
+
+    graph::NodeId addOutputTone(EffectGraphEdit& edit, bool imported, EExpectedEncoding encoding, std::string exposure)
     {
         const auto hdr = take(edit.addNode(
             outputSource(true), {std::string{imported ? hdr_import_name : hdr_source_name}, 1}
         ));
-        const auto implementation = encoding == EColorEncoding::SRGB ? ToneMapping::srgb : ToneMapping::linear;
+        const auto implementation = encoding == EExpectedEncoding::SRGB ? ToneMapping::srgb : ToneMapping::linear;
         const auto tone = take(edit.addNode(ToneMapping::definition(), {std::string{implementation}, 1},
             "exposure=" + exposure));
         const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
@@ -604,14 +622,12 @@ namespace
 }
 
 static void verifyTonemapOutput(
-    ipc::IpcRequester& client,
-    const CommandList& commands,
-    DeviceSessionId session,
-    SceneId scene,
+    CaptureDevice device, SceneId scene,
     EffectOutputDesc output,
-    EColorEncoding encoding
+    EExpectedEncoding encoding
 )
 {
+    const auto& [client, commands, session] = device;
     CapturedPixels pixels;
     CreateEffectRequest request;
     request.graph = std::make_unique<EffectGraph>();
@@ -624,7 +640,7 @@ static void verifyTonemapOutput(
     const auto target = call<CreateTarget>(client, commands, {session, {64, 64, output.format}}).target;
     const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     StartRenderJob::Request invalid_start{session, attached, target};
-    const auto resource = GraphCaptureBuffer::bind(client, commands, session, {scene, view}, {&pixels, output.format});
+    const auto resource = GraphCaptureBuffer::bind({client, commands, session}, {scene, view}, {&pixels, output.format});
     JobBinding binding;
     binding.resources.push_back({std::string{ColorCapture::name}, resource});
     invalid_start.binding = binding;
@@ -635,7 +651,7 @@ static void verifyTonemapOutput(
     const auto other_view = call<CreateView>(client, commands, {other_scene}).view;
     const auto other_target = call<CreateTarget>(client, commands, {session, {64, 64, output.format}}).target;
     const auto other_resource = GraphCaptureBuffer::bind(
-        client, commands, session, {other_scene, other_view}, {&pixels, output.format}
+        {client, commands, session}, {other_scene, other_view}, {&pixels, output.format}
     );
     binding.resources.front().resource = other_resource;
     const auto other_attachment =
@@ -661,12 +677,12 @@ static void verifyTonemapOutput(
     stopAndRemoveJob(client, commands, other_attachment);
     call<RemoveEffect>(client, commands, {effect});
     const auto readback_type = GraphCaptureDescriptor::descriptor.type;
-    CHECK(call<QueryResource>(client, commands, {session, ViewRequest{scene, view}, readback_type}).resource_id == resource);
+    CHECK(call<QueryResource>(client, commands, {session, ViewScope{scene, view}, readback_type}).resource_id == resource);
     CHECK(call<QueryResource>(
-        client, commands, {session, ViewRequest{other_scene, other_view}, readback_type}
+        client, commands, {session, ViewScope{other_scene, other_view}, readback_type}
     ).resource_id == other_resource);
     const auto deadline = Clock::now() + 10s;
-    const auto retire_view = [&](ViewRequest location, unsigned count)
+    const auto retire_view = [&](ViewScope location, unsigned count)
     {
         call<RemoveView>(client, commands, location);
         while (pixels.ready.load(std::memory_order_acquire) != count)
@@ -689,7 +705,7 @@ static void verifyTonemapOutput(
         {
             const auto x = hdr[channel] * gain;
             auto value = (x * (2.51 * x + .03)) / (x * (2.43 * x + .59) + .14);
-            if (encoding == EColorEncoding::SRGB)
+            if (encoding == EExpectedEncoding::SRGB)
                 value = 1.055 * std::pow(value, 1 / 2.4) - .055;
             const auto expected = std::lround(value * 255);
             if (std::abs(std::to_integer<long>(frame[channel]) - expected) > 2) return false;
@@ -733,7 +749,7 @@ static void verifyTargetInput(
     CreateEffectRequest consume;
     consume.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*consume.graph};
-    addOutputTone(edit, true, EColorEncoding::LINEAR, "0");
+    addOutputTone(edit, true, EExpectedEncoding::LINEAR, "0");
     CHECK(edit.commit());
     const auto consumer = createPreparedEffect(client, commands, session, std::move(consume));
     const auto writer =
@@ -744,7 +760,7 @@ static void verifyTargetInput(
     }).job;
     StartRenderJob::Request start{session, reader, target};
     const auto readback = GraphCaptureBuffer::bind(
-        client, commands, session, {scene, consumer_view}, {&pixels, ldr_format}
+        {client, commands, session}, {scene, consumer_view}, {&pixels, ldr_format}
     );
     start.binding.resources.push_back({std::string{ColorCapture::name}, readback});
     start.binding.target_images.push_back({source, "unknown"});
@@ -1375,11 +1391,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     struct EffectCaptureDescriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.effect.readback"}, 0, 0, {},
-            "View-owned EffectGraph buffer readback.", EResourceDomain::VIEW,
-            resourceCommandDescriptors(static_cast<std::tuple<ReadPagedDependencies>*>(nullptr))
+            "View-owned EffectGraph buffer readback.", EResourceDomain::VIEW
         };
     };
 
@@ -1388,15 +1403,20 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     public:
         using Descriptor = EffectCaptureDescriptor;
 
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{CommandBinding::declare<ReadPagedDependencies, &readPagedDependencies>()};
+            return commands;
+        }
+
         static ResourceRegistration factory() noexcept
         {
             static const StorageBindingOps bindings{
                 .describeGraphImport = describe,
                 .resolveGraphImport = resolve
             };
-            static const std::array commands{CommandBinding::declare<ReadPagedDependencies, &readPagedDependencies>()};
             return makeResourceRegistration<Descriptor, EffectCaptureBuffer, &EffectCaptureBuffer::create>(
-                nullptr, &bindings, commands
+                &bindings
             );
         }
 
@@ -1864,11 +1884,17 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     public:
         using Descriptor = StreamProgramStorage;
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.effect.stream_programs"}, 0, 0, {}, "Raster stream program selection.",
-            EResourceDomain::VIEW, resourceCommandDescriptors(static_cast<std::tuple<SetStreamPrograms>*>(nullptr))
+            EResourceDomain::VIEW
         };
+
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{CommandBinding::declare<SetStreamPrograms, &set>()};
+            return commands;
+        }
 
         static ResourceRegistration factory() noexcept
         {
@@ -1877,8 +1903,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 &StreamProgramStorage::selectPrograms, &StreamProgramStorage::revision_
             >();
             static const StorageBindingOps bindings{.cpu_snapshot = &snapshot};
-            static const std::array commands{CommandBinding::declare<SetStreamPrograms, &set>()};
-            return makeResourceRegistration<Descriptor, StreamProgramStorage, &create>(nullptr, &bindings, commands);
+            return makeResourceRegistration<Descriptor, StreamProgramStorage, &create>(&bindings);
         }
 
     private:
@@ -2500,10 +2525,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     auto server = take(RenderServer::create(config, execution));
     take(server->registerResource<CaptureBuffer>());
     registerOutputNodes(*server);
-    take(server->registerResource<StreamProgramStorage>());
-    take(server->registerResource<EffectCaptureBuffer>());
+    take(server->registerResource<StreamProgramStorage>(StreamProgramStorage::commandBindings()));
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
     constexpr std::string_view storage_schema = "test.render.effect.storage";
-    CapabilityDefinition storage_capability;
+    EffectNodeDefinition storage_capability;
     storage_capability.identity = {graph::nodeTypeId(storage_schema), std::string{storage_schema}, 1};
     storage_capability.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
     CHECK(server->registerEffectCapability(storage_capability));
@@ -2540,39 +2565,35 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     auto uniform_capability = storage_capability;
     constexpr std::string_view uniform_schema = "test.render.effect.uniform";
     uniform_capability.identity = {graph::nodeTypeId(uniform_schema), std::string{uniform_schema}, 1};
-    uniform_capability.commands = {uniform_command.command};
-    CHECK(server->registerEffectCapability(uniform_capability));
+    CHECK(server->registerEffectCapability(uniform_capability, {uniform_command.command}));
     EffectImplementation uniform_implementation;
     uniform_implementation.capability = uniform_capability.identity.id;
     uniform_implementation.identity = {"test.node.uniform", 1};
     uniform_implementation.supported_outputs = {node_bytes};
-    uniform_implementation.command_bindings = {uniform_command};
     uniform_implementation.initialize = [](EffectInitializationContext& context, std::string_view) noexcept
     {
         return context.initializeState<UniformNodeState>();
     };
     uniform_implementation.build = buildUniformOutput;
     const auto uniform_selection = uniform_implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(uniform_implementation)));
+    CHECK(server->registerEffectImplementation(std::move(uniform_implementation), {uniform_command}));
 
     const auto command = take(server->registerNodeEffectCommand(
         CommandBinding::declareForEffect<SetNodeTestValue, int, setNodeTestValue>()
     ));
     constexpr std::string_view schema = "test.render.effect.color";
-    CapabilityDefinition capability;
+    EffectNodeDefinition capability;
     capability.identity = {graph::nodeTypeId(schema), std::string{schema}, 1};
     capability.ports = {
         {node_input, "source", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::INPUT},
         {node_color, "color", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::OUTPUT, 2}
     };
-    capability.commands = {command.command};
-    CHECK(server->registerEffectCapability(capability));
+    CHECK(server->registerEffectCapability(capability, {command.command}));
 
     EffectImplementation implementation;
     implementation.capability = capability.identity.id;
     implementation.identity = {"test.node.clear_or_forward", 1};
     implementation.supported_outputs = {node_color};
-    implementation.command_bindings = {command};
     implementation.initialize = initializeNodeTest;
     implementation.build = buildNodeTest;
     auto selected = implementation.identity;
@@ -2580,12 +2601,12 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     import_implementation.identity = {"test.node.target_import", 1};
     import_implementation.build = buildImportedTargetNode;
     const auto imported_selection = import_implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(implementation)));
-    CHECK(server->registerEffectImplementation(std::move(import_implementation)));
+    CHECK(server->registerEffectImplementation(std::move(implementation), {command}));
+    CHECK(server->registerEffectImplementation(std::move(import_implementation), {command}));
 
     const auto tone_node = ToneMapping::definition();
     const EffectValueType display_type{std::string{ToneMapping::display_type}, 1};
-    CapabilityDefinition tone_capture;
+    EffectNodeDefinition tone_capture;
     constexpr std::string_view tone_capture_name = "test.render.effect.tone_capture";
     tone_capture.identity = {graph::nodeTypeId(tone_capture_name), std::string{tone_capture_name}, 1};
     tone_capture.ports = {
@@ -2826,7 +2847,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CreateEffectRequest fanout_request;
     fanout_request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit fanout_edit{*fanout_request.graph};
-    addOutputTone(fanout_edit, true, EColorEncoding::LINEAR, "0");
+    addOutputTone(fanout_edit, true, EExpectedEncoding::LINEAR, "0");
     CHECK(fanout_edit.commit());
     const auto fanout_effect = createPreparedEffect(*client, commands, device, std::move(fanout_request));
     const auto fanout_view = call<CreateView>(*client, commands, {scene}).view;
@@ -2837,7 +2858,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         scene, fanout_view, fanout_effect, EJobCadence::REQUESTED
     }).job;
     const auto capture = GraphCaptureBuffer::bind(
-        *client, commands, device, {scene, fanout_view}, {&fanout_pixels, rdesc::ETextureFormat::RGBA8_UNORM}
+        {*client, commands, device}, {scene, fanout_view}, {&fanout_pixels, rdesc::ETextureFormat::RGBA8_UNORM}
     );
     JobBinding fanout_binding;
     fanout_binding.target_images.push_back({target, std::string{hdr_binding}});
@@ -2927,7 +2948,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto other_view = call<CreateView>(*client, commands, {scene}).view;
     const auto make_resource = [&](ViewId owner, ResourceNameView name)
     {
-        return call<GetOrCreateResource>(*client, commands, {device, ViewRequest{scene, owner}, name}).resource_id;
+        return call<GetOrCreateResource>(*client, commands, {device, ViewScope{scene, owner}, name}).resource_id;
     };
     const auto owner = make_resource(owner_view, EffectCaptureDescriptor::descriptor.type);
     const auto other_owner = make_resource(other_view, EffectCaptureDescriptor::descriptor.type);
@@ -3715,9 +3736,9 @@ static void preparedBuffers(bool d3d12)
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>());
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
 
-    CapabilityDefinition definition;
+    EffectNodeDefinition definition;
     constexpr std::string_view node_name = "test.prepared_buffers";
     definition.identity = {graph::nodeTypeId(node_name), std::string{node_name}, 1};
     definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
@@ -3795,7 +3816,7 @@ static void preparedBuffers(bool d3d12)
     const auto target = call<CreateTarget>(*client, commands, {device, output}).target;
     JobBinding binding;
     const auto capture = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     binding.resources.push_back({"readback", capture});
     const auto light_owner = call<GetOrCreateResource>(*client, commands, {device, scene, kLightResourceName}).resource_id;
@@ -3857,7 +3878,7 @@ static void preparedBuffers(bool d3d12)
     const auto recovery_view = call<CreateView>(*client, commands, {recovery_scene}).view;
     const auto recovery_target = call<CreateTarget>(*client, commands, {device, output}).target;
     const auto recovery_capture = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{recovery_scene, recovery_view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{recovery_scene, recovery_view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto recovery_lights =
         call<GetOrCreateResource>(*client, commands, {device, recovery_scene, kLightResourceName}).resource_id;
@@ -3899,7 +3920,7 @@ static void preparedBuffers(bool d3d12)
     // payload, even when the source revision matches. Verify both FIF slots actually upload it.
     const auto prefix_view = call<CreateView>(*client, commands, {recovery_scene}).view;
     binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{recovery_scene, prefix_view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{recovery_scene, prefix_view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto prefix_job = call<CreateRenderJob>(*client, commands, {
         recovery_scene, prefix_view, effect, EJobCadence::REQUESTED
@@ -4084,8 +4105,8 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
 #endif
     }
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>());
-    CapabilityDefinition definition;
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    EffectNodeDefinition definition;
     constexpr std::string_view name = "test.shared_raster_texture";
     definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
     definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
@@ -4179,7 +4200,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
     }).target;
     const auto readback = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto owner =
         call<GetOrCreateResource>(*client, commands, {device, DeviceScope{}, kTextureResourceName}).resource_id;
@@ -4718,8 +4739,8 @@ static void meshRasterStream(bool d3d12)
     config.validation = nativeValidationEnabled();
     config.uploads.emplace();
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>());
-    CapabilityDefinition definition;
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    EffectNodeDefinition definition;
     constexpr std::string_view name = "test.mesh_raster_stream";
     definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
     definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
@@ -4805,7 +4826,7 @@ static void meshRasterStream(bool d3d12)
         device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
     }).target;
     const auto readback = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto owner = call<GetOrCreateResource>(*client, commands, {device, DeviceScope{}, kMeshResourceName})
         .resource_id;
@@ -4919,7 +4940,7 @@ static void meshRasterStream(bool d3d12)
     const auto peer = call<CreateRenderJob>(*client, commands, {scene, peer_view, effect, EJobCadence::REQUESTED}).job;
     auto peer_binding = binding;
     peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     call<StartRenderJob>(*client, commands, {device, peer, peer_target, std::move(peer_binding)});
     select_mesh(meshes[1]);
@@ -5036,8 +5057,8 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     config.validation = nativeValidationEnabled();
     config.uploads.emplace();
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>());
-    CapabilityDefinition definition;
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    EffectNodeDefinition definition;
     constexpr std::string_view name = "test.mesh_graph_imports";
     definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
     definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
@@ -5162,7 +5183,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     const auto instances = call<GetOrCreateResource>(*client, commands, {device, scene, kInstanceResourceName})
         .resource_id;
     const auto readback = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto transforms = call<QueryResource>(*client, commands, {device, scene, kTransformResourceName}).resource_id;
     const auto meshes =
@@ -5242,7 +5263,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     if (visibility)
     {
         const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
-            device, ViewRequest{scene, view}, kViewParameterResourceName
+            device, ViewScope{scene, view}, kViewParameterResourceName
         }).resource_id;
         ViewGpuParameters parameters;
         call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
@@ -5323,7 +5344,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     }).target;
     auto peer_binding = binding;
     peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto peer = startRenderJob(*client, commands, device, scene, peer_view, peer_target, effect, peer_binding);
     const auto first = call<RequestRenderJob>(*client, commands, {job});
@@ -5388,7 +5409,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     CHECK(call<TransformCommands::Release>(*client, commands, replacement, false).error.type == kDeviceBusy);
     const auto new_view = call<CreateView>(*client, commands, {scene}).view;
     binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewRequest{scene, new_view}, EffectCaptureDescriptor::descriptor.type
+        device, ViewScope{scene, new_view}, EffectCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto restarted = startRenderJob(*client, commands, device, scene, new_view, target, effect, binding);
     const auto reused = call<RequestRenderJob>(*client, commands, {restarted});
@@ -5442,13 +5463,13 @@ static void lightingGraphOutput(bool d3d12)
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>());
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
 
     const auto initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
     {
         return {};
     };
-    CapabilityDefinition source;
+    EffectNodeDefinition source;
     constexpr std::string_view source_name = "test.lighting.gbuffer";
     source.identity = {graph::nodeTypeId(source_name), std::string{source_name}, 1};
     source.ports = {{Lighting::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
@@ -5481,7 +5502,7 @@ static void lightingGraphOutput(bool d3d12)
     const auto source_selection = source_implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(source_implementation)));
 
-    CapabilityDefinition shadow_source;
+    EffectNodeDefinition shadow_source;
     constexpr std::string_view shadow_name = "test.lighting.shadow";
     shadow_source.identity = {graph::nodeTypeId(shadow_name), std::string{shadow_name}, 1};
     shadow_source.ports = {{Lighting::shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version},
@@ -5537,7 +5558,7 @@ static void lightingGraphOutput(bool d3d12)
     const auto shadow_selection = shadow_implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(shadow_implementation)));
 
-    CapabilityDefinition sink;
+    EffectNodeDefinition sink;
     constexpr std::string_view sink_name = "test.lighting.readback";
     sink.identity = {graph::nodeTypeId(sink_name), std::string{sink_name}, 1};
     sink.ports = {
@@ -5629,7 +5650,7 @@ static void lightingGraphOutput(bool d3d12)
     CHECK(lights.lights.size() == 1);
     const auto view_resource = [&](ViewId owner, ResourceNameView type)
     {
-        return call<GetOrCreateResource>(*client, commands, {device, ViewRequest{scene, owner}, type}).resource_id;
+        return call<GetOrCreateResource>(*client, commands, {device, ViewScope{scene, owner}, type}).resource_id;
     };
     JobBinding binding;
     const auto camera_resource = view_resource(view, kViewParameterResourceName);
@@ -5738,13 +5759,13 @@ static void basicFeatureOutputs(bool d3d12)
     auto& execution = lux::execution::ExecutionRuntime::instance();
     auto server = take(RenderServer::create(config, execution));
     registerOutputNodes(*server);
-    take(server->registerResource<EffectCaptureBuffer>());
+    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
 
     const auto initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
     {
         return {};
     };
-    CapabilityDefinition depth_source;
+    EffectNodeDefinition depth_source;
     constexpr std::string_view depth_name = "test.depth.clear";
     depth_source.identity = {graph::nodeTypeId(depth_name), std::string{depth_name}, 1};
     depth_source.ports = {{DepthPyramid::depth, "depth", {std::string{DepthPyramid::depth_type}, 1},
@@ -5768,7 +5789,7 @@ static void basicFeatureOutputs(bool d3d12)
     const auto depth_selection = clear_depth.identity;
     CHECK(server->registerEffectImplementation(std::move(clear_depth)));
 
-    CapabilityDefinition read_pyramid;
+    EffectNodeDefinition read_pyramid;
     static constexpr auto pyramid_input = effectPortSemantic("pyramid");
     constexpr std::string_view read_name = "test.depth.pyramid.readback";
     read_pyramid.identity = {graph::nodeTypeId(read_name), std::string{read_name}, 1};
@@ -5841,7 +5862,7 @@ static void basicFeatureOutputs(bool d3d12)
     const auto make_capture = [&](ViewId owner)
     {
         return call<GetOrCreateResource>(*client, commands, {
-            session, ViewRequest{scene, owner}, EffectCaptureDescriptor::descriptor.type
+            session, ViewScope{scene, owner}, EffectCaptureDescriptor::descriptor.type
         }).resource_id;
     };
     const auto draw = [&](EffectId effect, bool previous)
@@ -5862,12 +5883,12 @@ static void basicFeatureOutputs(bool d3d12)
     draw(history, true);
     draw(current_only, false);
     call<RemoveView>(*client, commands, {scene, view});
-    verifyTonemapOutput(*client, commands, session, scene,
-        {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::LINEAR);
-    verifyTonemapOutput(*client, commands, session, scene,
-        {rdesc::ETextureFormat::RGBA8_UNORM}, EColorEncoding::SRGB);
-    verifyTonemapOutput(*client, commands, session, scene,
-        {rdesc::ETextureFormat::RGBA8_SRGB}, EColorEncoding::SRGB);
+    verifyTonemapOutput({*client, commands, session}, scene,
+        {rdesc::ETextureFormat::RGBA8_UNORM}, EExpectedEncoding::LINEAR);
+    verifyTonemapOutput({*client, commands, session}, scene,
+        {rdesc::ETextureFormat::RGBA8_UNORM}, EExpectedEncoding::SRGB);
+    verifyTonemapOutput({*client, commands, session}, scene,
+        {rdesc::ETextureFormat::RGBA8_SRGB}, EExpectedEncoding::SRGB);
     verifyTargetInput(*client, commands, session, scene);
     const auto secondary = call<CreateDeviceSession>(*client, commands, options).device;
     verifyTargetInput(*client, commands, secondary, scene);
@@ -5899,7 +5920,7 @@ struct WsiFailureProbe final
     struct Descriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{ResourceNameView{"test.wsi.failure"}, 0, 0, {}};
     };
 
@@ -5922,7 +5943,7 @@ struct WsiFailureProbe final
 
     static ResourceRegistration factory() noexcept
     {
-        return makeResourceRegistration<Descriptor, WsiFailureProbe, &create>(nullptr);
+        return makeResourceRegistration<Descriptor, WsiFailureProbe, &create>();
     }
 };
 
@@ -6085,7 +6106,7 @@ struct DeviceRetirementProbe final
     struct Descriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{ResourceNameView{"test.device.retirement"}, 0, 0, {}};
     };
 
@@ -6172,7 +6193,7 @@ struct DeviceRetirementProbe final
 
     static ResourceRegistration factory() noexcept
     {
-        return makeResourceRegistration<Descriptor, DeviceRetirementProbe, &create>(nullptr);
+        return makeResourceRegistration<Descriptor, DeviceRetirementProbe, &create>();
     }
 };
 

@@ -1,9 +1,10 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <span>
 
 namespace lux::render::detail

@@ -1,9 +1,11 @@
+#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <unordered_map>
@@ -39,7 +41,7 @@ namespace lux::render::detail
             if (!selected) return cxx::unexpected(selected.error());
             const auto programs = selected->programs;
             const auto revision = selected->revision;
-            const auto& input = frame_.stream_inputs[stream->list];
+            const auto& input = draws_[stream->list];
             auto& rows = frame_.stream_descriptor_rows[stream->list];
             rows.programs.resize(programs.size());
             rows.writes.clear();
@@ -53,9 +55,9 @@ namespace lux::render::detail
                 if (invalid) return cxx::unexpected(RenderError{kFrameContract, {p}});
                 const auto& bindings = programs[id.index].bindings;
                 const auto& draw = input.draws[d];
-                const bool valid_ranges = containsStreamRange(input.constants.size(), draw.constants) &&
-                    containsStreamRange(input.vertices.size(), draw.vertices) &&
-                    containsStreamRange(input.bindings.size(), draw.bindings);
+                const bool valid_ranges = draw.constants.fits(input.constants.size()) &&
+                    draw.vertices.fits(input.vertices.size()) &&
+                    draw.bindings.fits(input.bindings.size());
                 const bool valid_constants = draw.constants.count == bindings.parameter_bytes &&
                     draw.constants.first % 4 == 0;
                 const auto count = draw.bindings.count;

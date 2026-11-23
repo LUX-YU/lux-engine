@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/core/RasterViewport.hpp>
-#include <lux/engine/render/extensions/graph/Draw.hpp>
+#include <lux/engine/render/graph/RasterViewport.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
 #include <optional>
 #include <span>
 
@@ -116,6 +116,11 @@ namespace lux::render
     struct RasterStreamRange final
     {
         std::uint32_t first = 0, count = 0;
+
+        [[nodiscard]] constexpr bool fits(std::size_t size) const noexcept
+        {
+            return first <= size && count <= size - first;
+        }
     };
 
     struct RasterStreamDraw final

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include "NativeDevice.hpp"
 #include <algorithm>
 #include <cstdio>

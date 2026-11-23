@@ -148,18 +148,11 @@
         },
         "clusters": {
           "label": "Cluster grid"
-        },
-        "encoding": {
-          "label": "Output encoding"
         }
       }
     },
     "lux::render::EClusterDepth": {
       "label": "Depth distribution",
-      "fields": {}
-    },
-    "lux::render::EColorEncoding": {
-      "label": "Color encoding",
       "fields": {}
     }
   }

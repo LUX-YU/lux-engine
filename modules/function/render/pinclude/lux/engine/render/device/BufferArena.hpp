@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <vk_mem_alloc.h>
 
 namespace lux::render::detail
@@ -42,11 +42,6 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t capacity() const noexcept
         {
             return capacity_;
-        }
-
-        [[nodiscard]] std::size_t segmentCount() const noexcept
-        {
-            return storage_->segments.size();
         }
 
     private:

@@ -7,11 +7,11 @@
 #include <lux/engine/render/visibility.h>
 
 #include <NRI.h>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
-#include <lux/engine/render/extensions/graph/Diagnostics.hpp>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
-#include <lux/engine/render/extensions/graph/PassValues.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
+#include <lux/engine/render/graph/PassValues.hpp>
 #include <lux/engine/render/graph/CommandPackets.hpp>
 #include <memory>
 
@@ -614,11 +614,6 @@ namespace lux::render::compiled
             return programs_.device();
         }
 
-        [[nodiscard]] const EffectOutputDesc& outputDescription() const & noexcept
-        {
-            return output_description_;
-        }
-        const EffectOutputDesc& outputDescription() const && = delete;
 
         [[nodiscard]] std::span<const detail::CompiledResource> resources() const & noexcept
         {
@@ -678,7 +673,7 @@ namespace lux::render::compiled
             return output_;
         }
 
-        [[nodiscard]] bool compatible(const TargetDesc& target) const noexcept;
+        [[nodiscard]] bool compatible(const GraphOutputRequirements& target) const noexcept;
 
         [[nodiscard]] std::span<const detail::SubmissionBatch> submissions() const & noexcept
         {
@@ -737,7 +732,7 @@ namespace lux::render::compiled
         friend class detail::SubmissionOperation;
         friend bool detail::dumpPlan(const detail::PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
 
-        explicit RenderGraph(EffectOutputDesc output) noexcept;
+        explicit RenderGraph(GraphOutputRequirements output) noexcept;
         std::unique_ptr<detail::GraphBindingPlan> binding_plan_;
         detail::NativeProgramBindings programs_;
         std::vector<detail::TargetImageSlot> target_imports_;
@@ -748,7 +743,7 @@ namespace lux::render::compiled
         detail::CpuProgram cpu_program_;
 
         bool device_addresses_ = false;
-        EffectOutputDesc output_description_;
+        GraphOutputRequirements output_description_;
         std::vector<detail::CompiledResource> resources_;
         std::vector<detail::HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0, binding_predicate_count_ = 0;
@@ -761,7 +756,6 @@ namespace lux::render::compiled
         std::uint32_t output_ = kGraphInvalidIndex;
         std::uint32_t output_first_batch_ = kGraphInvalidIndex;
         nri::StageBits output_wait_stages_ = nri::StageBits::ALL;
-        std::array<std::uint32_t, 2> fixed_output_extent_{};
     };
 } // namespace lux::render::compiled
 

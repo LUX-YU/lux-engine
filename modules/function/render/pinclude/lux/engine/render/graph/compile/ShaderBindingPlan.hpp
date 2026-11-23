@@ -4,7 +4,7 @@
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 
 #include <NRI.h>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 #include <lux/engine/render/graph/CommandPackets.hpp>
 
 namespace lux::render

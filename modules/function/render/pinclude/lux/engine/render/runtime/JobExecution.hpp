@@ -3,11 +3,17 @@
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
 #include <lux/engine/render/runtime/JobCpuPreparation.hpp>
 
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Execution.hpp>
-#include <lux/engine/render/core/RasterViewport.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/effect/EffectId.hpp>
+#include <lux/engine/render/graph/Ids.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
+#include <lux/engine/render/runtime/Execution.hpp>
+#include <lux/engine/render/graph/RasterViewport.hpp>
 #include <lux/engine/render/core/FinalBufferVersion.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
@@ -125,7 +131,8 @@ namespace lux::render::runtime_detail
         struct Input final
         {
             ResourceInstanceId identity;
-            ResourceTypeId call_slot;
+            void* storage;
+            decltype(FrameDataCall::invoke) apply;
             struct ColumnRange final
             {
                 std::uint32_t first, count;
@@ -134,13 +141,6 @@ namespace lux::render::runtime_detail
             ColumnRange columns;
         };
         std::vector<Input> inputs;
-        std::vector<std::uint32_t> input_columns;
-
-        [[nodiscard]] std::span<const std::uint32_t> columnsFor(const Input& input) const & noexcept
-        {
-            return std::span(input_columns).subspan(input.columns.first, input.columns.count);
-        }
-        std::span<const std::uint32_t> columnsFor(const Input&) const && = delete;
 
         const detail::ExecutionBindingId binding_identity;
         std::vector<BoundStorageProjection> storage_bindings;

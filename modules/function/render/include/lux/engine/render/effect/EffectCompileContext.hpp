@@ -4,14 +4,14 @@
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/effect/CpuCall.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
-#include <lux/engine/render/extensions/graph/Work.hpp>
-#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
-#include <lux/engine/render/extensions/graph/GraphProgram.hpp>
-#include <lux/engine/render/extensions/graph/Sampler.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
+#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/graph/GraphProgram.hpp>
+#include <lux/engine/render/graph/Sampler.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <array>
 #include <optional>
@@ -62,7 +62,7 @@ namespace lux::render
         template <class T> const T* configuration() const && = delete;
 
         // Extents are evaluated per instance from graph declarations, including through compatible resize.
-        [[nodiscard]] const EffectOutputDesc& target() const noexcept;
+        [[nodiscard]] const GraphOutputRequirements& target() const noexcept;
         [[nodiscard]] const EffectBuildDevice& device() const noexcept;
         [[nodiscard]] rdesc::EShaderTarget shaderTarget() const noexcept { return device().shader_target; }
         [[nodiscard]] const VGraphResourceDesc* resourceDescription(GraphResourceId) const & noexcept;

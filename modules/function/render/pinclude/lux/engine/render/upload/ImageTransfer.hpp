@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

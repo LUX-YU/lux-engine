@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
@@ -25,18 +26,15 @@ namespace lux::render
         }
         const auto has_updates = [&](const auto& input) noexcept
         {
-            return std::ranges::any_of(execution.columnsFor(input), [&](auto column) noexcept
+            for (std::uint32_t i = 0; i < input.columns.count; ++i)
             {
-                return packet.column(column).count != 0;
-            });
+                if (packet.column(input.columns.first + i).count != 0) return true;
+            }
+            return false;
         };
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            if (runtime_->resources_.declarationOf(input.identity) != input.call_slot)
-            {
-                return cxx::unexpected(RenderError{kStorageIdentity});
-            }
             if (runtime_->resources_.hasExclusiveCommand(input.identity))
             {
                 return cxx::unexpected(RenderError{kDeviceBusy});
@@ -45,9 +43,7 @@ namespace lux::render
         for (const auto& input : execution.inputs)
         {
             if (!has_updates(input)) continue;
-            const auto& call = runtime_->resources_.factory(input.call_slot)->frame_call;
-            auto* object = runtime_->resources_.resourceInstance(input.identity);
-            if (auto applied = call.invoke(object, packet, execution.columnsFor(input)); !applied) return applied;
+            if (auto applied = input.apply(input.storage, packet, input.columns.first); !applied) return applied;
         }
         return {};
     }

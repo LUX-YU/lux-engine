@@ -1,11 +1,11 @@
 #include <numeric>
-#include <lux/engine/render/commands/CommandRegistry.hpp>
+#include <lux/engine/render/runtime/commands/CommandRegistry.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
 #include <lux/engine/render/effect/EffectValidation.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/runtime/RenderEffect.hpp>
 
@@ -252,7 +252,7 @@ namespace lux::render
 
     const ConfigValue* EffectCompileContext::nodeConfiguration() const noexcept { return configuration_; }
 
-    const EffectOutputDesc& EffectCompileContext::target() const noexcept { return workspace_.contract.target; }
+    const GraphOutputRequirements& EffectCompileContext::target() const noexcept { return workspace_.contract.target; }
 
     const EffectBuildDevice& EffectCompileContext::device() const noexcept { return workspace_.contract.device; }
 
@@ -595,7 +595,7 @@ namespace lux::render::runtime_detail
                 ));
             }
             const auto* state = context.state();
-            for (auto binding : node.implementation->command_bindings)
+            for (auto binding : registry.effectBindings(*node.implementation))
             {
                 const auto* command = registry.findCommand(binding.command);
                 const auto* method = registry.binding(binding);
@@ -673,7 +673,8 @@ namespace lux::render::runtime_detail
                     ) != draft.storage_imports.end();
                     if (imported_target || imported_storage)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-                    exported.target = GraphOutputRequirements{contract.target.format, contract.target.samples};
+                    exported.target = contract.target;
+                    exported.final_use = contract.target_final_use;
                 }
                 if (auto added = builder.exportOutput(std::move(exported)); !added)
                     return cxx::unexpected(added.error());

@@ -2,7 +2,7 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/Visual.hpp>
 #include <lux/engine/ecs/RenderableMeshComponent.hpp>
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
 
 namespace lux::engine::render
 {

@@ -35,8 +35,11 @@ namespace lux::render
         effect->preparing_device = input.device;
         cxx::scope_exit finish([effect]() noexcept { effect->preparing_device = {}; });
         detail::EffectCompileRequest request{
-            {*effect->source, effect->node_configurations}, {}, effect->output, device->uploader() != nullptr
+            {*effect->source, effect->node_configurations}, {}, {effect->output.format, effect->output.samples},
+            device->uploader() != nullptr, {}
         };
+        if (effect->output.kind == ETargetKind::SURFACE) request.target_final_use = EGraphUse::PRESENT;
+        else if (effect->output.sampled) request.target_final_use = EGraphUse::SAMPLED;
         request.inputs.reserve(effect->node_states.size());
         for (const auto& state : effect->node_states) request.inputs.push_back({state.node, state.type, state.bytes});
         cxx::scope_exit release_worker([this]() noexcept { recording_workers_.endCompilation(); });
@@ -83,7 +86,11 @@ namespace lux::render
         for (const auto& definition : definitions)
         {
             const auto& identity = definition.identity;
-            output.capabilities.push_back({definition, effect_catalog_.listImplementations(identity.id, identity.version)});
+            const auto commands = runtime_->command_registry_.nodeCommands(definition);
+            output.capabilities.push_back({
+                definition, effect_catalog_.listImplementations(identity.id, identity.version),
+                std::vector<CommandId>(commands.begin(), commands.end())
+            });
         }
         output.error = {};
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include "FixtureCommands.hpp"
 #include "Support.hpp"
 #include <array>
 #include <cstring>

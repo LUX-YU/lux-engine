@@ -512,7 +512,7 @@ UI 没有独立的 appendFrame/SubmitFrame、完成队列或 Scope。窗口 Resi
 | ECS 到渲染数据 | [RenderSystem::publish](../engine/systems/render/src/RenderSystem.cpp) | [CameraViewReaction](../engine/systems/render/src/CameraViewReaction.cpp)、[MeshRenderBinding.cpp](../engine/systems/render/src/MeshRenderBinding.cpp) |
 | 能力与 Feature | [CapabilityDescription](../modules/function/render/include/lux/engine/render/capabilities/CapabilityDeclaration.hpp) | [lowerSurface](../modules/function/render/src/capabilities/RasterSurface.cpp)、[CapabilityCompilation.cpp](../modules/function/render/src/runtime/CapabilityCompilation.cpp) |
 | UI 到画面 | [EditorUiScene::prepareUi](../editor/app/src/EditorUiScene.cpp) | [captureImguiFrame](../editor/app/src/ImguiFrameCapture.cpp)、[FrameExecution.cpp](../modules/function/render/src/execution/FrameExecution.cpp) |
-| GPU 侧实际所有权 | [EffectAttachment](../modules/function/render/pinclude/lux/engine/render/runtime/Scene.hpp) | [RenderGraphInstance.hpp](../modules/function/render/sinclude/lux/engine/render/execution/RenderGraphInstance.hpp)、[DeviceSession.hpp](../modules/function/render/include/lux/engine/render/extensions/device/DeviceSession.hpp) |
+| GPU 侧实际所有权 | [EffectAttachment](../modules/function/render/pinclude/lux/engine/render/runtime/Scene.hpp) | [RenderGraphInstance.hpp](../modules/function/render/sinclude/lux/engine/render/execution/RenderGraphInstance.hpp)、[DeviceSession.hpp](../modules/function/render/include/lux/engine/render/device/DeviceSession.hpp) |
 
 下一步讨论最有价值的三个边界是：**能力合同与实现入口是否表达清楚；有限准备对象是否只活到构造/readiness；异步退出是否有明确完成证明。** 这些比单看函数长短更能判断当前设计是否仍然职责清晰。
 

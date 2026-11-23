@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <span>
 #include <vector>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 
 namespace lux::render::detail

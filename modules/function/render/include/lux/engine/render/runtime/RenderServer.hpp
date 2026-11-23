@@ -1,12 +1,12 @@
 #pragma once
 
-#include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/commands/CommandBindingLocation.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/CommandBindingLocation.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
 #include <lux/engine/render/core/RenderErrorSink.hpp>
-#include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/device/TransferOptions.hpp>
 #include <lux/engine/render/visibility.h>
 #include <memory>
 #include <optional>
@@ -21,7 +21,7 @@ namespace lux::execution
 namespace lux::render
 {
     struct ResourceRegistration;
-    struct CapabilityDefinition;
+    struct EffectNodeDefinition;
     struct EffectImplementation;
     class CommandBinding;
     class ResourceRegistry;
@@ -136,10 +136,11 @@ namespace lux::render
         // Metadata and callback code must outlive the Server and all accepted work. Serialize all
         // direct catalog calls during setup. run() seals registration and takes over the catalog.
         // Resource declaration and shared implementation metadata remain distinct at registration.
-        [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}) noexcept;
+        [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}, std::span<const CommandBinding> commands = {}) noexcept;
 
-        [[nodiscard]] RenderResult<void> registerEffectCapability(CapabilityDefinition) noexcept;
-        [[nodiscard]] RenderResult<void> registerEffectImplementation(EffectImplementation) noexcept;
+        [[nodiscard]] RenderResult<void> registerEffectCapability(EffectNodeDefinition, std::vector<CommandId> commands = {}) noexcept;
+        [[nodiscard]] RenderResult<void>
+        registerEffectImplementation(EffectImplementation, std::vector<CommandBindingLocation> bindings = {}) noexcept;
         [[nodiscard]] RenderResult<CommandBindingLocation> registerNodeEffectCommand(const CommandBinding&) noexcept;
 
         // Stateless typed functions use the same command directory without a dummy Handler owner.
@@ -149,11 +150,11 @@ namespace lux::render
         // Installs the Resource definition, creation policy and its declaration-owned static command thunks.
         template <runtime_detail::ConfiguredResourceStorage Storage>
         [[nodiscard]] RenderResult<ResourceTypeId>
-        registerResource(const typename Storage::Descriptor::Config& config = {}) noexcept;
+        registerResource(const typename Storage::Descriptor::Config& config = {}, std::span<const CommandBinding> = {}) noexcept;
 
         template <runtime_detail::ResourceStorage Storage> requires std::is_void_v<typename Storage::Descriptor::Config>
         [[nodiscard]] RenderResult<ResourceTypeId>
-        registerResource() noexcept;
+        registerResource(std::span<const CommandBinding> = {}) noexcept;
 
         // Registers a Handler factory and its typed methods, without constructing the Handler.
         // A repeated (type, key) is a conflict; references use handlerId without another factory payload.

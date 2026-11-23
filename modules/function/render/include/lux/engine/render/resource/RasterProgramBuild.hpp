@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/core/Resource.hpp>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
-#include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
-#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
+#include <lux/engine/render/graph/ParameterBinding.hpp>
+#include <lux/engine/render/resource/ResourceProgramUses.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <array>

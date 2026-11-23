@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include "RenderTest.hpp"
 #include "../../../../modules/function/material/test/MaterialTest.hpp"
 #include <lux/engine/Engine.hpp>

@@ -2,8 +2,8 @@
 
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/log/Log.hpp>
-#include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 
 namespace lux::engine::render
 {

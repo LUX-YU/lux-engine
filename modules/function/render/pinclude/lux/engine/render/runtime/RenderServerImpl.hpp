@@ -17,22 +17,22 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/core/execution/Scheduler.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
-#include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
-#include <lux/engine/render/commands/CommandRegistry.hpp>
+#include <lux/engine/render/runtime/commands/detail/CommandDispatchContext.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/runtime/commands/CommandRegistry.hpp>
 #include <lux/engine/render/runtime/RenderJob.hpp>
 #include <deque>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/RenderEffect.hpp>
 #include <lux/engine/render/runtime/DeviceRound.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/commands/ResponseOutbox.hpp>
+#include <lux/engine/render/runtime/commands/ResponseOutbox.hpp>
 #include <lux/engine/render/runtime/Scene.hpp>
 #include <lux/engine/render/target/RenderTarget.hpp>
 
@@ -154,7 +154,7 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<std::vector<std::uint32_t>>
         bindEffectResources(
-            detail::DeviceEntry&, ViewRequest, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
+            detail::DeviceEntry&, ViewScope, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
         ) noexcept;
 
         enum class EJobStartMode : std::uint8_t { START, REBIND };
@@ -210,7 +210,7 @@ namespace lux::render
         void queryResource(const ResourceRequest&, ResourceResponse&) noexcept;
         void getOrCreateResource(const ResourceRequest&, ResourceResponse&) noexcept;
         [[nodiscard]] RenderResult<ResourceSet*>
-        resourceScope(detail::DeviceEntry&, const VRenderScope&, ResourceTypeId, bool create) noexcept;
+        resourceScope(detail::DeviceEntry&, const VResourceScope&, ResourceTypeId, bool create) noexcept;
 
         void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
 
 namespace lux::render::detail
 {

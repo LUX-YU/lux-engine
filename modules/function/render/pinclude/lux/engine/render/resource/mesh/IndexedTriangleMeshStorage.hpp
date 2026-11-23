@@ -1,14 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
-#include <lux/engine/render/resources/mesh/Resource.hpp>
+#include <lux/engine/render/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/resource/mesh/Resource.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/device/BufferArena.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/resource/mesh/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

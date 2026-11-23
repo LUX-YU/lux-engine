@@ -3,9 +3,9 @@
 #include <lux/engine/render/visibility.h>
 
 #include <NRI.h>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <memory>
 #include <vector>
 
@@ -17,11 +17,6 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC OffscreenTarget final
     {
     public:
-        [[nodiscard]] bool belongsTo(const DeviceSession& device) const noexcept
-        {
-            return &session_ == &device;
-        }
-
         [[nodiscard]] static RenderResult<OffscreenTarget>
         create(DeviceSession&, const TargetDesc&, std::uint32_t frame_count) noexcept;
         ~OffscreenTarget() noexcept;

@@ -1,3 +1,6 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include "GraphFill.hpp"
 #include "TypedGraphFill.hpp"
 #include "BufferProductFixture.hpp"
@@ -5,11 +8,11 @@
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #include <cstring>
 #include <future>
 
@@ -52,9 +55,6 @@ namespace
     };
     namespace graph = lux::graph;
 
-    // The deferred Editor consumer initializes the first slot positionally.
-    static_assert(requires(StorageBindingOps::Resolve resolver) { StorageBindingOps{resolver}; });
-
     // One 64-texel RGBA8 row matches the shared capture fixture's minimum pitch.
     constexpr std::uint32_t width = 64;
     constexpr std::uint32_t height = 32;
@@ -70,7 +70,7 @@ namespace
     struct ComputeCaptureDescriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.compute_readback"}, 0, 0, {}, "Compute output readback.", EResourceDomain::VIEW
         };
@@ -151,7 +151,7 @@ namespace
                     else ++accepted;
                 }
             };
-            return makeResourceRegistration<Descriptor, ComputeCapture, &create>(nullptr, &binding);
+            return makeResourceRegistration<Descriptor, ComputeCapture, &create>(&binding);
         }
 
         static RenderResult<std::unique_ptr<ComputeCapture>>
@@ -195,11 +195,9 @@ namespace
     struct MutableReplicaDescriptor final
     {
         using Config = void;
-        using Ops = void;
-        using Commands = std::tuple<SetReplicaValue, InitializeReplica>;
+
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.sdk.mutable_replica"}, 0, 0, {}, "Mutable replica.", EResourceDomain::VIEW,
-            resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+            ResourceNameView{"test.sdk.mutable_replica"}, 0, 0, {}, "Mutable replica.", EResourceDomain::VIEW
         };
     };
 
@@ -363,6 +361,15 @@ namespace
             resident = selected;
         }
 
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{
+                CommandBinding::declare<SetReplicaValue, &set>(),
+                CommandBinding::declare<InitializeReplica, &initialize>()
+            };
+            return commands;
+        }
+
         static ResourceRegistration factory() noexcept
         {
             static const StorageBindingOps bindings{
@@ -394,11 +401,7 @@ namespace
                 .settleFrame = [](void* owner, const ReplicaSettlement& receipt) noexcept
                 { static_cast<MutableReplica*>(owner)->settle(receipt); }
             };
-            static const std::array commands{
-                CommandBinding::declare<SetReplicaValue, &set>(),
-                CommandBinding::declare<InitializeReplica, &initialize>()
-            };
-            return makeResourceRegistration<Descriptor, MutableReplica, &create>(nullptr, &bindings, commands);
+            return makeResourceRegistration<Descriptor, MutableReplica, &create>(&bindings);
         }
     };
 
@@ -425,7 +428,7 @@ namespace
     static_assert(CommandMethodFor<InitializeReplica, &MutableReplica::initialize>);
     static_assert(!CommandMethodFor<NonExclusiveReplicaCommand, &MutableReplica::initialize>);
 
-    CapabilityDefinition computeDefinition() noexcept
+    EffectNodeDefinition computeDefinition() noexcept
     {
         return {
             .identity = {graph::nodeTypeId(compute_node), std::string{compute_node}, 1},
@@ -433,7 +436,7 @@ namespace
         };
     }
 
-    CapabilityDefinition captureDefinition() noexcept
+    EffectNodeDefinition captureDefinition() noexcept
     {
         return {
             .identity = {graph::nodeTypeId(capture_node), std::string{capture_node}, 1},
@@ -704,7 +707,7 @@ namespace
 
     constexpr std::string_view fault_node = "test.sdk.partial_output";
 
-    CapabilityDefinition faultDefinition() noexcept
+    EffectNodeDefinition faultDefinition() noexcept
     {
         return {
             .identity = {graph::nodeTypeId(fault_node), std::string{fault_node}, 1},
@@ -746,7 +749,7 @@ namespace
     }
 
     template <EffectImplementation::Build Build>
-    void registerNode(RenderServer& server, const CapabilityDefinition& capability, graph::PinSemanticId output)
+    void registerNode(RenderServer& server, const EffectNodeDefinition& capability, graph::PinSemanticId output)
     {
         CHECK(server.registerEffectCapability(capability));
         EffectImplementation implementation;
@@ -809,8 +812,8 @@ int main(int argc, char** argv)
         options.cached_unused_programs = 0;
         options.texture_descriptors = records;
         if (records) take(server->registerResource<sdk_programs::ColorPage>());
-        take(server->registerResource<sdk_programs::CodeStorage>());
-        take(server->registerResource<sdk_programs::BackgroundSettings>());
+        take(server->registerResource<sdk_programs::CodeStorage>(sdk_programs::CodeStorage::commandBindings()));
+        take(server->registerResource<sdk_programs::BackgroundSettings>(sdk_programs::BackgroundSettings::commandBindings()));
         take(server->registerResource<sdk_programs::DrawMask>());
         take(server->registerResource<sdk_programs::TriangleGeometry>());
         const std::array commands{
@@ -822,7 +825,7 @@ int main(int argc, char** argv)
     else registerNode<buildCompute>(*server, computeDefinition(), color);
     registerNode<buildCapture>(*server, captureDefinition(), pixels);
     take(server->registerResource<ComputeCapture>());
-    take(server->registerResource<MutableReplica>());
+    take(server->registerResource<MutableReplica>(MutableReplica::commandBindings()));
     if (!resident_programs) take(server->registerResource<ProductBuffer>());
     if (product_fault) registerNode<buildPartialOutput>(*server, faultDefinition(), pixels);
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -836,7 +839,7 @@ int main(int argc, char** argv)
     const auto format = rdesc::ETextureFormat::RGBA8_UNORM;
     const auto target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
     const auto readback = call<GetOrCreateResource>(
-        *client, commands, {session, ViewRequest{scene, view}, ComputeCaptureDescriptor::descriptor.type}
+        *client, commands, {session, ViewScope{scene, view}, ComputeCaptureDescriptor::descriptor.type}
     ).resource_id;
     const auto capture_request = [&](std::string mode)
     {
@@ -869,7 +872,7 @@ int main(int argc, char** argv)
         const auto camera_for = [&](ViewId owner, unsigned inset)
         {
             const auto camera = call<GetOrCreateResource>(*client, commands, {
-                session, ViewRequest{scene, owner}, kViewParameterResourceName
+                session, ViewScope{scene, owner}, kViewParameterResourceName
             }).resource_id;
             ViewGpuParameters parameters;
             const auto left = static_cast<float>(inset) / width;
@@ -1024,6 +1027,7 @@ int main(int argc, char** argv)
         const auto busy_layout = call<QueryRenderJobInputLayout>(*client, commands, job).layout;
         auto busy_packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(busy_layout));
         CHECK(busy_packet.addData<Store>(sdk_programs::DrawOrder{1}));
+        CHECK(call<UpdateFrameData>(*client, commands, {job, &busy_packet}, false).error.type == kFrameContract);
         CHECK(busy_packet.seal());
         CHECK(call<UpdateFrameData>(*client, commands, {job, &busy_packet}, false).error.type == kDeviceBusy);
         busy_packet.release();
@@ -1064,7 +1068,7 @@ int main(int argc, char** argv)
         CHECK(peer_camera != peer_binding.resources.end());
         peer_camera->resource = camera_for(peer_view, 2);
         peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-            session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
+            session, ViewScope{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
         }).resource_id;
         const auto mask = call<GetOrCreateResource>(*client, commands, {
             session, DeviceScope{}, sdk_programs::DrawMask::descriptor.type
@@ -1166,7 +1170,7 @@ int main(int argc, char** argv)
     if (receipts || product_fault)
     {
         const auto product = call<GetOrCreateResource>(
-            *client, commands, {session, ViewRequest{scene, view}, ProductDescriptor::descriptor.type}
+            *client, commands, {session, ViewScope{scene, view}, ProductDescriptor::descriptor.type}
         ).resource_id;
         JobBinding writer_binding;
         writer_binding.resources = {{"product", product}};
@@ -1231,7 +1235,7 @@ int main(int argc, char** argv)
                 const auto next_view = call<CreateView>(*client, commands, {scene}).view;
                 const auto capture_type = ComputeCaptureDescriptor::descriptor.type;
                 reader_binding.resources.front().resource = call<GetOrCreateResource>(
-                    *client, commands, {session, ViewRequest{scene, next_view}, capture_type}
+                    *client, commands, {session, ViewScope{scene, next_view}, capture_type}
                 ).resource_id;
                 reader_binding.resources.back().publication = recovered.bufferVersion({8, 8});
                 call<RebindRenderJobEffect>(
@@ -1286,7 +1290,7 @@ int main(int argc, char** argv)
         ).error.type == kRuntimeIdentity);
         const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
         reader_binding.resources.front().resource = call<GetOrCreateResource>(
-            *client, commands, {session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
+            *client, commands, {session, ViewScope{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
         ).resource_id;
         reader_binding.resources.back().publication = second.bufferVersion({8, 8});
         call<StartRenderJob>(*client, commands, {session, another, reader_target, reader_binding});
@@ -1319,7 +1323,7 @@ int main(int argc, char** argv)
         return delay ? 0 : 77;
     }
     const auto mutable_resource = call<GetOrCreateResource>(
-        *client, commands, {session, ViewRequest{scene, view}, MutableReplicaDescriptor::descriptor.type}
+        *client, commands, {session, ViewScope{scene, view}, MutableReplicaDescriptor::descriptor.type}
     ).resource_id;
     const auto created = create_capture({});
     JobBinding binding;
@@ -1364,7 +1368,7 @@ int main(int argc, char** argv)
     CHECK(call<StartRenderJob>(*client, commands, {session, peer, peer_target, binding}, false).error.type == kJobBusy);
     const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
     const auto peer_capture = call<GetOrCreateResource>(
-        *client, commands, {session, ViewRequest{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
+        *client, commands, {session, ViewScope{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type}
     ).resource_id;
     auto peer_binding = binding;
     peer_binding.resources.front().resource = peer_capture;
@@ -1421,10 +1425,10 @@ int main(int argc, char** argv)
 
     const auto successor_view = call<CreateView>(*client, commands, {scene}).view;
     const auto successor_capture = call<GetOrCreateResource>(*client, commands, {
-        session, ViewRequest{scene, successor_view}, ComputeCaptureDescriptor::descriptor.type
+        session, ViewScope{scene, successor_view}, ComputeCaptureDescriptor::descriptor.type
     }).resource_id;
     const auto successor_source = call<GetOrCreateResource>(*client, commands, {
-        session, ViewRequest{scene, successor_view}, MutableReplicaDescriptor::descriptor.type
+        session, ViewScope{scene, successor_view}, MutableReplicaDescriptor::descriptor.type
     }).resource_id;
     constexpr std::uint32_t successor_marker = 0x7286cc31u;
     call<InitializeReplica>(*client, commands, {successor_source, 0});
@@ -1494,7 +1498,7 @@ int main(int argc, char** argv)
     stopAndRemoveJob(*client, commands, upper);
     stopAndRemoveJob(*client, commands, lower);
     const auto product = call<GetOrCreateResource>(
-        *client, commands, {session, ViewRequest{scene, view}, ProductDescriptor::descriptor.type}
+        *client, commands, {session, ViewScope{scene, view}, ProductDescriptor::descriptor.type}
     ).resource_id;
     JobBinding product_binding;
     product_binding.resources = {{"product", product}};

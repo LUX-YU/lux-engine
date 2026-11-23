@@ -1,4 +1,6 @@
-#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/device/CopyEncoding.hpp>
 #include <algorithm>
 #include <bit>
 #include <chrono>
@@ -8,8 +10,8 @@
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
 #include <lux/engine/render/upload/StagingArena.hpp>
 #include <numeric>
@@ -772,15 +774,15 @@ namespace lux::render::detail
         return offset;
     }
 
-    RenderResult<void> ResourceUploader::flushFrameCopies() noexcept
+    RenderResult<void> FrameOperation::flushFrameCopies(ResourceUploader& uploads) noexcept
     {
-        for (auto& copy : frame_copies_)
+        for (auto& copy : uploads.frame_copies_)
         {
-            if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
+            if (auto flushed = uploads.staging_arena_->flush(copy.staging); !flushed)
             {
                 return flushed;
             }
-            statistics_.copied_bytes += copy.staging.bytes.size();
+            uploads.statistics_.copied_bytes += copy.staging.bytes.size();
         }
         return {};
     }
@@ -857,20 +859,20 @@ namespace lux::render::detail
         }
     }
 
-    void ResourceUploader::acceptFrameCopies(FrameCopyReceipt receipt) noexcept
+    void FrameOperation::acceptFrameCopies(ResourceUploader& uploads, FrameCopyReceipt receipt) noexcept
     {
-        const auto queue_index = device_.queueIndex(device_.queue());
-        const bool wrong_submit = receipt.point.domain != &device_ || receipt.point.queue != queue_index ||
-            receipt.point.serial != frame_copy_receipt_serial_;
-        const bool wrong_ranges = !receipt.ranges || receipt.ranges != frame_copies_.size();
+        const auto queue_index = uploads.device_.queueIndex(uploads.device_.queue());
+        const bool wrong_submit = receipt.point.domain != &uploads.device_ || receipt.point.queue != queue_index ||
+            receipt.point.serial != uploads.frame_copy_receipt_serial_;
+        const bool wrong_ranges = !receipt.ranges || receipt.ranges != uploads.frame_copies_.size();
         if (wrong_submit || wrong_ranges) std::terminate();
-        for (auto& copy : frame_copies_)
+        for (auto& copy : uploads.frame_copies_)
         {
-            staging_arena_->markSubmitted(copy.staging, device_.queue(), receipt.point.serial);
-            ++statistics_.copy_regions;
+            uploads.staging_arena_->markSubmitted(copy.staging, uploads.device_.queue(), receipt.point.serial);
+            ++uploads.statistics_.copy_regions;
         }
-        frame_copies_.clear();
-        frame_copy_receipt_serial_ = 0;
+        uploads.frame_copies_.clear();
+        uploads.frame_copy_receipt_serial_ = 0;
     }
 
     void ResourceUploader::cancelFrameCopies() noexcept
@@ -948,15 +950,15 @@ namespace lux::render::detail
         next_commands_[index] = (slot + 1) % options_.staging_pages;
     }
 
-    exec::task<RenderResult<std::optional<ResourceUploader::FrameCopyReceipt>>>
-    ResourceUploader::submitPreparationCopies() noexcept
+    exec::task<RenderResult<std::optional<FrameOperation::FrameCopyReceipt>>>
+    FrameOperation::submitPreparationCopies(ResourceUploader& uploads) noexcept
     {
-        if (frame_copy_receipt_serial_) std::terminate();
-        const auto ranges = stagedFrameCopyCount();
+        if (uploads.frame_copy_receipt_serial_) std::terminate();
+        const auto ranges = uploads.stagedFrameCopyCount();
         if (!ranges) co_return std::nullopt;
-        auto& graphics = device_.queue();
+        auto& graphics = uploads.device_.queue();
         std::uint32_t slot = 0;
-        auto recorded = beginCommands(graphics, slot);
+        auto recorded = uploads.beginCommands(graphics, slot);
         if (!recorded)
         {
             const auto error = recorded.error();
@@ -964,15 +966,15 @@ namespace lux::render::detail
             co_return cxx::unexpected(error);
         }
         auto* command = *recorded;
-        recordFrameCopies(*command);
-        const auto ended = device_.nriCore().EndCommandBuffer(*command);
+        uploads.recordFrameCopies(*command);
+        const auto ended = uploads.device_.nriCore().EndCommandBuffer(*command);
         if (ended != nri::Result::SUCCESS) co_return cxx::unexpected(nativeError(ended));
         auto accepted = co_await graphics.submit({&command, 1});
         if (!accepted) co_return cxx::unexpected(accepted.error());
-        acceptCommands(graphics, slot, *accepted);
-        ++statistics_.copy_submissions;
-        frame_copy_receipt_serial_ = *accepted;
-        co_return FrameCopyReceipt{device_.submissionPoint(device_.queueIndex(graphics), *accepted), ranges};
+        uploads.acceptCommands(graphics, slot, *accepted);
+        ++uploads.statistics_.copy_submissions;
+        uploads.frame_copy_receipt_serial_ = *accepted;
+        co_return FrameCopyReceipt{uploads.device_.submissionPoint(uploads.device_.queueIndex(graphics), *accepted), ranges};
     }
 
     bool ResourceUploader::canBeginCommands(const SubmissionQueue& queue) const noexcept

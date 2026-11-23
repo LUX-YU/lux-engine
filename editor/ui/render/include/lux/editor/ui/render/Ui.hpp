@@ -3,8 +3,8 @@
 #include <array>
 #include <cstddef>
 #include <lux/engine/render/capabilities/CapabilityComposition.hpp>
-#include <lux/engine/render/commands/EffectCommands.hpp>
-#include <lux/engine/render/inputs/DrawInputs.hpp>
+#include <lux/engine/render/runtime/commands/EffectCommands.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
 #include <span>
 #include <string_view>
 

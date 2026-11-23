@@ -1,5 +1,5 @@
 #include "FullscreenVertex.hpp"
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
 
 #include <lux/engine/render/features/common/FullscreenRaster.hpp>
 

@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+#include <lux/engine/render/device/CopyEncoding.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <algorithm>
 #include <array>

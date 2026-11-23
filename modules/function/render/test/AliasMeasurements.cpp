@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "BufferReadback.hpp"
@@ -422,7 +423,7 @@ namespace
         const auto workload = buildWorkload(backend);
         const auto analysis = take(analyzeRenderGraph(workload.graph));
         const TargetDesc target{256, 256, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
-        const EffectOutputDesc contract{target.format, 1, target.kind, target.sampled};
+        const GraphOutputRequirements contract{target.format, 1};
         auto candidate = stdexec::sync_wait(GraphCompiler::compile(
             device, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {workload.graph, analysis},
             {contract, ETransientAllocation::ALIAS_MEMORY, multiple}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
 
 namespace lux::render::detail
 {

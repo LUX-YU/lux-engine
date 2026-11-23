@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <NRI.h>
 
 #include <Extensions/NRIHelper.h>

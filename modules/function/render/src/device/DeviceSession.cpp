@@ -1,10 +1,11 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <algorithm>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/DeviceBackend.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 
 #include <exception>
 #include <lux/engine/render/device/Error.hpp>
@@ -33,6 +34,31 @@ namespace lux::render::detail
     DeviceSession::DeviceSession(cxx::execution::ManualContext::Scheduler native_scheduler) noexcept
         : native_scheduler_(native_scheduler), descriptor_table_(*this)
     {
+    }
+
+    SubmissionFrontiers DeviceSession::acceptedFrontiers() const noexcept
+    {
+        auto frontiers = makeFrontiers();
+        for (std::size_t i = 0; i < queueCount(); ++i)
+            frontiers.accept(submissionPoint(i, physicalQueue(i).submitted()));
+        return frontiers;
+    }
+
+    void DeviceSession::readCompleted(SubmissionFrontiers& completed) const noexcept
+    {
+        completed.clear();
+        for (std::size_t queue = 0; queue < queueCount(); ++queue)
+        {
+            completed.accept(submissionPoint(queue, physicalQueue(queue).completed()));
+        }
+    }
+
+    bool DeviceSession::reached(const SubmissionFrontiers& frontiers) const noexcept
+    {
+        if (!frontiers.belongsTo(this, queueCount())) return false;
+        for (std::size_t q = 0; q < queueCount(); ++q)
+            if (frontiers.serials()[q] > physicalQueue(q).completed()) return false;
+        return true;
     }
 
     RenderResult<std::vector<nri::AdapterDesc>> DeviceSession::enumerateAdapters() noexcept

@@ -2,8 +2,8 @@
 
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
 
-#include <lux/engine/render/core/RenderScope.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/resource/ResourceScope.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <optional>
 
 namespace lux::engine::render

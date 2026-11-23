@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <cstdint>
 #include <probe/visibility.hpp>
 #include <string_view>
 #include <vector>

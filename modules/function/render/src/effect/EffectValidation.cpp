@@ -1,5 +1,5 @@
 #include <lux/engine/render/effect/EffectValidation.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <algorithm>
 #include <tuple>
 #include <utility>

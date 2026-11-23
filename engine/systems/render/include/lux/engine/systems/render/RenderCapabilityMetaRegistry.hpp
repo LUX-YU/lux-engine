@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/systems/render/RenderDataCollector.hpp>
 #include <lux/engine/systems/render/RenderReaction.hpp>
 #include <lux/engine/systems/render/visibility.h>

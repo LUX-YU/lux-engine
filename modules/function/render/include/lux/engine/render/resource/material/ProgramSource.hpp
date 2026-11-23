@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
+#include <lux/engine/render/resource/ResourceProgramUses.hpp>
+#include <lux/engine/render/resource/material/Data.hpp>
 #include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render

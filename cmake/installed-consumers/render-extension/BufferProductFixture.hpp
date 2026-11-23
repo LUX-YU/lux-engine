@@ -1,14 +1,16 @@
 #pragma once
 
+#include "NativeGateQueue.hpp"
+
 #include "SceneCapture.hpp"
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace sdk_buffers
 {
     struct ProductDescriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.final_product"}, 0, 0, {}, "Versioned final Buffer.", EResourceDomain::VIEW
         };
@@ -69,13 +71,13 @@ namespace sdk_buffers
             });
         }
 
-        bool canDelayRead() const noexcept { return &device.queue() != &device.queue(EQueueRole::COMPUTE); }
+        bool canDelayRead() const noexcept { return device.queueIndex(EQueueRole::GRAPHICS) != device.queueIndex(EQueueRole::COMPUTE); }
 
         void delayRead() const noexcept
         {
             const nri::FenceSubmitDesc wait{gate, 1, nri::StageBits::ALL};
             const nri::QueueSubmitDesc submit{.waitFences = &wait, .waitFenceNum = 1};
-            CHECK(device.nriCore().QueueSubmit(device.queue().native(), submit) == nri::Result::SUCCESS);
+            CHECK(device.nriCore().QueueSubmit(sdk_test::gateQueue(device, EQueueRole::GRAPHICS), submit) == nri::Result::SUCCESS);
         }
 
         void releaseRead() const noexcept
@@ -83,8 +85,8 @@ namespace sdk_buffers
             // All graph work in this fixture is Graphics. Compute is a distinct idle queue dedicated to this signal.
             const nri::FenceSubmitDesc signal{gate, 1, nri::StageBits::ALL};
             const nri::QueueSubmitDesc submit{.signalFences = &signal, .signalFenceNum = 1};
-            auto& queue = device.queue(EQueueRole::COMPUTE);
-            CHECK(device.nriCore().QueueSubmit(queue.native(), submit) == nri::Result::SUCCESS);
+            auto& queue = sdk_test::gateQueue(device, EQueueRole::COMPUTE);
+            CHECK(device.nriCore().QueueSubmit(queue, submit) == nri::Result::SUCCESS);
         }
 
         static RenderResult<std::unique_ptr<ProductBuffer>>
@@ -122,7 +124,7 @@ namespace sdk_buffers
                     return {};
                 }
             };
-            return makeResourceRegistration<Descriptor, ProductBuffer, &create>(nullptr, &ops);
+            return makeResourceRegistration<Descriptor, ProductBuffer, &create>(&ops);
         }
     };
 

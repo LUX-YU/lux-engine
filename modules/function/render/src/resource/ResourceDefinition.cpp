@@ -1,5 +1,5 @@
 #include <array>
-#include <lux/engine/render/extensions/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
 
 namespace lux::render
 {
@@ -14,21 +14,6 @@ namespace lux::render
         if (invalid_descriptor)
         {
             return cxx::unexpected(RenderError{kStorageContract});
-        }
-        for (std::size_t i = 0; i < descriptor.commands.size(); ++i)
-        {
-            const auto* command = descriptor.commands[i];
-            if (!command)
-            {
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
-            for (std::size_t previous = 0; previous < i; ++previous)
-            {
-                if (descriptor.commands[previous]->name == command->name)
-                {
-                    return cxx::unexpected(RenderError{kCommandContract});
-                }
-            }
         }
         for (std::size_t i = 0; i < descriptor.frame_inputs.size(); ++i)
         {

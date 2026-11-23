@@ -1,7 +1,7 @@
 #include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <algorithm>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>

@@ -1,3 +1,5 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
 #include <NRI.h>
 
 #include <Extensions/NRIHelper.h>
@@ -7,7 +9,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
 #include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
@@ -434,18 +436,23 @@ namespace lux::render::detail
         return {};
     }
 
-    ResourceRegistration SampledTexture2DStorage::factory() noexcept
+    std::span<const CommandBinding> sampledTexture2DStorageCommands() noexcept
     {
-
         static const std::array commands{
             CommandBinding::declare<TextureCommands::Upload, &createTexture>(),
             CommandBinding::declare<TextureCommands::CloneRegion, &cloneTexture>(),
             CommandBinding::declare<TextureCommands::Release, &releaseTexture>()
         };
+        return commands;
+    }
+
+    ResourceRegistration SampledTexture2DStorage::factory() noexcept
+    {
+
         return makeResourceRegistration<
             render::TextureResource,
             SampledTexture2DStorage,
-            &SampledTexture2DStorage::create>(nullptr, nullptr, commands);
+            &SampledTexture2DStorage::create>();
     }
 } // namespace lux::render::detail
 

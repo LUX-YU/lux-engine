@@ -1,3 +1,8 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include "FixtureCommands.hpp"
+#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
+#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include "NativeDevice.hpp"
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
@@ -7,29 +12,28 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/resources/texture/Commands.hpp>
-#include <lux/engine/render/resources/lighting/Commands.hpp>
-#include <lux/engine/render/resources/material/Commands.hpp>
-#include <lux/engine/render/resources/mesh/Commands.hpp>
-#include <lux/engine/render/resources/instance/Commands.hpp>
-#include <lux/engine/render/resources/transform/Resource.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/DepthPyramid.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/MeshRaster.hpp>
-#include <lux/engine/render/effect/MeshVisibility.hpp>
-#include <lux/engine/render/effect/Shadow.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/DepthPyramid.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/MeshRaster.hpp>
+#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
+#include <lux/engine/render/effect/builtin/Shadow.hpp>
+#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/resources/lighting/Binding.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
+#include <lux/engine/render/resource/mesh/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -52,7 +56,7 @@ namespace
     struct GBufferCaptureDescriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.gbuffer.capture"}, 0, 0, {},
             "GBuffer color and depth readback", EResourceDomain::VIEW
@@ -84,7 +88,7 @@ namespace
                 }
             };
             return makeResourceRegistration<GBufferCaptureDescriptor, GBufferCapture, &GBufferCapture::create>(
-                nullptr, &ops
+                &ops
             );
         }
 
@@ -112,10 +116,10 @@ namespace
         CaptureBuffer storage;
     };
 
-    CapabilityDefinition gbufferCaptureDefinition(bool shadow)
+    EffectNodeDefinition gbufferCaptureDefinition(bool shadow)
     {
         constexpr std::string_view name = "test.gbuffer.readback";
-        CapabilityDefinition definition;
+        EffectNodeDefinition definition;
         definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
         definition.ports = {
             {GBuffer::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
@@ -434,7 +438,7 @@ struct DeferredCommandCapture final
     static constexpr std::string_view name = "test.deferred.commands";
     static constexpr auto pixels = effectPortSemantic("commands");
 
-    static CapabilityDefinition definition()
+    static EffectNodeDefinition definition()
     {
         return {
             .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
@@ -490,7 +494,7 @@ struct DepthCoverageCapture final
     static constexpr std::string_view name = "test.deferred.depth_coverage";
     static constexpr auto pixels = effectPortSemantic("pixels");
 
-    static CapabilityDefinition definition()
+    static EffectNodeDefinition definition()
     {
         return {
             .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
@@ -1070,7 +1074,7 @@ int main(int argc, char** argv)
         }
         return binding;
     };
-    const auto set_view = [&](ViewRequest view, const ViewGpuParameters& camera)
+    const auto set_view = [&](ViewScope view, const ViewGpuParameters& camera)
     {
         const auto owner = call<GetOrCreateResource>(*client, commands, {session, view, kViewParameterResourceName});
         call<ViewParameterCommands::Update>(*client, commands, {owner.resource_id, std::span{&camera, 1}});
@@ -1182,7 +1186,7 @@ int main(int argc, char** argv)
         }).target;
         const auto owner = [&](ResourceNameView name)
         {
-            return call<GetOrCreateResource>(*client, commands, {session, ViewRequest{scene, view}, name}).resource_id;
+            return call<GetOrCreateResource>(*client, commands, {session, ViewScope{scene, view}, name}).resource_id;
         };
         JobBinding binding;
         const auto camera_resource = owner(kViewParameterResourceName);
@@ -1439,8 +1443,8 @@ int main(int argc, char** argv)
         const auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         const auto view = call<CreateView>(*client, commands, {scene}).view;
         const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
-        const ViewRequest view_scope{scene, view};
-        const auto capture_binding = [&](ViewRequest scope, const ViewGpuParameters& input)
+        const ViewScope view_scope{scene, view};
+        const auto capture_binding = [&](ViewScope scope, const ViewGpuParameters& input)
         {
             auto binding = mesh_binding();
             for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
@@ -1450,7 +1454,7 @@ int main(int argc, char** argv)
                 0, EJobResourceUse::CPU_SNAPSHOT
             });
             const auto readback = GraphCaptureBuffer::bind(
-                *client, commands, session, scope, {&pixels},
+                {*client, commands, session}, scope, {&pixels},
                 {.result = &visible_commands, .bytes = kMeshWindingCount * sizeof(nri::DrawIndexedDesc)}
             );
             binding.resources.push_back({std::string{ColorCapture::name}, readback, 0});
@@ -2352,7 +2356,7 @@ int main(int argc, char** argv)
             0, EJobResourceUse::CPU_SNAPSHOT
         });
         const auto readback = GraphCaptureBuffer::bind(
-            *client, commands, session, {scene, view}, {&pixels, rdesc::ETextureFormat::D32_SFLOAT}
+            {*client, commands, session}, {scene, view}, {&pixels, rdesc::ETextureFormat::D32_SFLOAT}
         );
         binding.resources.push_back({std::string{DepthCoverageCapture::name}, readback});
         auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, std::move(binding));

@@ -1,9 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/effect/EffectGraphBuild.hpp>
-#include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <algorithm>
 #include <memory>
 #include <tuple>

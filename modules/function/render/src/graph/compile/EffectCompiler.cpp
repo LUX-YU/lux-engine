@@ -1,11 +1,12 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/graph/compile/EffectCompileRequest.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 
 namespace lux::render
 {
@@ -543,7 +544,7 @@ namespace lux::render::detail
             stdexec::then([&]() noexcept
             {
                 return lowerEffectGraph(
-                    request.recipe, env.catalog, {request.output, device}, env.diagnostics
+                    request.recipe, env.catalog, {request.output, device, request.target_final_use}, env.diagnostics
                 );
             }) |
             stdexec::upon_stopped([]() noexcept -> RenderResult<EffectGraphBuild>

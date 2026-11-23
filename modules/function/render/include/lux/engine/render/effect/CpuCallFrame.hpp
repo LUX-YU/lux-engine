@@ -1,11 +1,11 @@
 #pragma once
 
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/core/Resource.hpp>
+#include <lux/engine/render/graph/Ids.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
 #include <lux/engine/render/graph/IndexedGeometry.hpp>
 #include <array>
 #include <bit>

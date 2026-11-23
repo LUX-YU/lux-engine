@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/resource/ResourceBinding.hpp>
 #include <NRI.h>
 
 namespace lux::render::detail

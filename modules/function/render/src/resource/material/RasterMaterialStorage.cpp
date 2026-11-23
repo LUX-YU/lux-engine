@@ -1,16 +1,18 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
-#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
+#include <lux/engine/render/resource/ReplicaMutation.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
@@ -919,11 +921,8 @@ namespace lux::render::detail
         }
     }
 
-    ResourceRegistration RasterMaterialStorage::factory() noexcept
+    std::span<const CommandBinding> rasterMaterialStorageCommands() noexcept
     {
-
-        static const auto frame_call =
-            FrameDataCall::declare<MaterialResource, RasterMaterialStorage, &applyMaterialColors>();
         static const std::array commands{
             CommandBinding::declare<MaterialCommands::RegisterProgram, &handleRegisterProgram>(),
             CommandBinding::declare<MaterialCommands::CreateInstance, &handleCreateInstance>(),
@@ -932,8 +931,15 @@ namespace lux::render::detail
             CommandBinding::declare<MaterialCommands::ReleaseInstance, &releaseInstance>(),
             CommandBinding::declare<MaterialCommands::UnregisterProgram, &handleUnregisterProgram>()
         };
+        return commands;
+    }
+
+    ResourceRegistration RasterMaterialStorage::factory() noexcept
+    {
+
+        static const auto frame_call =
+            FrameDataCall::declare<MaterialResource, RasterMaterialStorage, &applyMaterialColors>();
         static const StorageBindingOps binding{
-            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMaterialStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
@@ -952,9 +958,7 @@ namespace lux::render::detail
             return std::make_unique<RasterMaterialStorage>(dependencies, id);
         };
         return makeResourceRegistration<render::MaterialResource, RasterMaterialStorage, create>(
-            nullptr,
             &binding,
-            commands,
             frame_call
         );
     }

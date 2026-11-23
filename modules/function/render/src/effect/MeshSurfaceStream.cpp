@@ -1,8 +1,9 @@
-#include <lux/engine/render/resources/view/Parameters.hpp>
-#include <lux/engine/render/resources/mesh/Resource.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/resource/view/Parameters.hpp>
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
 #include <lux/engine/render/effect/MeshSurfaceStream.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/features/mesh/MeshGrouping.hpp>
 #include <lux/engine/render/features/mesh/MeshVisibilityInputs.hpp>
 #include <lux/engine/render/features/mesh/RasterMesh.hpp>

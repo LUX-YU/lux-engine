@@ -8,11 +8,6 @@ namespace lux::render::runtime_detail
 {
     using VRenderTarget = std::variant<detail::OffscreenTarget, detail::SwapchainTarget>;
 
-    [[nodiscard]] inline bool targetBelongsTo(const VRenderTarget& target, const detail::DeviceSession& device) noexcept
-    {
-        return std::visit([&](const auto& value) noexcept { return value.belongsTo(device); }, target);
-    }
-
     [[nodiscard]] inline detail::TargetState& targetState(VRenderTarget& target) noexcept
     {
         return std::visit([](auto& value) noexcept -> detail::TargetState& { return value.state; }, target);

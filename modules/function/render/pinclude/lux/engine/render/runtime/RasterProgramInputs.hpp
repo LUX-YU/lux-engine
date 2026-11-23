@@ -1,9 +1,10 @@
 #pragma once
 
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/ProgramInputRevision.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 
 namespace lux::render
 {

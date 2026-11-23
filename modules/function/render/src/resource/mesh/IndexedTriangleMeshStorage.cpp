@@ -1,3 +1,6 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
 #include <lux/engine/render/resource/mesh/MeshLayout.hpp>
 #include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
@@ -7,10 +10,10 @@
 #include <limits>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/BufferArena.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
 #include <lux/engine/render/resource/mesh/MeshPacking.hpp>
@@ -310,13 +313,18 @@ namespace lux::render::detail
         if (!(vertices_retired && indices_retired && sections_retired)) std::terminate();
     }
 
-    ResourceRegistration IndexedTriangleMeshStorage::factory() noexcept
+    std::span<const CommandBinding> indexedTriangleMeshStorageCommands() noexcept
     {
-
         static const std::array commands{
             CommandBinding::declare<MeshCommands::UploadMesh, &createMesh>(),
             CommandBinding::declare<MeshCommands::ReleaseMesh, &releaseMesh>()
         };
+        return commands;
+    }
+
+    ResourceRegistration IndexedTriangleMeshStorage::factory() noexcept
+    {
+
         static const auto create = +[](ResourceCreateContext& dependencies, ResourceInstanceId id
                                     ) noexcept -> RenderResult<std::unique_ptr<IndexedTriangleMeshStorage>>
         {
@@ -326,11 +334,7 @@ namespace lux::render::detail
             }
             return std::make_unique<IndexedTriangleMeshStorage>(dependencies, id);
         };
-        return makeResourceRegistration<render::MeshResource, IndexedTriangleMeshStorage, create>(
-            nullptr,
-            nullptr,
-            commands
-        );
+        return makeResourceRegistration<render::MeshResource, IndexedTriangleMeshStorage, create>();
     }
 } // namespace lux::render::detail
 

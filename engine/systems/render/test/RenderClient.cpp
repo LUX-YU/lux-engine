@@ -363,7 +363,7 @@ int main(int argc, char** argv)
     check(observation.count == 1 && observation.completion.error.type == kCommandCancelled);
     check(observation.completion.outcome == EFrameOutcome::NOT_SUBMITTED);
 
-    ViewRequest first_removal{scene, view}, second_removal{scene, another_view};
+    ViewScope first_removal{scene, view}, second_removal{scene, another_view};
     AckResponse first_response, second_response;
     bool first_done = false, second_done = false;
     receive(runtime.request<RemoveView>(first_removal), first_response, first_done);
@@ -404,7 +404,7 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
         check(received == 0);
         until([&]() noexcept { return received == count; });
-        std::vector<ViewRequest> removals;
+        std::vector<ViewScope> removals;
         removals.reserve(count);
         for (const auto& response : responses)
         {

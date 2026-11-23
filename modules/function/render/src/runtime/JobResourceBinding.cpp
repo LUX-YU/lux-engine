@@ -73,7 +73,7 @@ namespace lux::render
 
     RenderResult<std::vector<std::uint32_t>>
     RenderServer::Impl::bindEffectResources(
-        detail::DeviceEntry& entry, ViewRequest job_scope,
+        detail::DeviceEntry& entry, ViewScope job_scope,
         std::span<const EffectStorageImport> declarations,
         std::span<const JobResourceInput> inputs
     ) noexcept

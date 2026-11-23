@@ -1,8 +1,10 @@
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/Range.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
@@ -265,7 +267,7 @@ namespace lux::render::detail
         const CompiledRasterStream::Program& program
     ) noexcept
     {
-        const auto& input = frame_.stream_inputs[stream.list];
+        const auto& input = draws_[stream.list];
         auto& inputs = frame_.stream_binding_inputs;
         const auto entries = std::span{input.bindings}.subspan(draw.bindings.first, draw.bindings.count);
         const auto& layout = program.bindings;
@@ -296,11 +298,11 @@ namespace lux::render::detail
         const CompiledRasterStream::Program& program
     ) noexcept
     {
-        const auto& input = frame_.stream_inputs[stream.list];
+        const auto& input = draws_[stream.list];
         auto& candidate = frame_.stream_scratch;
         if (auto bound = selectDrawBindings(p, stream, draw, program); !bound) return bound;
         const auto geometrySlice = [&](const RasterBufferSlice& slice, EGraphUse use) noexcept
-            -> RenderResult<const OwnedRasterStream::Geometry*>
+            -> RenderResult<const RasterDrawInput::Geometry*>
         {
             const auto row = slice.buffer.index / 2;
             const bool vertex = use == EGraphUse::VERTEX;
@@ -344,7 +346,7 @@ namespace lux::render::detail
         const bool buffer_base = origin == ERasterIndexOrigin::BUFFER_BASE;
         if (origin != ERasterIndexOrigin::SLICE && !buffer_base)
             return cxx::unexpected(RenderError{kFrameContract, {p}});
-        const OwnedRasterStream::GeometryBinding* selected_vertices = nullptr;
+        const RasterDrawInput::GeometryBinding* selected_vertices = nullptr;
         for (const auto& abi : program.vertices)
         {
             const auto vertex = std::ranges::find(vertices, abi.binding, &RasterStreamVertex::binding);
@@ -522,7 +524,7 @@ namespace lux::render::detail
     {
         auto& candidate = frame_.stream_scratch;
         auto& inputs = frame_.stream_binding_inputs;
-        auto& input = frame_.stream_inputs[stream.list];
+        const auto& input = draws_[stream.list];
         const auto selection = gpu_.selectRasterPrograms(p, stream);
         if (!selection) return cxx::unexpected(selection.error());
         const auto selected_programs = selection->programs;
@@ -531,7 +533,7 @@ namespace lux::render::detail
         candidate.descriptors.clear();
         candidate.reads.clear();
         candidate.parameters.assign(input.constants.begin(), input.constants.end());
-        auto& used_record_programs = input.used_record_programs;
+        auto& used_record_programs = frame_.used_record_programs;
         if (!input.records.empty()) used_record_programs.assign(selected_programs.size(), 0);
         inputs.clear();
         inputs.reserve(frame_.stream_descriptor_rows[stream.list].input_count);

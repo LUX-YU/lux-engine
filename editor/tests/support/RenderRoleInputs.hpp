@@ -1,6 +1,6 @@
 #pragma once
 #include <atomic>
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/extensions/storage/StorageCreateContext.hpp>
 #include <lux/engine/render/frame/RenderFrame.hpp>
 #include <lux/engine/systems/render/RenderAssets.hpp>
@@ -10,7 +10,7 @@ namespace fixture
     struct RoleStorageDescriptor
     {
         using Config = void;
-        using Ops = void;
+
         static inline const lux::render::StorageDescriptor
             descriptor{lux::render::StorageNameView{"test.editor.role_storage"}, 0, 0, {}, "Role isolation fixture"};
     };

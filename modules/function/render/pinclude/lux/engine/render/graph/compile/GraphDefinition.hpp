@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <lux/cxx/core/function_ref.hpp>
 
-#include <lux/engine/render/extensions/graph/Work.hpp>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
-#include <lux/engine/render/extensions/graph/GraphProgram.hpp>
-#include <lux/engine/render/extensions/graph/Sampler.hpp>
+#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
+#include <lux/engine/render/graph/GraphProgram.hpp>
+#include <lux/engine/render/graph/Sampler.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render

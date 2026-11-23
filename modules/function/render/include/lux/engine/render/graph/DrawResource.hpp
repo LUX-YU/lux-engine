@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/core/Resource.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
 #include <string>
 
 namespace lux::render

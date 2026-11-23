@@ -5,10 +5,10 @@
 #include <lux/editor/ui/render/Ui.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <lux/engine/render/extensions/features/FeatureGraphOps.hpp>
-#include <lux/engine/render/extensions/graph/Draw.hpp>
-#include <lux/engine/render/resources/texture/Binding.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
+#include <lux/engine/render/resource/texture/Binding.hpp>
 
 namespace lux::editor::ui
 {

@@ -1,17 +1,17 @@
 #pragma once
 
-#include <lux/engine/render/resources/instance/Resource.hpp>
+#include <lux/engine/render/resource/instance/Resource.hpp>
 
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceCreateContext.hpp>
 
 #include <exec/task.hpp>
 #include <type_traits>
 
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/resources/instance/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/instance/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
 
 namespace lux::render::detail
 {

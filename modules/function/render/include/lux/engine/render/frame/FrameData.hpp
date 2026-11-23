@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
 #include <algorithm>
 #include <memory>

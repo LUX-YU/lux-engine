@@ -1,10 +1,14 @@
 #pragma once
-#include <lux/engine/render/resources/lighting/Resource.hpp>
-#include <lux/engine/render/resources/instance/Resource.hpp>
-#include <lux/engine/render/resources/material/Resource.hpp>
-#include <lux/engine/render/resources/texture/Resource.hpp>
-#include <lux/engine/render/resources/mesh/Resource.hpp>
-#include <lux/engine/render/resources/transform/Resource.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
+#include <lux/engine/render/resource/lighting/Resource.hpp>
+#include <lux/engine/render/resource/instance/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
 
 #include "Support.hpp"
 #include <array>
@@ -12,23 +16,23 @@
 #include <chrono>
 #include <cstring>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
+#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/resources/texture/Binding.hpp>
-#include <lux/engine/render/resources/material/Binding.hpp>
-#include <lux/engine/render/resources/instance/Binding.hpp>
-#include <lux/engine/render/resources/lighting/Binding.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/mesh/Binding.hpp>
+#include <lux/engine/render/resource/texture/Binding.hpp>
+#include <lux/engine/render/resource/material/Binding.hpp>
+#include <lux/engine/render/resource/instance/Binding.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
-#include <lux/engine/render/resources/lighting/Data.hpp>
-#include <lux/engine/render/resources/instance/Data.hpp>
-#include <lux/engine/render/resources/mesh/Data.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
-#include <lux/engine/render/resources/texture/Data.hpp>
+#include <lux/engine/render/resource/lighting/Data.hpp>
+#include <lux/engine/render/resource/instance/Data.hpp>
+#include <lux/engine/render/resource/mesh/Data.hpp>
+#include <lux/engine/render/resource/material/Data.hpp>
+#include <lux/engine/render/resource/texture/Data.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <map>
 #include <tuple>
@@ -507,7 +511,7 @@ struct CaptureConfig
 struct CaptureDescriptor
 {
     using Config = void;
-    using Ops = void;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.deferred.Capture"}, 0, 0, lux::cxx::make_basic_type_info<CaptureConfig>(),
         "View-owned terminal copy collection.", EResourceDomain::VIEW
@@ -529,7 +533,7 @@ public:
 
     static ResourceRegistration factory() noexcept
     {
-        return makeResourceRegistration<CaptureDescriptor, CaptureBuffer, &CaptureBuffer::create>(nullptr, nullptr);
+        return makeResourceRegistration<CaptureDescriptor, CaptureBuffer, &CaptureBuffer::create>();
     }
 
     explicit CaptureBuffer(ResourceCreateContext& context) noexcept
@@ -607,10 +611,17 @@ private:
 struct GraphCaptureDescriptor final
 {
     using Config = void;
-    using Ops = void;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.graph.capture"}, 0, 0, {}, "View-owned EffectGraph readback.", EResourceDomain::VIEW
     };
+};
+
+struct CaptureDevice final
+{
+    ipc::IpcRequester& client;
+    const CommandList& commands;
+    DeviceSessionId session;
 };
 
 class GraphCaptureBuffer final
@@ -625,16 +636,14 @@ public:
             .describeGraphImport = describe,
             .resolveGraphImport = resolve
         };
-        return makeResourceRegistration<Descriptor, GraphCaptureBuffer, &GraphCaptureBuffer::create>(nullptr, &bindings);
+        return makeResourceRegistration<Descriptor, GraphCaptureBuffer, &GraphCaptureBuffer::create>(&bindings);
     }
 
     static ResourceInstanceId
-    bind(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
-        ViewRequest view, const CaptureConfig& config, const CaptureConfig& extra = {});
+    bind(CaptureDevice device, ViewScope view, const CaptureConfig& config, const CaptureConfig& extra = {});
 
     static ResourceInstanceId
-    bind(ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
-        ViewRequest view, std::span<const CaptureConfig> configurations);
+    bind(CaptureDevice device, ViewScope view, std::span<const CaptureConfig> configurations);
 
     GraphCaptureBuffer(std::unique_ptr<CaptureBuffer> storage, std::span<const CaptureConfig> configurations) noexcept
         : storage_(std::move(storage)), config_(configurations.begin(), configurations.end())
@@ -683,7 +692,7 @@ struct ColorCapture final
     static constexpr auto color = effectPortSemantic("color");
     static constexpr auto pixels = effectPortSemantic("pixels");
 
-    static CapabilityDefinition definition()
+    static EffectNodeDefinition definition()
     {
         return {
             .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
@@ -859,22 +868,20 @@ static std::vector<TransformId> bindTransforms(
 }
 
 inline ResourceInstanceId GraphCaptureBuffer::bind(
-    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
-    ViewRequest view, const CaptureConfig& config, const CaptureConfig& extra
+    CaptureDevice device, ViewScope view, const CaptureConfig& config, const CaptureConfig& extra
 )
 {
     const std::array configurations{config, extra};
-    return bind(client, commands, device, view, std::span{configurations}.first(extra.result ? 2 : 1));
+    return bind(device, view, std::span{configurations}.first(extra.result ? 2 : 1));
 }
 
 inline ResourceInstanceId GraphCaptureBuffer::bind(
-    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device,
-    ViewRequest view, std::span<const CaptureConfig> configurations
+    CaptureDevice device, ViewScope view, std::span<const CaptureConfig> configurations
 )
 {
     // Only this synchronous fixture call supplies the resource's creation input.
     CHECK(!configurations.empty() && !creation_input_.exchange(&configurations));
-    const auto resource = call<GetOrCreateResource>(client, commands, {device, view, Descriptor::descriptor.type});
+    const auto resource = call<GetOrCreateResource>(device.client, device.commands, {device.session, view, Descriptor::descriptor.type});
     creation_input_.store(nullptr);
     return resource.resource_id;
 }

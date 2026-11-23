@@ -1,15 +1,17 @@
-#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/resource/ReplicaMutation.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <bit>
 #include <cmath>
 #include <cstring>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 
 namespace lux::render::detail
@@ -716,20 +718,24 @@ namespace lux::render::detail
         }
     }
 
-    ResourceRegistration DirectLightingStorage::factory() noexcept
+    std::span<const CommandBinding> directLightingStorageCommands() noexcept
     {
-        static const auto frame_call =
-            FrameDataCall::declare<LightResource, DirectLightingStorage, &updateLights>();
-
         static const std::array commands{
             CommandBinding::declare<LightingCommands::CreateLights, &createLights>(),
             CommandBinding::declare<LightingCommands::ReleaseLight, &removeLight>(),
             CommandBinding::declare<LightingCommands::Update, &updateLightsCommand>()
         };
+        return commands;
+    }
+
+    ResourceRegistration DirectLightingStorage::factory() noexcept
+    {
+        static const auto frame_call =
+            FrameDataCall::declare<LightResource, DirectLightingStorage, &updateLights>();
+
         static constexpr auto snapshot =
             StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::selectShadows>();
         static const StorageBindingOps binding{
-            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
@@ -763,9 +769,7 @@ namespace lux::render::detail
             return std::make_unique<DirectLightingStorage>(dependencies, id);
         };
         return makeResourceRegistration<LightResource, DirectLightingStorage, create>(
-            nullptr,
             &binding,
-            commands,
             frame_call
         );
     }

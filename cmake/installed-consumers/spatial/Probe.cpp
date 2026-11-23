@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <probe/Probe.hpp>
 

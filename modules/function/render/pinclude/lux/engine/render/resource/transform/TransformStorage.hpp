@@ -1,10 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/resource/transform/TransformRecords.hpp>
-#include <lux/engine/render/resources/transform/Resource.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
 #include <array>
 #include <span>
 #include <vector>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 
 namespace lux::render

@@ -1,9 +1,11 @@
+#include <lux/engine/render/graph/GraphOutput.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/device/ProgramCompileInput.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 #include <lux/engine/render/graph/compile/BarrierPlan.hpp>
@@ -328,8 +330,16 @@ namespace lux::render::detail
         return next_packet == packet_counts;
     }
 
+    bool GraphCompiler::Workspace::presentsOutput() const noexcept
+    {
+        return std::ranges::any_of(source.graph.outputs(), [](const GraphExport& output)
+        {
+            return output.final_use == EGraphUse::PRESENT;
+        });
+    }
+
     RenderResult<compiled::RenderGraph>
-    GraphCompiler::Workspace::planStructure(const EffectOutputDesc* target) noexcept
+    GraphCompiler::Workspace::planStructure(const GraphOutputRequirements* target) noexcept
     {
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
@@ -340,7 +350,7 @@ namespace lux::render::detail
         }
         if (target)
         {
-            if (auto valid = validateEffectOutput(*target); !valid)
+            if (auto valid = validateGraphOutput(*target); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
@@ -351,7 +361,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        compiled::RenderGraph plan(target ? *target : EffectOutputDesc{});
+        compiled::RenderGraph plan(target ? *target : GraphOutputRequirements{});
         plan.device_addresses_ = device_addresses;
         plan.condition_count_ = static_cast<std::uint32_t>(graph.conditions().size());
         plan.binding_predicate_count_ = static_cast<std::uint32_t>(graph.bindingPredicates().size());
@@ -478,8 +488,10 @@ namespace lux::render::detail
             const auto* image = std::get_if<GraphImageDesc>(&resource.description);
             const auto& requirement = *output.target;
             const bool relative = requirement.width == 0 && requirement.height == 0;
+            const bool extent_mismatch = !relative && target->width != 0 &&
+                (target->width != requirement.width || target->height != requirement.height);
             const bool incompatible =
-                !image || resource.origin != EGraphOrigin::TRANSIENT || requirement.format != target->format ||
+                extent_mismatch || !image || resource.origin != EGraphOrigin::TRANSIENT || requirement.format != target->format ||
                 requirement.samples != target->samples ||
                 (image && (image->extent.numerator != image->extent.denominator || image->extent.alignment != 1));
             if (incompatible)
@@ -487,7 +499,7 @@ namespace lux::render::detail
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
             plan.output_ = index;
-            plan.fixed_output_extent_ = {requirement.width, requirement.height};
+            if (!relative) plan.output_description_ = requirement;
             resource.target_sized = relative;
         }
         auto layouts = planLayouts(limits, graph, analysis, device_addresses);
@@ -561,7 +573,7 @@ namespace lux::render::detail
         planConditions(graph, analysis.execution_order, plan.resources_, plan.recording_);
         const auto order = std::span(analysis.execution_order);
         collectUseStages();
-        const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
+        const bool presents = presentsOutput();
         const auto surface_output = presents ? plan.output_ : kGraphInvalidIndex;
         const auto lowerSchedule = [&]() noexcept -> RenderResult<void>
         {
@@ -688,7 +700,7 @@ namespace lux::render::detail
                 {
                     batch.reusable_recording = false;
                 }
-                if (plan.output_description_.kind == ETargetKind::SURFACE &&
+                if (presents &&
                     std::ranges::any_of(
                         source.uses,
                         [&](const auto& use) noexcept { return use.version.resource.index == plan.output_; }
@@ -697,7 +709,7 @@ namespace lux::render::detail
                     batch.output_begin = std::min(batch.output_begin, p);
                 }
             }
-            if (plan.output_description_.kind == ETargetKind::SURFACE && index + 1 == plan.submissions_.size() &&
+            if (presents && index + 1 == plan.submissions_.size() &&
                 std::ranges::any_of(
                     plan.recording_.after.images,
                     [&](const auto& barrier) noexcept { return barrier.resource == plan.output_; }
@@ -1207,7 +1219,7 @@ namespace lux::render::detail
 
 namespace lux::render::compiled
 {
-    RenderGraph::RenderGraph(EffectOutputDesc output) noexcept
+    RenderGraph::RenderGraph(GraphOutputRequirements output) noexcept
         : output_description_(output)
     {
     }

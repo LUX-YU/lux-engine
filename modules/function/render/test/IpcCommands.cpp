@@ -1,9 +1,9 @@
 #include <atomic>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/render/commands/Command.hpp>
-#include <lux/engine/render/resources/mesh/Commands.hpp>
-#include <lux/engine/render/resources/instance/Commands.hpp>
-#include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/resource/instance/Data.hpp>
 #include <type_traits>
 
 #if defined(VK_VERSION_1_0) || defined(_WINDOWS_)

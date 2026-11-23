@@ -286,7 +286,8 @@ namespace lux::render
         if (self != binding.target_images.end())
             return AckResponse{RenderError{kCommandContract}};
         auto& target = *runtime_->targets_.find(target_id);
-        if (!selected->compatible(targetDescription(target)))
+        const auto& description = targetDescription(target);
+        if (effect->output != description.outputContract() || !selected->compatible(description.graphRequirements()))
             return AckResponse{RenderError{kDeviceArgument}};
         auto resources = bindEffectResources(
             *entry, {job.content.scene, job.content.view}, selected->storageImports(), binding.resources
@@ -335,23 +336,21 @@ namespace lux::render
     {
         std::vector<FrameChannel> channels;
         auto& registry = runtime_->resources_;
-        const ViewRequest scope{job.content.scene, job.content.view};
+        const ViewScope scope{job.content.scene, job.content.view};
         struct FrameResource final
         {
             ResourceInstanceId id;
-            ResourceTypeId type;
             const ResourceRegistration* factory;
         };
         std::vector<FrameResource> frame_resources;
         for (const auto id : candidate.retainedResources())
         {
-            const auto type = registry.declarationOf(id);
-            const auto* factory = registry.factory(type);
+            const auto* factory = registry.factory(registry.declarationOf(id));
             if (factory->frame_call.channels.empty()) continue;
             ResourceResponse local;
             queryResource({candidate.device, scope, factory->descriptor->type}, local);
             // Named graph imports may read a foreign scope. FrameData addresses the Job's own scope.
-            if (local.resource_id == id) frame_resources.push_back({id, type, factory});
+            if (local.resource_id == id) frame_resources.push_back({id, factory});
         }
         std::ranges::sort(frame_resources, {}, [](const FrameResource& resource) noexcept
         {
@@ -366,20 +365,15 @@ namespace lux::render
             extra_columns += count;
         }
         channels.reserve(extra_columns);
-        auto& columns = candidate.input_columns;
-        columns.reserve(extra_columns);
         for (const auto& resource : frame_resources)
         {
             const auto& call = resource.factory->frame_call;
-            const auto first = columns.size();
-            for (const auto& channel : call.channels)
-            {
-                columns.push_back(static_cast<std::uint32_t>(channels.size()));
-                channels.push_back(channel);
-            }
+            const auto first = channels.size();
+            channels.insert(channels.end(), call.channels.begin(), call.channels.end());
             candidate.inputs.emplace_back(
                 resource.id,
-                resource.type,
+                registry.resourceInstance(resource.id),
+                call.invoke,
                 JobExecution::Input::ColumnRange{
                     static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(call.channels.size())
                 }
@@ -388,7 +382,7 @@ namespace lux::render
         auto* previous = job.execution.get();
         const auto same_input = [](const auto& a, const auto& b) noexcept
         {
-            return a.identity == b.identity && a.call_slot == b.call_slot && a.columns == b.columns;
+            return a.identity == b.identity && a.columns == b.columns;
         };
         const bool can_reuse_layout = previous && previous->target == candidate.target &&
             std::ranges::equal(previous->input_layout.channels(), channels) &&

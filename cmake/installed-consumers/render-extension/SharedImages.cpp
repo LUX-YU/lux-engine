@@ -1,9 +1,11 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include "NativeGateQueue.hpp"
 #include "SharedImageRead.hpp"
 #include "SceneCapture.hpp"
 #include <future>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace
 {
@@ -31,11 +33,10 @@ namespace
     struct ImagePairDescriptor final
     {
         using Config = void;
-        using Ops = void;
-        using Commands = std::tuple<UpdateImages>;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.image_pair"}, 0, 0, {}, "Sampled and copy-source images.",
-            EResourceDomain::SCENE, resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+            EResourceDomain::SCENE
         };
     };
 
@@ -119,12 +120,12 @@ namespace
                 nri::QueueSubmitDesc{.waitFences = &point, .waitFenceNum = 1};
             if (release)
             {
-                auto& queue = device_.queue(EQueueRole::TRANSFER);
-                CHECK(device_.nriCore().QueueSubmit(queue.native(), descriptor) == nri::Result::SUCCESS);
+                auto& queue = sdk_test::gateQueue(device_, EQueueRole::TRANSFER);
+                CHECK(device_.nriCore().QueueSubmit(queue, descriptor) == nri::Result::SUCCESS);
                 return;
             }
             for (auto role : {EQueueRole::GRAPHICS, EQueueRole::COMPUTE})
-                CHECK(device_.nriCore().QueueSubmit(device_.queue(role).native(), descriptor) == nri::Result::SUCCESS);
+                CHECK(device_.nriCore().QueueSubmit(sdk_test::gateQueue(device_, role), descriptor) == nri::Result::SUCCESS);
         }
 
         static RenderResult<std::unique_ptr<ImageStore>>
@@ -134,11 +135,16 @@ namespace
             return std::make_unique<ImageStore>(context, id);
         }
 
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{CommandBinding::declare<UpdateImages, &update>()};
+            return commands;
+        }
+
         static ResourceRegistration factory() noexcept
         {
             static const StorageBindingOps ops{.describeGraphImport = describe, .resolveGraphImport = resolve};
-            static const std::array commands{CommandBinding::declare<UpdateImages, &update>()};
-            return makeResourceRegistration<Descriptor, ImageStore, &create>(nullptr, &ops, commands);
+            return makeResourceRegistration<Descriptor, ImageStore, &create>(&ops);
         }
 
         static inline std::atomic_bool hold_next{}, parked{}, resume{};
@@ -270,8 +276,8 @@ namespace
             }
             if (store.current_)
             {
-                const auto compute = store.device_.queueIndex(store.device_.queue(EQueueRole::COMPUTE));
-                const auto graphics = store.device_.queueIndex(store.device_.queue());
+                const auto compute = store.device_.queueIndex(EQueueRole::COMPUTE);
+                const auto graphics = store.device_.queueIndex(EQueueRole::GRAPHICS);
                 const auto& old_pair = store.current_->images;
                 std::printf("image read receipts: sampled compute=%llu, copy graphics=%llu\n",
                     static_cast<unsigned long long>(old_pair[0].readers.serials()[compute]),
@@ -296,7 +302,7 @@ namespace
         bool preparing_ = false;
     };
 
-    CapabilityDefinition readerDefinition()
+    EffectNodeDefinition readerDefinition()
     {
         return {
             .identity = {lux::graph::nodeTypeId(reader_name), std::string{reader_name}, 1},
@@ -392,7 +398,7 @@ int main(int argc, char** argv)
     options.multiple_queues = true;
     options.graph_queue_costs = {100, 100, 100};
     auto server = take(RenderServer::create(config, **execution));
-    take(server->registerResource<ImageStore>());
+    take(server->registerResource<ImageStore>(ImageStore::commandBindings()));
     take(server->registerResource<GraphCaptureBuffer>());
     const auto capability = readerDefinition();
     CHECK(server->registerEffectCapability(capability));
@@ -436,7 +442,7 @@ int main(int argc, char** argv)
             client, commands, {device, {extent, extent, rdesc::ETextureFormat::RGBA8_UNORM}}
         ).target;
         const CaptureConfig capture_config{&pixels[i]};
-        const auto capture = GraphCaptureBuffer::bind(client, commands, device, {scene, view}, capture_config);
+        const auto capture = GraphCaptureBuffer::bind({client, commands, device}, {scene, view}, capture_config);
         JobBinding binding;
         binding.resources = {{"source", source, i}, {std::string{ColorCapture::name}, capture}};
         jobs[i] = startRenderJob(client, commands, device, scene, view, target, effect, std::move(binding));

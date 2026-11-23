@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 #include <lux/engine/render/features/shadow/ShadowInputs.hpp>
-#include <lux/engine/render/resources/lighting/Binding.hpp>
-#include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
+#include <lux/engine/render/resource/instance/Data.hpp>
 
 namespace lux::render::detail
 {

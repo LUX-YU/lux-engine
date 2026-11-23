@@ -6,7 +6,7 @@
 #include <bit>
 #include <cmath>
 #include <exception>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <memory>
 #include <spirv-tools/libspirv.h>

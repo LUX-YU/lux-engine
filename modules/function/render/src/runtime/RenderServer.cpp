@@ -1,7 +1,7 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/effect/BuiltinEffectNodes.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/runtime/BuiltinRegistration.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 #include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
@@ -10,7 +10,7 @@
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
 #include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <atomic>
 #include <optional>
 
@@ -71,20 +71,20 @@ namespace lux::render
 
     RenderResult<void> RenderServer::registerBuiltins() noexcept
     {
-        using Storages = std::tuple<
-            detail::SampledTexture2DStorage, detail::IndexedTriangleMeshStorage, detail::RasterMaterialStorage,
-            detail::RasterMeshInstanceStorage, detail::TransformStorage, detail::DirectLightingStorage
-        >;
-        if (auto added = registerResource(detail::ViewParameterStorage::factory()); !added)
-            return cxx::unexpected(added.error());
-        RenderResult<void> registered;
-        cxx::tuple_traits::for_each_type<Storages>([&]<class Storage, std::size_t>() noexcept
+        const std::array registrations{
+            std::pair{&detail::ViewParameterStorage::factory, &detail::viewParameterStorageCommands},
+            std::pair{&detail::SampledTexture2DStorage::factory, &detail::sampledTexture2DStorageCommands},
+            std::pair{&detail::IndexedTriangleMeshStorage::factory, &detail::indexedTriangleMeshStorageCommands},
+            std::pair{&detail::RasterMaterialStorage::factory, &detail::rasterMaterialStorageCommands},
+            std::pair{&detail::RasterMeshInstanceStorage::factory, &detail::rasterMeshInstanceStorageCommands},
+            std::pair{&detail::TransformStorage::factory, &detail::transformStorageCommands},
+            std::pair{&detail::DirectLightingStorage::factory, &detail::directLightingStorageCommands}
+        };
+        for (const auto& [factory, commands] : registrations)
         {
-            if (!registered) return;
-            auto added = registerResource<Storage>();
-            if (!added) registered = cxx::unexpected(added.error());
-        });
-        if (!registered) return registered;
+            auto added = registerResource(factory(), {}, commands());
+            if (!added) return cxx::unexpected(added.error());
+        }
         if (auto depth = detail::registerDepthPyramid(*this); !depth) return depth;
         if (auto lighting = detail::registerLighting(*this); !lighting) return lighting;
         if (auto visibility = detail::registerMeshVisibility(*this); !visibility) return visibility;
@@ -95,7 +95,7 @@ namespace lux::render
     }
 
     RenderResult<ResourceTypeId>
-    RenderServer::registerResource(ResourceRegistration factory, ConfigValue configuration) noexcept
+    RenderServer::registerResource(ResourceRegistration factory, ConfigValue configuration, std::span<const CommandBinding> commands) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
         if (impl_->stop_requested_.load())
@@ -104,15 +104,11 @@ namespace lux::render
         }
         if (auto valid = impl_->runtime_->resources_.validateFactory(factory, configuration); !valid)
             return cxx::unexpected(valid.error());
-        if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.commands); !valid)
+        if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.storage()->implementation_type, commands); !valid)
             return cxx::unexpected(valid.error());
         auto& resources = impl_->runtime_->resources_;
         const auto type = resources.publishFactory(std::move(factory), std::move(configuration));
-        for (const auto& command : resources.factory(type)->commands)
-        {
-            const auto location = impl_->runtime_->command_registry_.publishResourceBinding(command);
-            if (!impl_->runtime_->resources_.bindCommand(type, location)) std::terminate();
-        }
+        for (const auto& command : commands) impl_->runtime_->command_registry_.publishResourceBinding(type, command);
         return type;
     }
 
@@ -138,17 +134,29 @@ namespace lux::render
         return id;
     }
 
-    RenderResult<void> RenderServer::registerEffectCapability(CapabilityDefinition definition) noexcept
+    RenderResult<void> RenderServer::registerEffectCapability(EffectNodeDefinition definition, std::vector<CommandId> commands) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        return impl_->effect_catalog_.addCapability(std::make_unique<CapabilityDefinition>(std::move(definition)));
+        for (std::size_t i = 0; i < commands.size(); ++i)
+        {
+            const auto prior = std::span{commands}.first(i);
+            if (std::ranges::find(prior, commands[i]) != prior.end())
+                return cxx::unexpected(RenderError{kCapabilityDeclaration});
+        }
+        auto node = std::make_unique<EffectNodeDefinition>(std::move(definition));
+        const auto* identity = node.get();
+        auto added = impl_->effect_catalog_.addCapability(std::move(node));
+        if (added) impl_->runtime_->command_registry_.publishNodeCommands(*identity, std::move(commands));
+        return added;
     }
 
-    RenderResult<void> RenderServer::registerEffectImplementation(EffectImplementation implementation) noexcept
+    RenderResult<void> RenderServer::registerEffectImplementation(
+        EffectImplementation implementation, std::vector<CommandBindingLocation> bindings
+    ) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
-        const auto& registry = impl_->runtime_->command_registry_;
-        for (const auto binding : implementation.command_bindings)
+        auto& registry = impl_->runtime_->command_registry_;
+        for (const auto binding : bindings)
         {
             const auto* command = registry.findCommand(binding.command);
             const auto* method = registry.binding(binding);
@@ -156,7 +164,16 @@ namespace lux::render
             const bool invalid_method = !method || !method->effect_state_type.isValid() || !method->handler.isNull();
             if (invalid_command || invalid_method) return cxx::unexpected(RenderError{kCommandContract});
         }
-        return impl_->effect_catalog_.addImplementation(std::make_unique<EffectImplementation>(std::move(implementation)));
+        const auto* node = impl_->effect_catalog_.findCapability(implementation.capability, implementation.capability_version);
+        if (!node) return cxx::unexpected(RenderError{kCapabilityDeclaration});
+        const auto required = registry.nodeCommands(*node);
+        if (!std::ranges::is_permutation(required, bindings, std::ranges::equal_to{}, std::identity{}, &CommandBindingLocation::command))
+            return cxx::unexpected(RenderError{kCapabilityDeclaration});
+        auto candidate = std::make_unique<EffectImplementation>(std::move(implementation));
+        const auto* identity = candidate.get();
+        auto added = impl_->effect_catalog_.addImplementation(std::move(candidate));
+        if (added) registry.publishImplementationBindings(*identity, std::move(bindings));
+        return added;
     }
 
     RenderResult<CommandBindingLocation>

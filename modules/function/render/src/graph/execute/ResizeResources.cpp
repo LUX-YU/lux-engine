@@ -1,13 +1,14 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/graph/execute/PassExtent.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 
 #include <algorithm>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <utility>
 
@@ -56,7 +57,7 @@ namespace lux::render::detail
             });
         if (needs_output && !has_output) return cxx::unexpected(RenderError{kDeviceArgument});
         const bool is_incompatible_output =
-            has_output && (output.frames.size() != gpu.frames.size() || !plan.compatible(output.description));
+            has_output && (output.frames.size() != gpu.frames.size() || !plan.compatible(output.description.graphRequirements()));
         if (is_incompatible_output)
         {
             return cxx::unexpected(RenderError{kDeviceArgument});

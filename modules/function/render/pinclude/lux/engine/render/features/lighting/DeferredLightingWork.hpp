@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 
 namespace lux::render
 {

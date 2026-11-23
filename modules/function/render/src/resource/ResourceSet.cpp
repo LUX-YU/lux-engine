@@ -1,6 +1,6 @@
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
 #include <utility>
 

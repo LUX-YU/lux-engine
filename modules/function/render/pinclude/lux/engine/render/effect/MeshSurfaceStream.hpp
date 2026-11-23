@@ -2,8 +2,8 @@
 
 #include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
-#include <lux/engine/render/resources/instance/Data.hpp>
-#include <lux/engine/render/resources/material/Resource.hpp>
+#include <lux/engine/render/resource/instance/Data.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
 #include <map>
 
 namespace lux::render

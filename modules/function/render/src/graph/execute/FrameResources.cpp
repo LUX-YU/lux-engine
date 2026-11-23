@@ -1,4 +1,4 @@
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <cstring>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
@@ -186,7 +186,6 @@ namespace lux::render::detail
     {
         raster_draws.resize(recording.raster_list_count);
         if (recording.producer_passes.empty()) return;
-        stream_inputs.resize(recording.raster_list_count);
         stream_descriptor_rows.resize(recording.raster_list_count);
     }
 

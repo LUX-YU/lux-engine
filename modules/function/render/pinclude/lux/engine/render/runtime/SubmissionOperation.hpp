@@ -1,13 +1,15 @@
 #pragma once
 
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 
 #include <lux/engine/core/execution/Scheduler.hpp>
-#include <lux/engine/render/extensions/graph/Diagnostics.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <optional>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/graph/Ids.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 #include <lux/engine/render/visibility.h>
 
 namespace lux::render::runtime_detail { struct JobExecution; }

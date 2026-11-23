@@ -1,3 +1,6 @@
+#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
 #include "MaterialFixture.hpp"
 #include "ClusterScan.hpp"
 #include "ClusterCompare.hpp"
@@ -5,23 +8,21 @@
 #include <cmath>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/capabilities/ClusterGrid.hpp>
-#include <lux/engine/render/resources/lighting/Commands.hpp>
-#include <lux/engine/render/resources/material/Commands.hpp>
-#include <lux/engine/render/resources/mesh/Commands.hpp>
-#include <lux/engine/render/resources/instance/Commands.hpp>
-#include <lux/engine/render/resources/lighting/Binding.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/effect/ClusterLists.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/MeshVisibility.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
+#include <lux/engine/render/resource/mesh/Binding.hpp>
+#include <lux/engine/render/effect/builtin/ClusterLists.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/resources/instance/Binding.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/resource/instance/Binding.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #include <numeric>
 
 namespace graph = lux::graph;
@@ -47,7 +48,7 @@ static auto sizes(const ClusterGrid& grid)
 struct ClusterReadbackDescriptor final
 {
     using Config = void;
-    using Ops = void;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.cluster.readback"}, 0, 0, {}, "View-owned Clustered Lighting readback.",
         EResourceDomain::VIEW
@@ -99,7 +100,7 @@ struct ClusterReadback final
                 );
             }
         };
-        return makeResourceRegistration<Descriptor, ClusterReadback, &create>(nullptr, &binding);
+        return makeResourceRegistration<Descriptor, ClusterReadback, &create>(&binding);
     }
 
     CaptureBuffer storage;
@@ -132,9 +133,9 @@ static RenderResult<void> copyReadback(
     return context.publish(name, {{name, copied->written.front()}});
 }
 
-static CapabilityDefinition inspectionDefinition(std::string_view name, bool scene)
+static EffectNodeDefinition inspectionDefinition(std::string_view name, bool scene)
 {
-    CapabilityDefinition definition;
+    EffectNodeDefinition definition;
     definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
     definition.ports = {
         {first_bytes, "first", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT},
@@ -404,10 +405,11 @@ static CreateEffectRequest inspectionEffect(const ClusterGrid* grid = nullptr)
 }
 
 static void bindReadback(
-    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId session, ViewRequest view,
+    CaptureDevice device, ViewScope view,
     const ClusterReadback::Configuration& config, JobBinding& binding
 )
 {
+    const auto& [client, commands, session] = device;
     ClusterReadback::creation_input.store(&config);
     const auto readback = call<GetOrCreateResource>(client, commands, {
         session, view, ClusterReadbackDescriptor::descriptor.type
@@ -573,7 +575,7 @@ int main(int argc, char** argv)
             auto view = call<CreateView>(*client, commands, {scene}).view;
             auto output = call<CreateTarget>(*client, commands, {session, target}).target;
             JobBinding binding;
-            const ViewRequest scope{scene, view};
+            const ViewScope scope{scene, view};
             const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
                 session, scope, kViewParameterResourceName
             }).resource_id;
@@ -583,7 +585,7 @@ int main(int argc, char** argv)
             call<ViewParameterCommands::Update>(*client, commands, {
                 camera_resource, std::span{&input, 1}
             });
-            bindReadback(*client, commands, session, scope, capture, binding);
+            bindReadback({*client, commands, session}, scope, capture, binding);
             const auto transforms = device.buffer_device_address ?
                 ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
             const auto properties = device.buffer_device_address ?
@@ -649,7 +651,7 @@ int main(int argc, char** argv)
     auto scan_view = call<CreateView>(*client, commands, {scan_scene}).view;
     auto scan_target = call<CreateTarget>(*client, commands, {session, target}).target;
     JobBinding scan_binding;
-    bindReadback(*client, commands, session, ViewRequest{scan_scene, scan_view}, scan_capture, scan_binding);
+    bindReadback({*client, commands, session}, ViewScope{scan_scene, scan_view}, scan_capture, scan_binding);
     const auto attachment = startRenderJob(
         *client, commands, session, scan_scene, scan_view, scan_target, scan_effect, std::move(scan_binding)
     );

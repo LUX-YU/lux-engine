@@ -1,7 +1,8 @@
 #pragma once
 
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
-#include <lux/engine/render/runtime/DeviceOptions.hpp>
+#include <lux/engine/render/device/DeviceOptions.hpp>
 
 namespace lux::render::detail
 {

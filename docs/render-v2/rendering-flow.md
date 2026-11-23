@@ -86,7 +86,7 @@ ExecutionRuntime::create
 | `BuiltinFeatures` | 私有编译期类型清单；Feature 用 tuple 声明 Storage 和 Command 依赖，不持有实例 | `pinclude/.../features/BuiltinFeatures.hpp` |
 | `HandlerRecord` | 保存构造入口和唯一实例；登记时对象为空，激活后供 Command 借用 | `include/.../runtime/detail/HandlerRecord.hpp` |
 | `FeatureEntry` | 稳定的 Feature 描述和构建函数；编译任务可借用已安装条目 | [EffectCompilation.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/EffectCompilation.hpp) |
-| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/include/lux/engine/render/extensions/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
+| `DeviceSession` | 设备能力、NRI 设施、唯一物理 Queue 集合、DescriptorTable、唯一物理清理 scope | [DeviceSession.hpp](../../modules/function/render/include/lux/engine/render/device/DeviceSession.hpp) / [实现](../../modules/function/render/src/device/DeviceSession.cpp) |
 | `DeviceBackend` | 选定后端的设备初始化及专属能力适配；不承担帧调度 | [DeviceBackend.cpp](../../modules/function/render/src/device/vulkan/DeviceBackend.cpp) |
 | `DescriptorTable` | 设备级 sampled-image/sampler 索引和 Native 描述符；不拥有材质业务依赖 | [DescriptorTable.cpp](../../modules/function/render/src/device/DescriptorTable.cpp) |
 
@@ -162,7 +162,7 @@ Client RequestSender::start → IpcMessage → IpcRequester::trySend
 完成可发生在 Worker；错误与停止先归一化为 Response，再由 `continues_on(renderScheduler)` 将结果转交
 RenderThread，随后 `ResponseOutbox::flushTo(responder, budget)` 发布。
 
-源码：[CommandBinding.hpp](../../modules/function/render/include/lux/engine/render/extensions/CommandBinding.hpp)、
+源码：[CommandBinding.hpp](../../modules/function/render/include/lux/engine/render/runtime/commands/CommandBinding.hpp)、
 [CommandDispatchContext.cpp](../../modules/function/render/src/runtime/CommandDispatchContext.cpp)、
 [ResponseOutbox.hpp](../../modules/function/render/pinclude/lux/engine/render/runtime/ResponseOutbox.hpp)。
 
@@ -174,7 +174,7 @@ Response 使用显式 `RenderError error` 和业务字段，内部函数可以�
 ### 5.1 实例归属
 
 [ResourceSet](../../modules/function/render/sinclude/lux/engine/render/resource/ResourceSet.hpp) 独占实际 Storage；
-[ResourceRegistry](../../modules/function/render/include/lux/engine/render/extensions/resource/ResourceRegistry.hpp) 拥有类型目录、
+[ResourceRegistry](../../modules/function/render/include/lux/engine/render/resource/ResourceRegistry.hpp) 拥有类型目录、
 ResourceInstanceId 带代际，目录提供非拥有定位。DeviceEntry、Scene 和 View 各自拥有对应域的 ResourceSet。
 客户端先 CreateEffect 和 CreateRenderJob，再以 JobId 启动执行和查询帧输入布局。
 普通 Client 通过 QueryResource/GetOrCreateResource 取得 ResourceInstanceId；上传创建使用该实例身份，
@@ -218,7 +218,7 @@ typed CommandHandler
   → continues_on(RenderThread Scheduler) → ResponseOutbox
 ```
 
-[ResourceUploader](../../modules/function/render/include/lux/engine/render/extensions/upload/ResourceUploader.hpp) 拥有 Staging 和
+[ResourceUploader](../../modules/function/render/include/lux/engine/render/device/ResourceUploader.hpp) 拥有 Staging 和
 上传设施，不拥有专业 Storage 候选，也不拥有另一套 running-task 表。`BufferWrite/BufferCopy` 只是借用范围记录。
 `StagingArena` 以真实 Queue 完成复用页；`BufferArena` 管几何区间，最终物理释放仍走 Session。
 
@@ -398,7 +398,7 @@ Graphics/Compute/Transfer 是角色，可能映射同一物理 Queue，不能按
 
 ## 10. GPU 完成与释放
 
-[SubmissionQueue](../../modules/function/render/include/lux/engine/render/extensions/device/SubmissionQueue.hpp) 拥有 Native Queue 的
+[SubmissionQueue](../../modules/function/render/include/lux/engine/render/device/SubmissionQueue.hpp) 拥有 Native Queue 的
 提交槽、serial、完成前沿和就绪回调；`poll()` 观察，`dispatchCompleted()` 在 RenderThread 分发。
 回调节点先摘除再执行，执行后不读取可能已销毁的节点。
 

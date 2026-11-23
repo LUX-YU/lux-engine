@@ -2,12 +2,12 @@
 
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
-#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/resource/ResourceBinding.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 
 namespace lux::render::detail
 {
-    struct OwnedRasterStream;
+    struct RasterDrawInput;
     struct FrameResources;
     struct RasterDescriptorLayout;
 
@@ -16,9 +16,12 @@ namespace lux::render::detail
     {
     public:
         RasterFramePreparation(
-            const compiled::RenderGraph& graph, FrameResources& frame, const JobGpuResources& gpu
+            const compiled::RenderGraph& graph,
+            FrameResources& frame,
+            const JobGpuResources& gpu,
+            std::span<const RasterDrawInput> draws
         ) noexcept
-            : graph_(graph), frame_(frame), gpu_(gpu), session_(gpu.session) {}
+            : graph_(graph), frame_(frame), gpu_(gpu), session_(gpu.session), draws_(draws) {}
 
         [[nodiscard]] RenderResult<void> prepareDescriptorCapacity(bool resize_pool) noexcept;
         [[nodiscard]] RenderResult<void> prepareSections() noexcept;
@@ -39,7 +42,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> materializeStream(std::uint32_t pass, const CompiledRasterStream&) noexcept;
         void publishStream(std::uint32_t pass, std::uint32_t list) noexcept;
         [[nodiscard]] RenderResult<void> resizeLayers(GraphResourceId, std::uint32_t layers) noexcept;
-        [[nodiscard]] RenderResult<void> materializeSections(std::uint32_t pass, const OwnedRasterStream&) noexcept;
+        [[nodiscard]] RenderResult<void> materializeSections(std::uint32_t pass, const RasterDrawInput&) noexcept;
         [[nodiscard]] RenderResult<void> growDescriptorPool() noexcept;
         [[nodiscard]] const RasterDescriptorLayout& rasterBindings(RasterBindingKey) const noexcept;
         [[nodiscard]] RenderResult<nri::DescriptorSet*> descriptorSet(
@@ -50,5 +53,6 @@ namespace lux::render::detail
         FrameResources& frame_;
         const JobGpuResources& gpu_;
         DeviceSession& session_;
+        std::span<const RasterDrawInput> draws_;
     };
 } // namespace lux::render::detail

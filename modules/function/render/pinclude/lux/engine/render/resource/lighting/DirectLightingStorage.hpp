@@ -1,13 +1,13 @@
 #pragma once
 
-#include <lux/engine/render/resources/lighting/Resource.hpp>
+#include <lux/engine/render/resource/lighting/Resource.hpp>
 
 #include <exec/task.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/resources/lighting/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 
 namespace lux::render::detail

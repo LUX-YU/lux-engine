@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <NRI.h>
 
 namespace lux::render::compiled { class RenderGraph; }

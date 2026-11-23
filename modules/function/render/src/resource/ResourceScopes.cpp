@@ -4,7 +4,7 @@ namespace lux::render
 {
     RenderResult<ResourceSet*>
     RenderServer::Impl::resourceScope(
-        detail::DeviceEntry& device, const VRenderScope& scope, ResourceTypeId type, bool create
+        detail::DeviceEntry& device, const VResourceScope& scope, ResourceTypeId type, bool create
     ) noexcept
     {
         const auto* factory = runtime_->resources_.factory(type);
@@ -17,7 +17,7 @@ namespace lux::render
             scene = *scene_scope;
             if (!runtime_->scenes_.find(scene)) return cxx::unexpected(RenderError{kRuntimeIdentity});
         }
-        if (const auto* view_scope = std::get_if<ViewRequest>(&scope))
+        if (const auto* view_scope = std::get_if<ViewScope>(&scope))
         {
             scene = view_scope->scene;
             view = view_scope->view;

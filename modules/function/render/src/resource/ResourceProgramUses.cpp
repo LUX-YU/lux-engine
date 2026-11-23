@@ -1,8 +1,8 @@
-#include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
+#include <lux/engine/render/resource/ResourceProgramUses.hpp>
 
 #include <lux/engine/render/device/CompiledPrograms.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <algorithm>
 
 namespace lux::render

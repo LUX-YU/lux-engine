@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -6,17 +7,17 @@
 #include <exec/create.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/extensions/CommandMethod.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/runtime/commands/CommandMethod.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <optional>
 #include <thread>
 #include <type_traits>
@@ -201,15 +202,14 @@ static constexpr std::uint32_t readback_frames = history_distance + 1;
 static constexpr std::uint32_t fallback_value = 17;
 static constexpr std::uint32_t expected_value = 42;
 
-static CapabilityDefinition routedDefinition(CommandId command)
+static EffectNodeDefinition routedDefinition()
 {
     return {
         .identity = {graph::nodeTypeId(routed_capability), std::string{routed_capability}, 1},
         .ports = {
             {previous_color, "previous", {std::string{color_type}, 1}, graph::EPinDirection::INPUT},
             {output_color, "color", {std::string{color_type}, 1}, graph::EPinDirection::OUTPUT}
-        },
-        .commands = {command}
+        }
     };
 }
 
@@ -267,14 +267,13 @@ static RenderResult<void> initializeRouted(EffectInitializationContext& context,
 }
 
 static EffectImplementation routedImplementation(
-    std::string_view name, CommandBindingLocation command, EffectImplementation::Initialize initialize
+    std::string_view name, EffectImplementation::Initialize initialize
 )
 {
     return {
         .capability = graph::nodeTypeId(routed_capability),
         .identity = {std::string{name}, 1},
         .supported_outputs = {output_color},
-        .command_bindings = {command},
         .initialize = initialize,
         .build = buildRouted
     };
@@ -283,12 +282,10 @@ static EffectImplementation routedImplementation(
 template <bool Alternate> struct ProbeResource final
 {
     using Config = void;
-    using Ops = void;
-    using Commands = std::tuple<ProbeUpload, ProbeSize>;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{Alternate ? "example.resource.buffer.b" : "example.resource.buffer.a"},
-        0, 0, {}, "An independently owned GPU buffer.", EResourceDomain::DEVICE,
-        resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+        0, 0, {}, "An independently owned GPU buffer.", EResourceDomain::DEVICE
     };
 };
 
@@ -342,6 +339,14 @@ struct ProbeStorage final
         return storage;
     }
 
+    static std::span<const CommandBinding> commandBindings() noexcept
+    {
+        static const std::array commands{
+            CommandBinding::declare<ProbeUpload, &upload>(), CommandBinding::declare<ProbeSize, &size>()
+        };
+        return commands;
+    }
+
     static ResourceRegistration factory() noexcept
     {
         const detail::StorageBindingOps binding{
@@ -362,10 +367,7 @@ struct ProbeStorage final
                 return {};
             }
         };
-        static const std::array commands{
-            CommandBinding::declare<ProbeUpload, &upload>(), CommandBinding::declare<ProbeSize, &size>()
-        };
-        return makeResourceRegistration<ProbeResource<false>, ProbeStorage, &create>(nullptr, &binding, commands);
+        return makeResourceRegistration<ProbeResource<false>, ProbeStorage, &create>(&binding);
     }
 
     static exec::task<ProbeUpload::Response> upload(ProbeStorage& storage, ProbeUpload::Request&& request) noexcept
@@ -428,11 +430,10 @@ struct ProbeReference final
 template <EResourceDomain Domain> struct DomainResource final
 {
     using Config = void;
-    using Ops = void;
-    using Commands = std::tuple<ProbeReference>;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{Domain == EResourceDomain::SCENE ? "example.resource.scene" : "example.resource.view"},
-        0, 0, {}, "Resource domain probe.", Domain, resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+        0, 0, {}, "Resource domain probe.", Domain
     };
 };
 
@@ -456,10 +457,15 @@ struct DomainStorage final
             RenderError{kStorageMismatch};
     }
 
-    template <EResourceDomain Domain> static ResourceRegistration factory() noexcept
+    static std::span<const CommandBinding> commandBindings() noexcept
     {
         static const std::array commands{CommandBinding::declare<ProbeReference, &reference>()};
-        return makeResourceRegistration<DomainResource<Domain>, DomainStorage, &create>(nullptr, nullptr, commands);
+        return commands;
+    }
+
+    template <EResourceDomain Domain> static ResourceRegistration factory() noexcept
+    {
+        return makeResourceRegistration<DomainResource<Domain>, DomainStorage, &create>();
     }
 };
 
@@ -468,7 +474,7 @@ struct ProbeReadback final
     struct Descriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"example.resource.readback"}, 0, 0, {}, "An offscreen transfer result.",
             EResourceDomain::VIEW
@@ -540,11 +546,11 @@ struct ProbeReadback final
                 return {};
             }
         };
-        return makeResourceRegistration<Descriptor, ProbeReadback, &create>(nullptr, &binding);
+        return makeResourceRegistration<Descriptor, ProbeReadback, &create>(&binding);
     }
 };
 
-static CapabilityDefinition transferDefinition()
+static EffectNodeDefinition transferDefinition()
 {
     return {
         .identity = {graph::nodeTypeId(transfer_capability), std::string{transfer_capability}, 1},
@@ -634,7 +640,7 @@ struct RejectedStorage final
     struct Descriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition
             descriptor{ResourceNameView{"example.storage.reject"}, 0, 0, {}, "A recoverable factory failure."};
     };
@@ -646,7 +652,7 @@ struct RejectedStorage final
 
     static ResourceRegistration factory() noexcept
     {
-        return makeResourceRegistration<Descriptor, RejectedStorage, &create>(nullptr);
+        return makeResourceRegistration<Descriptor, RejectedStorage, &create>();
     }
 };
 
@@ -708,13 +714,13 @@ static void checkResourceDomains(ipc::IpcRequester& client, DeviceSessionId sess
         CHECK(reply.error.type == 0);
         return reply.scene;
     };
-    const auto make_view = [&](SceneId scene) -> ViewRequest
+    const auto make_view = [&](SceneId scene) -> ViewScope
     {
         const auto reply = call<CreateView>(client, ids[1], {scene});
         CHECK(reply.error.type == 0);
         return {scene, reply.view};
     };
-    const auto ensure = [&](const VRenderScope& scope, ResourceNameView name)
+    const auto ensure = [&](const VResourceScope& scope, ResourceNameView name)
     {
         const auto reply = call<GetOrCreateResource>(client, ids[4], {session, scope, name});
         CHECK(reply.error.type == 0);
@@ -783,30 +789,18 @@ int main(int argc, char** argv)
         descriptor.type = ResourceNameView{resource_name};
         descriptor.description = description;
 
-        constexpr auto command_count = std::tuple_size_v<ProbeResource<false>::Commands>;
-        CHECK(descriptor.commands.size() == command_count);
-        std::array<CommandDescriptor, command_count> commands{};
-        std::array<const CommandDescriptor*, command_count> declarations{};
-        std::array<std::string, command_count> names;
-        for (std::size_t i = 0; i < command_count; ++i)
-        {
-            commands[i] = *descriptor.commands[i];
-            names[i] = commands[i].name.name();
-            commands[i].name = CommandName{names[i]};
-            declarations[i] = &commands[i];
-        }
-        descriptor.commands = declarations;
-        auto bindings = std::vector(registration.commands.begin(), registration.commands.end());
-        registration.commands = bindings;
+        const auto methods = ProbeStorage::commandBindings();
+        std::vector<CommandBinding> bindings(methods.begin(), methods.end());
+        CHECK(!bindings.empty());
         registration.descriptor = &descriptor;
-        take(server->registerResource(std::move(registration)));
+        take(server->registerResource(std::move(registration), {}, bindings));
     }
-    take(server->registerResource<ProbeStorageType<true>>());
-    take(server->registerResource(DomainStorage::factory<EResourceDomain::SCENE>()));
-    take(server->registerResource(DomainStorage::factory<EResourceDomain::VIEW>()));
+    take(server->registerResource<ProbeStorageType<true>>(ProbeStorage::commandBindings()));
+    take(server->registerResource(DomainStorage::factory<EResourceDomain::SCENE>(), {}, DomainStorage::commandBindings()));
+    take(server->registerResource(DomainStorage::factory<EResourceDomain::VIEW>(), {}, DomainStorage::commandBindings()));
     take(server->registerResource(ProbeReadback::factory()));
     take(server->registerResource<RejectedStorage>());
-    const auto duplicate_resource = server->registerResource<ProbeStorageType<false>>();
+    const auto duplicate_resource = server->registerResource<ProbeStorageType<false>>(ProbeStorage::commandBindings());
     CHECK(!duplicate_resource && duplicate_resource.error().type == kStorageMismatch);
 
     const auto setter_a = take(server->registerNodeEffectCommand(
@@ -816,35 +810,33 @@ int main(int argc, char** argv)
         CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &updateRouted<29>>()
     ));
     CHECK(setter_a.command == setter_b.command && setter_a.binding != setter_b.binding);
-    const auto routed = routedDefinition(setter_a.command);
-    CHECK(server->registerEffectCapability(routed));
-    CHECK(server->registerEffectImplementation(routedImplementation(route_b, setter_b, initializeRouted<29>)));
-    CHECK(server->registerEffectImplementation(routedImplementation(route_a, setter_a, initializeRouted<17>)));
+    const auto routed = routedDefinition();
+    CHECK(server->registerEffectCapability(routed, {setter_a.command}));
+    CHECK(server->registerEffectImplementation(routedImplementation(route_b, initializeRouted<29>), {setter_b}));
+    CHECK(server->registerEffectImplementation(routedImplementation(route_a, initializeRouted<17>), {setter_a}));
     CHECK(server->registerEffectImplementation(routedImplementation(
         route_failure,
-        setter_a,
         [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
         {
             return cxx::unexpected(RenderError{kInvalidConfig});
         }
-    )));
+    ), {setter_a}));
     const auto transfer = transferDefinition();
     CHECK(server->registerEffectCapability(transfer));
     CHECK(server->registerEffectImplementation(transferImplementation()));
 
-    const auto duplicate_node = server->registerEffectCapability(routed);
+    const auto duplicate_node = server->registerEffectCapability(routed, {setter_a.command});
     CHECK(!duplicate_node && duplicate_node.error().type == kCapabilityConflict);
-    auto changed = routedImplementation(route_a, setter_a, initializeRouted<17>);
+    auto changed = routedImplementation(route_a, initializeRouted<17>);
     changed.display_name = "Conflicting implementation metadata";
-    const auto duplicate_implementation = server->registerEffectImplementation(std::move(changed));
+    const auto duplicate_implementation = server->registerEffectImplementation(std::move(changed), {setter_a});
     CHECK(!duplicate_implementation && duplicate_implementation.error().type == kCapabilityConflict);
     auto unknown_output = transferImplementation();
     unknown_output.identity.canonical_name = "example.graph.unknown_output";
     unknown_output.supported_outputs.push_back(effectPortSemantic("missing"));
     const auto unsupported_port = server->registerEffectImplementation(std::move(unknown_output));
     CHECK(!unsupported_port && unsupported_port.error().type == kCapabilityDeclaration);
-    auto missing_command = routedImplementation("example.effect.missing_command", setter_a, initializeRouted<17>);
-    missing_command.command_bindings.clear();
+    auto missing_command = routedImplementation("example.effect.missing_command", initializeRouted<17>);
     const auto incomplete = server->registerEffectImplementation(std::move(missing_command));
     CHECK(!incomplete && incomplete.error().type == kCapabilityDeclaration);
 
@@ -959,7 +951,7 @@ int main(int argc, char** argv)
     const auto view = call<CreateView>(client, command_id(CreateView::name), {scene.scene});
     CHECK(!scene.error.type && !view.error.type);
     const auto readback = call<GetOrCreateResource>(client, get_resource, {
-        session, ViewRequest{scene.scene, view.view}, ProbeReadback::Descriptor::descriptor.type
+        session, ViewScope{scene.scene, view.view}, ProbeReadback::Descriptor::descriptor.type
     });
     CHECK(!readback.error.type);
     const auto create_target = command_id(CreateTarget::name);

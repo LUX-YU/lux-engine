@@ -1,8 +1,9 @@
 #pragma once
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
 
-#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/resource/material/ProgramSource.hpp>
 
 #include <exec/task.hpp>
@@ -11,10 +12,10 @@
 #include <unordered_map>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/MaterialLayout.hpp>
-#include <lux/engine/render/resources/material/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/material/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/material/MaterialProgramRecord.hpp>
-#include <lux/engine/render/resources/material/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
 
 namespace lux::render::detail
 {

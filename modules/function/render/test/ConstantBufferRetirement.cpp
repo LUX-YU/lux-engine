@@ -1,9 +1,12 @@
+#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include "BufferReadback.hpp"
 #include "NativeDevice.hpp"
 #include "RetirementFence.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
 
 using namespace foundation_test;
@@ -38,10 +41,10 @@ int main(int argc, char** argv)
     const auto upload = [&]
     {
         CHECK(uploader->hasFrameCopies());
-        CHECK(uploader->flushFrameCopies());
-        const auto receipt = take(runTask(uploader->submitPreparationCopies()));
+        CHECK(FrameOperation::flushFrameCopies(*uploader));
+        const auto receipt = take(runTask(FrameOperation::submitPreparationCopies(*uploader)));
         CHECK(receipt && receipt->ranges == 1);
-        uploader->acceptFrameCopies(*receipt);
+        FrameOperation::acceptFrameCopies(*uploader, *receipt);
         round.settle(receipt->point, {});
         CHECK(take(graphics.wait(receipt->point.serial, 5'000'000'000)));
         const auto bound = prepare();

@@ -1,12 +1,13 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <exception>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/graph/compile/GraphCompiler.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
@@ -258,7 +259,9 @@ namespace lux::render
         }
         if (!state.writer.isNull())
         {
-            if (!runtime_->jobs_.find(state.writer)->execution->graph().compatible(input.description))
+            const auto& graph = runtime_->jobs_.find(state.writer)->execution->graph();
+            const bool same_contract = targetDescription(*target).outputContract() == input.description.outputContract();
+            if (!same_contract || !graph.compatible(input.description.graphRequirements()))
             {
                 co_return response(RenderError{kDeviceArgument});
             }
@@ -492,13 +495,12 @@ namespace lux::render
 
     void RenderServer::Impl::progressUploads(detail::DeviceEntry& device) noexcept
     {
-        if (auto* uploader = device.uploader(); uploader && !device.upload_pending && uploader->canProgressTransfers())
+        if (auto task = device.startReadyUploads())
         {
-            device.upload_pending = true;
             const auto delivery = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
             stdexec::spawn(
                 stdexec::starts_on(delivery,
-                    uploader->submitReadyTransfers()) |
+                    std::move(*task)) |
                     stdexec::upon_error([](auto) noexcept -> RenderResult<void> { std::terminate(); }) |
                     stdexec::upon_stopped([]() noexcept -> RenderResult<void> { std::terminate(); }) |
                     stdexec::then(
@@ -1116,21 +1118,13 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kDeviceBusy});
             }
             auto& resources = runtime_->resources_;
-            const auto admitted = resources.beginCommand(id, command, exclusive);
-            if (!admitted)
-            {
-                return cxx::unexpected(admitted.error());
-            }
-            const auto* selected = entry.binding(admitted->binding.binding);
-            const bool is_invalid_call =
-                !selected || !selected->call.invoke || selected->storage_type != admitted->implementation;
-            if (is_invalid_call)
-            {
-                resources.finishCommand(id);
-                return cxx::unexpected(RenderError{kCommandContract});
-            }
+            const auto type = resources.declarationOf(id);
+            const auto selected = std::ranges::find(entry.bindings, type, &HandlerBinding::resource);
+            if (selected == entry.bindings.end()) return cxx::unexpected(RenderError{kCommandContract});
+            const auto admitted = resources.beginCommand(id, exclusive);
+            if (!admitted) return cxx::unexpected(admitted.error());
             context.resource_id = id;
-            context.resource = resources.resourceInstance(id);
+            context.resource = *admitted;
             context.device = found->get();
             return selected->call;
         }

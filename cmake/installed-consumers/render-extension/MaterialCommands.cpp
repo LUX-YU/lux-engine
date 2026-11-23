@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>

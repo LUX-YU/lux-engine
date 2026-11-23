@@ -1,9 +1,12 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/editor/ui/render/Ui.hpp>
 #include <lux/editor/ui/render/Resource.hpp>
-#include <lux/engine/render/resources/texture/Commands.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
 using namespace lux::editor::ui;
 #include <optional>
 #include <source_location>
@@ -26,19 +29,17 @@ namespace
     template <int I> struct Inputs final
     {
         using Config = void;
-        using Ops = void;
-        using Commands = std::tuple<Read>;
+
         using PerFrameData = std::tuple<Delta, Stamp>;
         static inline const ResourceDefinition descriptor{
             ResourceNameView{I == 0 ? "test.frame.a" : "test.frame.b"}, 0, 0, {}, "column probe",
-            EResourceDomain::SCENE, resourceCommandDescriptors(static_cast<Commands*>(nullptr)),
+            EResourceDomain::SCENE,
             resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
         };
     };
     struct FrameInputCapability final
     {
         using Resources = std::tuple<Inputs<0>, Inputs<1>, InstanceResource, LightResource>;
-        using Commands = std::tuple<>;
         using PrerequisiteCapabilities = std::tuple<>;
     };
 
@@ -61,9 +62,14 @@ namespace
         }
         static void read(Counter& value, const Read::Request&, Read::Response& response) noexcept
         { response = {{}, value.sum, value.stamp, value.calls}; }
-        template <int I> static ResourceRegistration factory() noexcept
+        static std::span<const CommandBinding> commandBindings() noexcept
         {
             static const std::array commands{CommandBinding::declare<Read, &read>()};
+            return commands;
+        }
+
+        template <int I> static ResourceRegistration factory() noexcept
+        {
             return makeResourceRegistration<Inputs<I>, Counter, &create>(nullptr, nullptr, commands,
                 FrameDataCall::declare<Inputs<I>, Counter, &apply>());
         }
@@ -172,8 +178,8 @@ int main(int argc, char** argv)
     take(server->registerResource<CaptureBuffer>());
     const auto capture_feature = take(server->registerFeature<CaptureFeature>());
     const auto capture_probe = registerCaptureProbe(*server, capture_feature);
-    take(server->registerResource(Counter::factory<0>()));
-    take(server->registerResource(Counter::factory<1>()));
+    take(server->registerResource(Counter::factory<0>(), {}, Counter::commandBindings()));
+    take(server->registerResource(Counter::factory<1>(), {}, Counter::commandBindings()));
     const auto feature = take(server->registerFeature<ClearFeature>());
     const auto implementation = registerRenderProbe<Configuration, FrameInputCapability>(*server, "test.frame.columns", {feature},
         probePorts({"color"}, {}),
@@ -330,7 +336,7 @@ int main(int argc, char** argv)
     const auto ui_target = call<CreateTarget>(*wire, commands, {session, target}).target;
     const auto ui_attachment = startRenderJob(*wire, commands, session, scene, ui_view, ui_target, ui_effect);
     const auto ui_resource = call<QueryResource>(*wire, commands,
-        {session, ViewRequest{scene, ui_view}, UiResource::descriptor.type}).resource_id;
+        {session, ViewScope{scene, ui_view}, UiResource::descriptor.type}).resource_id;
     CHECK(!ui_resource.isNull());
 
     const auto texture_storage = call<GetOrCreateResource>(

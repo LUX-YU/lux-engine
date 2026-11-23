@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/resource/mesh/Data.hpp>
 
 namespace lux::render::detail
 {

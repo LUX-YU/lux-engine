@@ -3,7 +3,7 @@
 #include <lux/engine/render/graph/execute/CommandExtent.hpp>
 
 #include <lux/engine/render/device/ImageFormat.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 
 namespace lux::render::detail

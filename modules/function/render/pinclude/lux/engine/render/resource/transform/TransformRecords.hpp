@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/extensions/resource/ResourceIdentity.hpp>
+#include <lux/engine/render/resource/ResourceIdentity.hpp>
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
-#include <lux/engine/render/resources/transform/Data.hpp>
+#include <lux/engine/render/resource/transform/Data.hpp>
 
 namespace lux::render::detail
 {

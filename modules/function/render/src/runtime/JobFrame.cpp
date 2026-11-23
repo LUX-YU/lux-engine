@@ -1,6 +1,6 @@
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/GraphBindingPlan.hpp>
 #include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
@@ -25,7 +25,7 @@ namespace lux::render::runtime_detail
         const bool wrong_device = plan.device() != &session.device();
         const bool wrong_target =
             !output_.frames.empty() &&
-            (!plan.compatible(output_.description) || output_.frames.size() != frames_.size());
+            (!plan.compatible(output_.description.graphRequirements()) || output_.frames.size() != frames_.size());
         const bool needs_target = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept { return resource.target_sized; });
         const bool missing_target = needs_target && output_.frames.empty();
@@ -245,8 +245,9 @@ namespace lux::render::runtime_detail
         const bool is_d3d12 = session.description().graphicsAPI == nri::GraphicsAPI::D3D12;
         const bool shared_changed = frame.shared_descriptors.generation != shared_generation;
         const bool resize_pool = shared_changed && frame.shared_descriptors.capacities != shared.snapshotCounts();
-        RasterFramePreparation raster(plan, frame, gpu_);
-        if (resize_pool || !frame.stream_inputs.empty())
+        const auto draws = preparation.drawInputs();
+        RasterFramePreparation raster(plan, frame, gpu_, draws);
+        if (resize_pool || !draws.empty())
         {
             if (auto capacity = raster.prepareDescriptorCapacity(resize_pool); !capacity)
                 return cxx::unexpected(capacity.error());
@@ -281,7 +282,7 @@ namespace lux::render::runtime_detail
             }
             frame.shared_descriptors.generation = shared_generation;
         }
-        if (!frame.stream_inputs.empty())
+        if (!draws.empty())
         {
             if (auto sections = raster.prepareSections(); !sections) return cxx::unexpected(sections.error());
             if (auto streams = raster.materializeStreams(); !streams) return cxx::unexpected(streams.error());

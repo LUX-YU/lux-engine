@@ -470,7 +470,7 @@ namespace lux::render
     {
         const auto id = output.version.resource;
         if (output.final_use &&
-            (*output.final_use == EGraphUse::UNSPECIFIED || *output.final_use > EGraphUse::UNIFORM_READ))
+            (*output.final_use == EGraphUse::UNSPECIFIED || *output.final_use > EGraphUse::PRESENT))
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
         }
@@ -481,7 +481,10 @@ namespace lux::render
         const auto& resource = candidate_.resources_[id.index];
         if (resource.output_range && std::holds_alternative<std::monostate>(output.range))
             output.range = *resource.output_range;
-        if (output.final_use && !compatibleUse(resource.description, *output.final_use))
+        const bool present = output.final_use == EGraphUse::PRESENT;
+        const bool invalid_present = present && (!output.target || output.target->samples != 1);
+        const bool invalid_use = output.final_use && !present && !compatibleUse(resource.description, *output.final_use);
+        if (invalid_present || invalid_use)
         {
             return cxx::unexpected(graphError(kGraphInvalidDescriptor, {}, id));
         }

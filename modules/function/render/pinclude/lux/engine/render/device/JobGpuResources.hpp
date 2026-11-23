@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/visibility.h>
 #include <NRI.h>
 #include <array>

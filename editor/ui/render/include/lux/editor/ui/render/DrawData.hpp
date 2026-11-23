@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <imgui.h>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/resources/texture/Data.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
+#include <lux/engine/render/resource/texture/Data.hpp>
 #include <span>
 #include <type_traits>
 #include <vector>

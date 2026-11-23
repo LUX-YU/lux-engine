@@ -1,8 +1,9 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <algorithm>
 #include <bit>
 #include <exception>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/upload/StagingArena.hpp>
 #include <utility>
 

@@ -1,8 +1,8 @@
 #include <lux/engine/render/effect/EffectValidation.hpp>
 #include <lux/engine/render/runtime/JobControl.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
-#include <lux/engine/render/resources/instance/Data.hpp>
+#include <lux/engine/render/resource/instance/Data.hpp>
 
 #include <array>
 #include <cstddef>
@@ -49,11 +49,11 @@ namespace
         return {semantic, std::move(name), {std::move(type), 1}, direction, graph::kUnlimitedFan, required};
     }
 
-    [[nodiscard]] const CapabilityDefinition* registerCapability(
+    [[nodiscard]] const EffectNodeDefinition* registerCapability(
         EffectCatalog& catalog, std::string name, std::vector<EffectPortDefinition> ports
     )
     {
-        auto definition = std::make_unique<CapabilityDefinition>();
+        auto definition = std::make_unique<EffectNodeDefinition>();
         const auto id = graph::nodeTypeId(name);
         definition->identity = {id, std::move(name), 1};
         definition->ports = std::move(ports);
@@ -75,7 +75,7 @@ namespace
         return catalog.findCapability(id, 1);
     }
 
-    [[nodiscard]] graph::NodeId add(EffectGraphEdit& edit, const CapabilityDefinition& capability)
+    [[nodiscard]] graph::NodeId add(EffectGraphEdit& edit, const EffectNodeDefinition& capability)
     {
         return take(edit.addNode(capability, {std::string{kImplementation}, 1}));
     }
@@ -214,7 +214,7 @@ int main()
     check(graph.findNode(abandoned) == nullptr);
     check(rejected(graph, catalog) == EEffectIssue::CATALOG_NOT_SEALED);
     catalog.seal();
-    check(!catalog.addCapability(std::make_unique<CapabilityDefinition>()));
+    check(!catalog.addCapability(std::make_unique<EffectNodeDefinition>()));
     check(catalog.listImplementations(source->identity.id, 1).size() == 1);
 
     const auto validated = validateEffectGraph(graph, catalog);

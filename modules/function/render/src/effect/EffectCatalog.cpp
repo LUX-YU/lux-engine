@@ -1,5 +1,5 @@
 #include <lux/engine/render/effect/EffectCatalog.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <algorithm>
 #include <tuple>
 #include <utility>
@@ -34,7 +34,7 @@ namespace lux::render
             return true;
         }
 
-        [[nodiscard]] auto capabilityKey(const CapabilityDefinition& definition) noexcept
+        [[nodiscard]] auto capabilityKey(const EffectNodeDefinition& definition) noexcept
         {
             return std::pair{definition.identity.id.value, definition.identity.version};
         }
@@ -56,7 +56,7 @@ namespace lux::render
 
     EffectCatalog& EffectCatalog::operator=(EffectCatalog&&) noexcept = default;
 
-    RenderResult<void> EffectCatalog::addCapability(std::unique_ptr<CapabilityDefinition> definition) noexcept
+    RenderResult<void> EffectCatalog::addCapability(std::unique_ptr<EffectNodeDefinition> definition) noexcept
     {
         if (sealed_ || !definition) return cxx::unexpected(RenderError{kCapabilityDeclaration});
         const auto& identity = definition->identity;
@@ -71,10 +71,6 @@ namespace lux::render
             const bool is_duplicate_version = existing->identity.version == identity.version;
             if (is_collision || is_duplicate_version) return cxx::unexpected(RenderError{kCapabilityConflict});
         }
-        auto commands = definition->commands;
-        std::ranges::sort(commands, {}, [](CommandId command) noexcept { return commandTag(command); });
-        if (std::adjacent_find(commands.begin(), commands.end()) != commands.end())
-            return cxx::unexpected(RenderError{kCapabilityDeclaration});
         const auto key = capabilityKey(*definition);
         const auto position = std::ranges::lower_bound(capabilities_, key, {}, [](const auto& item) noexcept
         {
@@ -106,14 +102,6 @@ namespace lux::render
             if (port->direction != graph::EPinDirection::OUTPUT)
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
         }
-        std::vector<CommandId> provided;
-        provided.reserve(implementation->command_bindings.size());
-        for (const auto& binding : implementation->command_bindings) provided.push_back(binding.command);
-        auto required = capability->commands;
-        const auto command_key = [](CommandId command) noexcept { return commandTag(command); };
-        std::ranges::sort(provided, {}, command_key);
-        std::ranges::sort(required, {}, command_key);
-        if (provided != required) return cxx::unexpected(RenderError{kCapabilityDeclaration});
         implementation->supported_outputs = std::move(supported);
         const auto key = implementationKey(*implementation);
         const auto position = std::ranges::lower_bound(implementations_, key, {}, [](const auto& item) noexcept
@@ -126,7 +114,7 @@ namespace lux::render
         return {};
     }
 
-    const CapabilityDefinition*
+    const EffectNodeDefinition*
     EffectCatalog::findCapability(graph::NodeTypeId capability, std::uint32_t version) const & noexcept
     {
         const auto key = std::pair{capability.value, version};

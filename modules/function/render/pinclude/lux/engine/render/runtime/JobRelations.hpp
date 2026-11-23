@@ -1,7 +1,8 @@
 #pragma once
-#include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/commands/JobCommands.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/JobCommands.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 #include <span>
 #include <vector>
 

@@ -1,7 +1,8 @@
 #pragma once
 
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/runtime/SceneId.hpp>
 #include <vector>
 
 namespace lux::render::runtime_detail

@@ -2,10 +2,10 @@
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <exception>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/device/NativeExecution.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 
 namespace lux::render::detail
@@ -190,6 +190,13 @@ namespace lux::render::detail
         if (view.isNull()) scene_resources_.erase(key);
         else if (auto parent = scene_resources_.find(key); parent != scene_resources_.end())
             parent->second.views.erase({view.index, view.gen});
+    }
+
+    std::optional<exec::task<RenderResult<void>>> DeviceEntry::startReadyUploads() noexcept
+    {
+        if (!uploader_ || upload_pending || !uploader_->canProgressTransfers()) return std::nullopt;
+        upload_pending = true;
+        return uploader_->submitReadyTransfers();
     }
 
     bool DeviceEntry::nativeIdle() const noexcept

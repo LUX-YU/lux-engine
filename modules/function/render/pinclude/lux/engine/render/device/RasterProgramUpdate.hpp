@@ -2,7 +2,9 @@
 
 #include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/device/ProgramCompileInput.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/graph/Ids.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 #include <chrono>
 
 namespace lux::render::detail

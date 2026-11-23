@@ -193,17 +193,19 @@ endif()
 
 foreach(header IN ITEMS
     core/ConfigValue core/FinalBufferVersion core/RenderErrorSink
-    effect/CapabilityDefinition effect/EffectBundles effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
-    extensions/CommandBinding extensions/CommandHandler extensions/CommandMethod extensions/Registration
+    effect/EffectNodeDefinition effect/builtin/GBuffer effect/builtin/Shadow effect/builtin/Lighting
+    effect/builtin/ToneMapping effect/builtin/MeshVisibility effect/builtin/MeshRaster effect/builtin/DepthPyramid
+    effect/builtin/ClusterLists runtime/commands/LightingCommands effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
+    runtime/commands/CommandBinding runtime/commands/CommandHandler runtime/commands/CommandMethod runtime/commands/Registration
     effect/EffectCompileContext graph/ConstantBlock
-    extensions/graph/Work extensions/graph/PassValues extensions/graph/Diagnostics
+    graph/Work graph/PassValues graph/Diagnostics
     effect/CpuCall graph/DrawList graph/DrawResource
-    graph/IndexedGeometry effect/CpuCallFrame resources/material/Resource resource/RasterProgramBuild
-    extensions/execution/ResourceInput
+    graph/IndexedGeometry effect/CpuCallFrame resource/material/Resource resource/RasterProgramBuild
+    resource/ResourceBinding
     device/NativeProgramId resource/ProgramInputRevision resource/material/ProgramSource resource/mesh/MeshLayout
-    extensions/resource/ResourceProgramUses extensions/resource/ReplicaMutation
-    extensions/resource/ResourceCreateContext
-    extensions/resource/ResourceRegistry extensions/resource/StorageBinding extensions/upload/ResourceUploader
+    resource/ResourceProgramUses resource/ReplicaMutation
+    resource/ResourceCreateContext
+    resource/ResourceRegistry resource/StorageBinding device/ResourceUploader
 )
     get_filename_component(name "${header}" NAME)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")

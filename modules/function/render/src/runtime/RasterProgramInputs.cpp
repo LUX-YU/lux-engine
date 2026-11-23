@@ -1,10 +1,11 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/device/RasterProgramUpdate.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <algorithm>

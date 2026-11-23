@@ -1,10 +1,10 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <bit>
 #include <utility>
 

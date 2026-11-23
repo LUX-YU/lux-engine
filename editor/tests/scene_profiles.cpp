@@ -16,7 +16,7 @@
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/plugins/PluginManager.hpp>
 #include <lux/engine/plugins/SceneRegistrations.hpp>
-#include <lux/engine/render/capabilities/ClusterGrid.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/MeshShadows.hpp>
 #include <lux/engine/render/capabilities/RenderPresets.hpp>

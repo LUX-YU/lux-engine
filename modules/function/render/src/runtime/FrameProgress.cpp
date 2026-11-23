@@ -1,8 +1,10 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

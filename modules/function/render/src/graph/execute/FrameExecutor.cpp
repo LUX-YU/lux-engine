@@ -1,6 +1,6 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <bit>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/BindingState.hpp>

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/extensions/graph/InstanceData.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
 
 namespace lux::editor::ui
 {
@@ -64,6 +64,7 @@ namespace lux::editor::ui
         std::vector<std::pair<std::uint64_t, std::uint32_t>> image_tokens;
         ResourceRegistry* resources = nullptr;
         static RenderResult<std::unique_ptr<UiState>> create(ResourceCreateContext&, ResourceInstanceId) noexcept;
+        static std::span<const CommandBinding> commandBindings() noexcept;
         static ResourceRegistration factory() noexcept;
         static void submit(UiState&, const SubmitDrawData::Request&, SubmitDrawData::Response&) noexcept;
     };

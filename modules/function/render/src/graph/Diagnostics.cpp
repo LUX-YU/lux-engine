@@ -1,6 +1,6 @@
 #include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
-#include <lux/engine/render/extensions/graph/Diagnostics.hpp>
+#include <lux/engine/render/graph/Diagnostics.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
 
 namespace lux::render

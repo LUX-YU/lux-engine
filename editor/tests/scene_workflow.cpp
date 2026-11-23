@@ -22,7 +22,6 @@
 #include <lux/engine/editor/SceneViewportPane.hpp>
 #include <lux/engine/plugins/SceneRegistrations.hpp>
 #include <lux/engine/process/assets/AssetRepository.hpp>
-#include <lux/engine/render/capabilities/ClusterGrid.hpp>
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/Mesh3dCapability.hpp>
 #include <lux/engine/render/capabilities/MeshShadows.hpp>
@@ -680,7 +679,7 @@ int main(int argc, char** argv)
                 return false;
             }
             scene_projection = (*system)->binding<::lux::engine::render::MeshRenderBinding>();
-            const render::VRenderScope unrelated_view = render::ViewRequest{};
+            const render::VResourceScope unrelated_view = render::ViewScope{};
             assert(!(*system)->binding<::lux::engine::render::MeshRenderBinding>(&unrelated_view));
             assert(scene_projection); // Borrow ends before this Scene retires.
             return true;

@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <algorithm>
 #include <array>
@@ -6,7 +7,7 @@
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/DumpText.hpp>
 #include <lux/engine/render/graph/StageScope.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>

@@ -1,10 +1,11 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <algorithm>
 #include <bit>

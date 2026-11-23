@@ -1,10 +1,11 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/effect/CpuCallFrame.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/runtime/JobCpuPreparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/RasterProgramInputs.hpp>
@@ -19,8 +20,8 @@ namespace lux::render::detail
 {
     namespace
     {
-        RenderResult<OwnedRasterStream::GeometryLayout> captureGeometryLayout(
-            OwnedRasterStream& stream,
+        RenderResult<RasterDrawInput::GeometryLayout> captureGeometryLayout(
+            RasterDrawInput& stream,
             const IndexedGeometryInput& input,
             const DeviceSession& device,
             std::uint32_t pass
@@ -72,7 +73,7 @@ namespace lux::render::detail
             if (attributes.size() > kGraphInvalidIndex - first)
                 return cxx::unexpected(RenderError{kStorageCapacity, {pass}});
             selected.insert(selected.end(), attributes.begin(), attributes.end());
-            return OwnedRasterStream::GeometryLayout{
+            return RasterDrawInput::GeometryLayout{
                 {static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(attributes.size())}, alignment
             };
         }
@@ -518,7 +519,6 @@ namespace lux::render::detail
 
         if (program_inputs_.pending()) return cxx::unexpected(RenderError{kDeviceBusy});
         // Commit the complete selection only after every preparation callback has succeeded.
-        destination.stream_inputs.swap(streams_);
         for (const auto& copy : graph_.cpuProgram().constant_copies)
         {
             const auto input = valueBytes(copy.input);

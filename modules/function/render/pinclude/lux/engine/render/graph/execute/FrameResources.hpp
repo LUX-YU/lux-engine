@@ -1,11 +1,10 @@
 #pragma once
 
 #include <lux/cxx/container/BasicSparseSet.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/device/CopyEncoding.hpp>
 #include <lux/engine/render/graph/execute/HistoryState.hpp>
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
-#include <lux/engine/render/graph/execute/OwnedRasterStream.hpp>
 #include <lux/engine/render/graph/execute/FrameResourceBinding.hpp>
 #include <lux/engine/render/graph/compile/PhysicalResourcePlan.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -311,7 +310,7 @@ namespace lux::render::detail
 
         std::vector<FrameResourceBinding> bindings;
         std::vector<FramePass> passes;
-        std::vector<OwnedRasterStream> stream_inputs;
+        std::vector<std::uint8_t> used_record_programs;
         RasterDrawList stream_scratch;
         std::vector<std::uint8_t> stream_layers_seen;
         std::vector<RasterDescriptorInput> stream_binding_inputs;

@@ -10,8 +10,9 @@ namespace lux::render::detail
     {
         runtime_detail::EffectRecipeView recipe;
         std::vector<runtime_detail::EffectInputDefinition> inputs;
-        EffectOutputDesc output;
+        GraphOutputRequirements output;
         bool uploads_available;
+        std::optional<EGraphUse> target_final_use;
     };
 
     struct EffectCompileEnvironment final

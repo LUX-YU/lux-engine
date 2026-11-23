@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <lux/engine/description/GBufferLayout.hpp>
-#include <lux/engine/render/extensions/graph/GraphError.hpp>
+#include <lux/engine/render/graph/GraphError.hpp>
 
 #include "MeshVertexDxil.hpp"
 #include "MeshVertexSpirv.hpp"

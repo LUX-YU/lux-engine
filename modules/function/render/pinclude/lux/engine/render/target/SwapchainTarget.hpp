@@ -5,7 +5,7 @@
 
 #include <exec/create.hpp>
 #include <exec/task.hpp>
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/target/TargetOutput.hpp>
 #include <memory>
 #include <vector>
@@ -18,8 +18,6 @@ namespace lux::render::detail
     class SwapchainTarget final
     {
     public:
-        [[nodiscard]] bool belongsTo(const DeviceSession& device) const noexcept { return &session_ == &device; }
-
         static RenderResult<SwapchainTarget>
         create(DeviceSession&, TargetDesc, SurfaceDescription, std::uint32_t frame_count) noexcept;
 

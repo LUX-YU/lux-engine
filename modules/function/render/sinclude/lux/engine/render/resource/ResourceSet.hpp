@@ -3,7 +3,7 @@
 #include <lux/engine/render/visibility.h>
 
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
 #include <map>
 #include <string>
 #include <tuple>

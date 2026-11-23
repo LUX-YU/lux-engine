@@ -41,7 +41,7 @@ namespace lux::render::effect_detail
     {
         graph::NodeId source;
         // Borrows the sealed Catalog for this cold validation and build only.
-        const CapabilityDefinition* capability;
+        const EffectNodeDefinition* capability;
         const EffectImplementation* implementation;
         // Borrows the source EffectGraph owner during initialization/lowering only.
         std::string_view arguments;

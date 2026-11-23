@@ -1,12 +1,14 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <algorithm>
 #include <lux/engine/render/resource/GraphInstallation.hpp>
 #include <lux/engine/render/runtime/RenderJob.hpp>
-#include <lux/engine/render/extensions/detail/CommandDispatchContext.hpp>
+#include <lux/engine/render/runtime/commands/detail/CommandDispatchContext.hpp>
 #include <exception>
 #include <limits>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
 
 namespace lux::render
@@ -391,19 +393,13 @@ namespace lux::render
         if (!id.isNull()) registry.finishCommand(id);
     }
 
-    RenderResult<ResourceRegistry::ResolvedCommand>
-    ResourceRegistry::beginCommand(ResourceInstanceId id, CommandId command, bool exclusive) noexcept
+    RenderResult<void*>
+    ResourceRegistry::beginCommand(ResourceInstanceId id, bool exclusive) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->instance)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        const auto& definition = *types_.find(entry->type);
-        const auto location = std::ranges::find(definition.commands, command, &CommandBindingLocation::command);
-        if (location == definition.commands.end())
-        {
-            return cxx::unexpected(RenderError{kCommandContract});
         }
         const bool conflicting_command = entry->exclusive_command || (exclusive && entry->command_uses != 0);
         if (conflicting_command)
@@ -413,7 +409,7 @@ namespace lux::render
         if (entry->command_uses == UINT32_MAX) std::terminate();
         ++entry->command_uses;
         entry->exclusive_command = exclusive;
-        return ResolvedCommand{*location, definition.factory.storage()->implementation_type};
+        return entry->instance;
     }
 
     bool ResourceRegistry::hasBorrows(ResourceInstanceId id) const noexcept
@@ -530,37 +526,6 @@ namespace lux::render
         return entry && entry->instance ? entry->type : ResourceTypeId{};
     }
 
-    const CommandBindingLocation*
-    ResourceRegistry::commandBinding(ResourceTypeId type, CommandId command) const noexcept
-    {
-        const auto* definition = types_.find(type);
-        if (!definition)
-        {
-            return nullptr;
-        }
-        const auto found = std::ranges::find(definition->commands, command, &CommandBindingLocation::command);
-        return found == definition->commands.end() ? nullptr : &*found;
-    }
-
-    RenderResult<void> ResourceRegistry::bindCommand(ResourceTypeId type, CommandBindingLocation location) noexcept
-    {
-        auto* definition = types_.find(type);
-        if (!definition || location.command.isNull())
-        {
-            return cxx::unexpected(RenderError{kStorageContract});
-        }
-        if (const auto* previous = commandBinding(type, location.command))
-        {
-            if (*previous != location)
-            {
-                return cxx::unexpected(RenderError{kStorageMismatch});
-            }
-            return {};
-        }
-        definition->commands.push_back(location);
-        return {};
-    }
-
     ResourceTypeId ResourceRegistry::typeId(ResourceNameView type) const noexcept
     {
         const auto found = types_by_name_.find(type.name());
@@ -673,26 +638,6 @@ namespace lux::render
         descriptor.frame_inputs = frame_inputs;
         factory.descriptor = &descriptor;
 
-        command_descriptors.reserve(factory.commands.size());
-        command_views.reserve(factory.commands.size());
-        command_bindings.reserve(factory.commands.size());
-        for (std::size_t i = 0; i < factory.commands.size(); ++i)
-        {
-            auto& declaration = command_descriptors.emplace_back(*descriptor.commands[i]);
-            declaration.name = CommandName{own_name(declaration.name.name())};
-            own_type(declaration.request);
-            own_type(declaration.response);
-            own_type(declaration.data);
-            command_views.push_back(&declaration);
-
-            auto& binding = command_bindings.emplace_back(factory.commands[i]);
-            binding.descriptor_ = &declaration;
-            own_type(binding.storage_type_);
-            own_type(binding.method_type_);
-        }
-        descriptor.commands = command_views;
-        factory.commands = command_bindings;
-
         auto& call = factory.frame_call;
         own_type(call.declaration_type);
         own_type(call.storage_type);
@@ -706,7 +651,6 @@ namespace lux::render
 
         auto& storage = *factory.storage_;
         own_type(storage.config_type);
-        own_type(storage.ops_type);
         own_type(storage.implementation_type);
         if (storage.snapshot_ops) own_type(storage.snapshot_ops->type);
     }

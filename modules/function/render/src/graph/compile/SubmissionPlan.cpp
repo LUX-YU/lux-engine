@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <algorithm>
@@ -159,7 +160,7 @@ namespace lux::render::detail
         auto& output_regions = plan.output_write_regions_;
         output_regions.clear();
         const auto output = plan.output_;
-        const bool presents = plan.output_description_.kind == ETargetKind::SURFACE;
+        const bool presents = presentsOutput();
         pass_batches.assign(graph.passes().size(), kGraphInvalidIndex);
         // History initialization uses Graphics. Frame replica copies have their own upload frontier.
         const bool initializes_history = std::ranges::any_of(

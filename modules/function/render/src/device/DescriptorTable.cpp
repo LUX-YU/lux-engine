@@ -2,8 +2,8 @@
 #include <bit>
 #include <tuple>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 
 namespace lux::render::detail
 {

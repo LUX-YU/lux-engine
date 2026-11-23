@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
 #include <exception>
 #include <span>
 #include <utility>

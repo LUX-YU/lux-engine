@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/runtime/DeviceRound.hpp>
 #include <lux/engine/render/runtime/JobOutput.hpp>
@@ -39,6 +39,7 @@ namespace lux::render::detail
         [[nodiscard]] const FrameProgress& frameProgress() const noexcept { return frame_progress_; }
         [[nodiscard]] FrameOperation::Workspace& frameWorkspace() noexcept { return frame_workspace_; }
         [[nodiscard]] ResourceCreateContext resourceCreateContext() noexcept;
+        [[nodiscard]] std::optional<exec::task<RenderResult<void>>> startReadyUploads() noexcept;
         [[nodiscard]] bool nativeIdle() const noexcept;
         [[nodiscard]] std::unique_ptr<JobGpuResources> prepareJobResources(ExecutionBindingId) noexcept;
         [[nodiscard]] std::unique_ptr<JobGpuResources>

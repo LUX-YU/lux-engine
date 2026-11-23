@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include "ModelSceneSupport.hpp"
 

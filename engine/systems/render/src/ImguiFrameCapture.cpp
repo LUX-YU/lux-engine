@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/systems/render/ImguiFrameCapture.hpp>
 
 namespace lux::engine::render

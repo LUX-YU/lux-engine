@@ -1,7 +1,7 @@
 #include "BufferProductFixture.hpp"
 #include "JointAverage.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <cmath>
 
@@ -28,7 +28,7 @@ namespace
     public:
         using Descriptor = SharedWord;
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.shared_word"}, 0, 0, {}, "One immutable GPU word.", EResourceDomain::DEVICE
         };
@@ -84,7 +84,7 @@ namespace
                     return {};
                 }
             };
-            return makeResourceRegistration<Descriptor, SharedWord, &create>(nullptr, &binding);
+            return makeResourceRegistration<Descriptor, SharedWord, &create>(&binding);
         }
 
     private:
@@ -248,9 +248,9 @@ namespace
         return context.publish(result, {{result, copy.written.front()}});
     }
 
-    CapabilityDefinition definition(std::string_view name)
+    EffectNodeDefinition definition(std::string_view name)
     {
-        CapabilityDefinition cap;
+        EffectNodeDefinition cap;
         cap.identity = {graph::nodeTypeId(name), std::string{name}, 1};
         if (name == source_name)
             cap.ports = {
@@ -379,7 +379,7 @@ namespace
         ResourceInstanceId product(ViewId owner) const
         {
             return send<GetOrCreateResource>({
-                device, ViewRequest{scene, owner}, ProductDescriptor::descriptor.type
+                device, ViewScope{scene, owner}, ProductDescriptor::descriptor.type
             }).resource_id;
         }
 
@@ -437,7 +437,7 @@ namespace
             {
                 const CaptureConfig config{&pixels};
                 return GraphCaptureBuffer::bind(
-                    session.client, session.commands, session.device, {session.scene, view}, config
+                    {session.client, session.commands, session.device}, {session.scene, view}, config
                 );
             };
             owner = session.view();
@@ -483,7 +483,7 @@ namespace
             CapturedPixels pixels;
             const CaptureConfig config{.result = &pixels};
             const auto buffer = GraphCaptureBuffer::bind(
-                session_.client, session_.commands, session_.device, {session_.scene, view}, config
+                {session_.client, session_.commands, session_.device}, {session_.scene, view}, config
             );
             JobBinding binding;
             binding.resources = {{"capture", buffer}, {"version", product}};

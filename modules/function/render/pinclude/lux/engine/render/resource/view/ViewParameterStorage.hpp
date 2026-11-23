@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/description/ShaderBlock.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
-#include <lux/engine/render/resources/view/Parameters.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
+#include <lux/engine/render/resource/view/Parameters.hpp>
 
 namespace lux::render::detail
 {

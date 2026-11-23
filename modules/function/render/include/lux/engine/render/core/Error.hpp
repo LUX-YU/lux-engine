@@ -9,6 +9,8 @@
 
 namespace lux::render
 {
+    inline constexpr auto kRuntimeCapacity = error::errorId("lux.render.runtime.capacity");
+
     using RenderError = error::Error;
 
     template <typename T> using RenderResult = cxx::expected<T, RenderError>;

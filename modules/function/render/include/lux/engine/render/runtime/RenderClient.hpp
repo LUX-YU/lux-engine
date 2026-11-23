@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/visibility.h>
 #include <exec/completion_behavior.hpp>
 

@@ -31,15 +31,18 @@ generate_visibility_header(
 )
 
 set(render_sources
-    src/effect/DepthPyramid.cpp
-    src/effect/MeshVisibility.cpp
+    src/effect/builtin/DepthPyramid.cpp
+    src/effect/builtin/MeshVisibility.cpp
+    src/effect/builtin/GBuffer.cpp
+    src/effect/builtin/MeshRaster.cpp
+    src/effect/builtin/Shadow.cpp
     src/effect/MeshSurfaceStream.cpp
     src/effect/EffectCatalog.cpp
     src/effect/EffectGraphBuild.cpp
     src/effect/EffectGraph.cpp
     src/effect/EffectValidation.cpp
-    src/effect/Lighting.cpp
-    src/effect/ToneMapping.cpp
+    src/effect/builtin/Lighting.cpp
+    src/effect/builtin/ToneMapping.cpp
     src/device/CopyEncoding.cpp
     src/runtime/RenderClient.cpp
     src/frame/FrameLayout.cpp
@@ -47,10 +50,10 @@ set(render_sources
     src/resource/transform/TransformStorage.cpp
     src/resource/transform/TransformReplicas.cpp
     src/resource/view/ViewParameterStorage.cpp
-    src/core/Target.cpp
+    src/runtime/Target.cpp
     src/core/Error.cpp
-    src/core/RasterViewport.cpp
-    src/commands/Command.cpp
+    src/graph/RasterViewport.cpp
+    src/runtime/commands/Command.cpp
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
     src/resource/GraphInstallation.cpp
@@ -120,8 +123,11 @@ set(render_sources
     src/resource/material/RasterMaterialStorage.cpp
     src/resource/instance/RasterMeshInstanceStorage.cpp
     src/resource/mesh/IndexedTriangleMeshStorage.cpp
+    src/runtime/BuiltinRegistration.cpp
+    src/runtime/commands/LightingAdapter.cpp
+    src/runtime/commands/ToneMappingAdapter.cpp
     src/runtime/RenderServer.cpp
-    src/commands/CommandRegistry.cpp
+    src/runtime/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
     src/resource/ResourceScopes.cpp
     src/runtime/FrameProgress.cpp
@@ -139,10 +145,10 @@ set(render_sources
     src/runtime/DeviceEntry.cpp
     src/runtime/Scene.cpp
     src/runtime/RenderEffect.cpp
-    src/commands/CommandDispatchContext.cpp
+    src/runtime/commands/CommandDispatchContext.cpp
     src/runtime/DeviceRound.cpp
     src/runtime/FrameInputs.cpp
-    src/commands/ResponseOutbox.cpp
+    src/runtime/commands/ResponseOutbox.cpp
 )
 
 include(cmake/MeshShaderVariants.cmake)

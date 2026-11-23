@@ -1,6 +1,6 @@
 #include <array>
 #include <chrono>
-#include <lux/engine/render/commands/DiscoveryCommands.hpp>
+#include <lux/engine/render/runtime/commands/DiscoveryCommands.hpp>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>

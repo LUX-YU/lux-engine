@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/description/UiImageToken.hpp>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 
 namespace lux::editor
 {

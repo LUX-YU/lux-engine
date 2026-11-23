@@ -1,10 +1,12 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
 
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/resources/transform/Resource.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
 #include <utility>
 
 namespace lux::render::detail
@@ -121,17 +123,21 @@ namespace lux::render::detail
         }
     }
 
-    ResourceRegistration TransformStorage::factory() noexcept
+    std::span<const CommandBinding> transformStorageCommands() noexcept
     {
-        static const auto frame_call =
-            FrameDataCall::declare<TransformResource, TransformStorage, &updateTransforms>();
         static const std::array commands{
             CommandBinding::declare<TransformCommands::Create, &createTransforms>(),
             CommandBinding::declare<TransformCommands::Update, &updateTransformsCommand>(),
             CommandBinding::declare<TransformCommands::Release, &releaseTransform>()
         };
+        return commands;
+    }
+
+    ResourceRegistration TransformStorage::factory() noexcept
+    {
+        static const auto frame_call =
+            FrameDataCall::declare<TransformResource, TransformStorage, &updateTransforms>();
         static const StorageBindingOps binding{
-            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<TransformStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept { return &static_cast<const TransformStorage*>(value)->revision_; },
@@ -164,7 +170,8 @@ namespace lux::render::detail
             { static_cast<TransformStorage*>(value)->finishPreparation(settlement); }
         };
         return makeResourceRegistration<TransformResource, TransformStorage, createTransformStorage>(
-            nullptr, &binding, commands, frame_call
+            &binding,
+            frame_call
         );
     }
 } // namespace lux::render::detail

@@ -30,7 +30,8 @@ namespace lux::render::detail
         std::vector<std::uint32_t> pass_batches{};
         std::vector<AliasResourceUse> alias_uses{};
 
-        [[nodiscard]] RenderResult<compiled::RenderGraph> planStructure(const EffectOutputDesc*) noexcept;
+        [[nodiscard]] bool presentsOutput() const noexcept;
+        [[nodiscard]] RenderResult<compiled::RenderGraph> planStructure(const GraphOutputRequirements*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
         prepareOperations(DeviceSession&, PreparedRenderGraph&, execution::CpuScheduler) noexcept;
         static void compileFixedBindings(compiled::RenderGraph&) noexcept;

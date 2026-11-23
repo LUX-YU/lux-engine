@@ -1,8 +1,10 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
@@ -146,17 +148,17 @@ namespace lux::render::detail
     {
         if (!copies_flushed_)
         {
-            auto prepared = uploads_->flushFrameCopies();
+            auto prepared = FrameOperation::flushFrameCopies(*uploads_);
             if (!prepared) co_return cxx::unexpected(prepared.error());
             copies_flushed_ = true;
         }
         if (cancellation_) co_return cxx::unexpected(*cancellation_);
-        auto submitted = co_await uploads_->submitPreparationCopies();
+        auto submitted = co_await FrameOperation::submitPreparationCopies(*uploads_);
         if (!submitted) co_return cxx::unexpected(submitted.error());
         if (!*submitted) co_return 0;
         const auto receipt = **submitted;
         submission_->acceptPreparation(receipt.point.serial);
-        uploads_->acceptFrameCopies(receipt);
+        FrameOperation::acceptFrameCopies(*uploads_, receipt);
         settlePreparation(receipt.point, receipt.ranges);
         co_return 1;
     }

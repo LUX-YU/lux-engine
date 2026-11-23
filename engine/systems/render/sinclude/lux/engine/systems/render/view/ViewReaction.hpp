@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
 #include <lux/engine/systems/render/RenderReaction.hpp>
 #include <lux/engine/systems/render/view/RenderTargetComponent.hpp>
 #include <unordered_map>

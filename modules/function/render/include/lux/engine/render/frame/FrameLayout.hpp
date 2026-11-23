@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/commands/Error.hpp>
-#include <lux/engine/render/core/Resource.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/visibility.h>
 #include <array>
 #include <concepts>

@@ -1,6 +1,7 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/ProgramCompileInput.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
@@ -8,7 +9,7 @@
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 
 #include <algorithm>
 #include <exception>

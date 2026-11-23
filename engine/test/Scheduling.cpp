@@ -32,7 +32,7 @@
 #include <optional>
 #include <exec/create.hpp>
 #if defined(LUX_ENGINE_WITH_RENDER)
-#include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
 #endif
 
 namespace

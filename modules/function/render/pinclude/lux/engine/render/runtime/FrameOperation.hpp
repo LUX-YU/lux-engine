@@ -4,11 +4,12 @@
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/resource/ConstantBufferStorage.hpp>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/engine/render/runtime/SubmissionOperation.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 
 namespace lux::render::runtime_detail { struct JobExecution; }
 
@@ -67,6 +68,17 @@ namespace lux::render::detail
         };
 
     public:
+        struct FrameCopyReceipt final
+        {
+            SubmissionPoint point;
+            std::size_t ranges;
+        };
+
+        [[nodiscard]] static RenderResult<void> flushFrameCopies(ResourceUploader&) noexcept;
+        [[nodiscard]] static exec::task<RenderResult<std::optional<FrameCopyReceipt>>>
+        submitPreparationCopies(ResourceUploader&) noexcept;
+        static void acceptFrameCopies(ResourceUploader&, FrameCopyReceipt) noexcept;
+
         struct LUX_RENDER_PUBLIC Workspace final
         {
             Workspace(std::uint32_t slots, std::size_t queues, std::size_t preparation_capacity) noexcept;

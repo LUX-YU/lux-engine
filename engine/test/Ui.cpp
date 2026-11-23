@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/Engine.hpp>
 #include <lux/engine/Init.hpp>

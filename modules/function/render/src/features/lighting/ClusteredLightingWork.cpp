@@ -2,7 +2,7 @@
 #include "ClusterCount.hpp"
 #include "ClusterFill.hpp"
 #include "ClusterScan.hpp"
-#include <lux/engine/render/effect/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/features/lighting/ClusteredLightingWork.hpp>
 

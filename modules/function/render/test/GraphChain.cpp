@@ -1,3 +1,7 @@
+#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include "FixtureCommands.hpp"
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -9,8 +13,8 @@
 #ifdef LUX_RENDER_GRAPH_ALLOCATION_PROBE
 #include "GraphMeasurements.hpp"
 #endif
-#include <lux/engine/render/extensions/device/CopyEncoding.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/CopyEncoding.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <bit>
@@ -120,7 +124,7 @@ static rdesc::ShaderProgramArtifact rasterProgram(const rdesc::EmbeddedShader& f
 
 static GraphCompileOptions targetOptions(const TargetDesc& target)
 {
-    const EffectOutputDesc output{target.format, target.samples, target.kind, target.sampled};
+    const GraphOutputRequirements output{target.format, target.samples};
     return {output, ETransientAllocation::ALIAS_MEMORY, true};
 }
 
@@ -342,7 +346,15 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
     }
     auto larger_target = target;
     larger_target.width = larger_target.height = 128;
-    CHECK(plan.graph.compatible(larger_target));
+    CHECK(plan.graph.compatible(larger_target.graphRequirements()));
+    if (fif == 1)
+    {
+        auto fixed_options = targetOptions(target);
+        fixed_options.target = target.graphRequirements();
+        const auto fixed = compile(*session, {graph, analysis}, fixed_options);
+        CHECK(fixed.graph.compatible(target.graphRequirements()));
+        CHECK(!fixed.graph.compatible(larger_target.graphRequirements()));
+    }
     auto larger = std::optional{take(OffscreenTarget::create(*session, larger_target, fif))};
     auto second_instance_gpu = std::make_unique<JobGpuResources>(*session, fif);
     auto second_instance_job = std::make_unique<JobExecution>(
@@ -706,7 +718,7 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
         *session, TransferOptions{4096, 2}, lux::execution::ExecutionRuntime::instance().cpuScheduler()
     ));
     const auto before = session->queue().submitted();
-    CHECK(!take(runTask(uploads->submitPreparationCopies())));
+    CHECK(!take(runTask(FrameOperation::submitPreparationCopies(*uploads))));
     CHECK(session->queue().submitted() == before);
     std::array<std::uint32_t, 4> source{11, 12, 13, 14};
     const auto bytes = std::as_bytes(std::span(source));
@@ -716,10 +728,10 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     CHECK(core.CreatePlacedBuffer(session->device(), NriDeviceHeap, description, target) == nri::Result::SUCCESS);
     CHECK(take(uploads->stageBuffer({target, 0, bytes})) == bytes.size());
     source.fill(99);
-    CHECK(uploads->flushFrameCopies());
-    const auto receipt = take(runTask(uploads->submitPreparationCopies()));
+    CHECK(FrameOperation::flushFrameCopies(*uploads));
+    const auto receipt = take(runTask(FrameOperation::submitPreparationCopies(*uploads)));
     CHECK(receipt && receipt->ranges == 1 && receipt->point.serial == session->queue().submitted());
-    uploads->acceptFrameCopies(*receipt);
+    FrameOperation::acceptFrameCopies(*uploads, *receipt);
     CHECK(session->drain());
     const auto result = readBufferWords<4>(
         *session, *target, {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
@@ -1592,7 +1604,8 @@ static void surfaceBindingBoundary(DeviceSession& device)
     const auto tail = take(builder.addRasterPass("same pipeline surface tail", draw(surface)));
     CHECK(builder.dependsOn(head.pass, tail.pass));
     CHECK(builder.exportOutput({head.written.front()}));
-    CHECK(builder.exportOutput({tail.written.front(), {}, GraphOutputRequirements{image.format, 1}}));
+    CHECK(!builder.exportOutput({tail.written.front(), {}, {}, EGraphUse::PRESENT}));
+    CHECK(builder.exportOutput({tail.written.front(), {}, GraphOutputRequirements{image.format, 1}, EGraphUse::PRESENT}));
     const auto source = take(std::move(builder).finish());
     const TargetDesc target{16, 16, image.format, 1, ETargetKind::SURFACE};
     const auto plan = compile(device, {source, take(analyzeRenderGraph(source))}, targetOptions(target));

@@ -1,9 +1,8 @@
 #pragma once
 
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <array>
 #include <cmath>
-#include <lux/engine/render/commands/EffectCommands.hpp>
-#include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 
 namespace lux::render::detail
@@ -18,28 +17,13 @@ namespace lux::render::detail
         TonemapConstants constants;
         std::uint64_t revision = 1;
 
-        static void setNode(TonemapExposure& state, const SetToneMappingExposure::Request& request, AckResponse& out)
-            noexcept
+        [[nodiscard]] RenderResult<void> setExposure(float exposure) noexcept
         {
-            assign(state, request.exposure, out);
-        }
-
-    private:
-        static void assign(TonemapExposure& state, float exposure, AckResponse& out) noexcept
-        {
-            if (!std::isfinite(exposure))
-            {
-                out.error = {kFrameContract};
-                return;
-            }
-            if (state.revision == UINT64_MAX)
-            {
-                out.error = {kRuntimeCapacity};
-                return;
-            }
-            state.constants.exposure = exposure;
-            ++state.revision;
-            out.error = {};
+            if (!std::isfinite(exposure)) return cxx::unexpected(RenderError{kFrameContract});
+            if (revision == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            constants.exposure = exposure;
+            ++revision;
+            return {};
         }
     };
 } // namespace lux::render::detail

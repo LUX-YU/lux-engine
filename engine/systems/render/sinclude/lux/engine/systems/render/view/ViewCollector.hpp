@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/scene/ViewComponent.hpp>
 #include <lux/engine/render/inputs/CameraInputs.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <lux/engine/systems/render/visibility.h>
 #include <lux/engine/systems/render/RenderDataCollector.hpp>
 #include <lux/engine/systems/render/RenderSystem.hpp>

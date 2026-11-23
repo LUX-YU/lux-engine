@@ -1,7 +1,7 @@
 #pragma once
 
 #include <NRI.h>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 
 namespace lux::render::detail
 {

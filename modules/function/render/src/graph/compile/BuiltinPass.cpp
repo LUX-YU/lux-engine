@@ -2,8 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <lux/engine/render/device/BufferAccess.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
-#include <lux/engine/render/extensions/graph/Work.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/graph/Work.hpp>
 #include <lux/engine/render/graph/ShaderInterface.hpp>
 #include <lux/engine/render/graph/compile/BuiltinPass.hpp>
 

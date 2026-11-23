@@ -1,23 +1,25 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <exec/create.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/commands/Commands.hpp>
+#include <lux/engine/render/runtime/commands/Commands.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectDiagnostic.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/Shadow.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/Shadow.hpp>
+#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectInitializationContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
+#include <lux/engine/render/effect/EffectInitializationContext.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
-#include <lux/engine/render/resources/texture/Commands.hpp>
-#include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <algorithm>
 #include <array>
@@ -83,8 +85,7 @@ template <class T> auto take(T value, std::source_location source = std::source_
 struct MonitorResource final
 {
     using Config = void;
-    using Ops = void;
-    using Commands = std::tuple<>;
+
     using PerFrameData = std::tuple<>;
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.effect.native_compile"}, 0, 0, {}, "Native compile boundary fault injection."
@@ -204,7 +205,7 @@ struct Monitor final
 
     static ResourceRegistration factory() noexcept
     {
-        return makeResourceRegistration<Descriptor, Monitor, &create>(nullptr);
+        return makeResourceRegistration<Descriptor, Monitor, &create>();
     }
 };
 
@@ -246,12 +247,10 @@ struct ColdResource final
     static inline std::atomic<std::atomic_uint*> capture_counter{};
     using Descriptor = ColdResource;
     using Config = void;
-    using Ops = void;
-    using Commands = std::tuple<HoldSceneResource>;
+
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.job.scene"}, 0, 0, {}, "Scene Resource required by the logical Effect.",
-        EResourceDomain::SCENE,
-        resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+        EResourceDomain::SCENE
     };
     static inline void* pending = nullptr;
     static inline void (*complete)(void*) noexcept = nullptr;
@@ -292,12 +291,17 @@ struct ColdResource final
         return std::make_unique<ColdResource>();
     }
 
-    static ResourceRegistration factory() noexcept
+    static std::span<const CommandBinding> commandBindings() noexcept
     {
         static const std::array commands{CommandBinding::declare<HoldSceneResource, &hold>()};
+        return commands;
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
         static constexpr auto snapshot = detail::StorageSnapshotOps::make<ColdResource, bool, &ColdResource::selectReady>();
         static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
-        return makeResourceRegistration<Descriptor, ColdResource, &create>(nullptr, &binding, commands);
+        return makeResourceRegistration<Descriptor, ColdResource, &create>(&binding);
     }
 
 private:
@@ -398,7 +402,7 @@ static constexpr std::string_view clear_node = "test.effect.clear";
 static constexpr std::string_view clear_resource = "scene_state";
 static constexpr auto clear_color = effectPortSemantic("color");
 
-static CapabilityDefinition clearDefinition()
+static EffectNodeDefinition clearDefinition()
 {
     return {
         .identity = {graph::nodeTypeId(clear_node), std::string{clear_node}, 1},
@@ -832,7 +836,7 @@ static void profileJobRounds(
 
 
 static void verifySnapshotBindings(
-    ipc::IpcRequester& client, DeviceSessionId device, ViewRequest scope, std::array<ResourceInstanceId, 2> owners
+    ipc::IpcRequester& client, DeviceSessionId device, ViewScope scope, std::array<ResourceInstanceId, 2> owners
 )
 {
     for (const auto& [argument, expected] : std::array{
@@ -877,7 +881,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     device.texture_descriptors = true;
     auto server = take(RenderServer::create(config, execution));
     take(server->registerResource(Monitor::factory()));
-    take(server->registerResource(ColdResource::factory()));
+    take(server->registerResource(ColdResource::factory(), {}, ColdResource::commandBindings()));
     registerClearNode(*server);
     const std::array gate_commands{
         CommandBinding::declare<ResumeSceneResource, &ColdResource::resume>(),
@@ -1213,7 +1217,7 @@ static void verifyDeviceOwnership(
     const auto resource_a = getSceneState(client, first, scene);
     const auto resource_b = getSceneState(client, second.device, scene);
     CHECK(resource_a != resource_b);
-    CHECK(call<QueryResource>(client, {second.device, ViewRequest{scene, view}, ColdResource::descriptor.type})
+    CHECK(call<QueryResource>(client, {second.device, ViewScope{scene, view}, ColdResource::descriptor.type})
         .resource_id == resource_b);
 
     const TargetDesc desc{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
@@ -1301,12 +1305,11 @@ struct AdapterProbe final
 {
     using Descriptor = AdapterProbe;
     using Config = void;
-    using Ops = void;
-    using Commands = std::tuple<QueryProbeAdapter>;
+
     using PerFrameData = std::tuple<>;
     static inline const ResourceDefinition descriptor{
         ResourceNameView{"test.device.adapter.identity"}, 0, 0, {}, "Reports the native test adapter identity.",
-        EResourceDomain::DEVICE, resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+        EResourceDomain::DEVICE
     };
 
     nri::AdapterDesc adapter;
@@ -1323,10 +1326,15 @@ struct AdapterProbe final
         response = {{}, adapter.uid.low, adapter.uid.high, adapter.name};
     }
 
-    static ResourceRegistration factory() noexcept
+    static std::span<const CommandBinding> commandBindings() noexcept
     {
         static const std::array bindings{CommandBinding::declare<QueryProbeAdapter, &read>()};
-        return makeResourceRegistration<AdapterProbe, AdapterProbe, &create>(nullptr, nullptr, bindings);
+        return bindings;
+    }
+
+    static ResourceRegistration factory() noexcept
+    {
+        return makeResourceRegistration<AdapterProbe, AdapterProbe, &create>();
     }
 };
 
@@ -1335,8 +1343,8 @@ static bool verifyIndependentDevices(execution::ExecutionRuntime& execution, Dev
     RenderServerConfig config{"installed.effect.independent_devices", enableNativeValidation()};
     auto server = take(RenderServer::create(config, execution));
     take(server->registerResource(Monitor::factory()));
-    take(server->registerResource(AdapterProbe::factory()));
-    take(server->registerResource(ColdResource::factory()));
+    take(server->registerResource(AdapterProbe::factory(), {}, AdapterProbe::commandBindings()));
+    take(server->registerResource(ColdResource::factory(), {}, ColdResource::commandBindings()));
     const std::array gate_commands{CommandBinding::declare<ResumeSceneResource, &ColdResource::resume>()};
     CHECK(server->registerCommands(gate_commands));
     registerClearNode(*server);
@@ -1535,7 +1543,7 @@ int main(int argc, char** argv)
     };
     auto server = take(RenderServer::create(config, *execution));
     take(server->registerResource(Monitor::factory()));
-    take(server->registerResource(ColdResource::factory()));
+    take(server->registerResource(ColdResource::factory(), {}, ColdResource::commandBindings()));
     registerClearNode(*server);
     auto client = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     RenderResult<void> ran;
@@ -1700,7 +1708,7 @@ int main(int argc, char** argv)
 
     RenderServerConfig peer_config{"installed.effect.peer"};
     auto peer = take(RenderServer::create(peer_config, *execution));
-    take(peer->registerResource(ColdResource::factory()));
+    take(peer->registerResource(ColdResource::factory(), {}, ColdResource::commandBindings()));
     registerClearNode(*peer);
     auto peer_client = take(ipc::IpcCore::instance().createRequester(peer_config.channel_name));
     std::thread peer_render([&]() noexcept { CHECK(peer->run()); });

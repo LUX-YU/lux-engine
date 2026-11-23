@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/commands/Command.hpp>
+#include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/runtime/JobControl.hpp>
 #include <lux/engine/render/runtime/JobOutput.hpp>

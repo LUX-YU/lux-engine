@@ -4,7 +4,7 @@
 #include <lux/engine/render/graph/CommandPackets.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <optional>
 #include <variant>
 #include <vector>

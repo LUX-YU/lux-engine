@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/effect/CapabilityDefinition.hpp>
+#include <lux/engine/render/effect/EffectNodeDefinition.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
 #include <map>
 #include <span>
@@ -67,7 +67,7 @@ namespace lux::render
         EffectGraphEdit& operator=(EffectGraphEdit&&) = delete;
 
         [[nodiscard]] RenderResult<graph::NodeId> addNode(
-            const CapabilityDefinition& capability,
+            const EffectNodeDefinition& capability,
             ImplementationSelection implementation,
             std::string arguments = {}
         ) noexcept;

@@ -1,16 +1,18 @@
 #pragma once
 
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include "Support.hpp"
 #include <array>
 #include <cstring>
 #include <exec/create.hpp>
-#include <lux/engine/render/resources/view/Parameters.hpp>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
+#include <lux/engine/render/resource/view/Parameters.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
 #include "SdkFullscreen.hpp"
 #include "SdkGreen.hpp"
 #include "SdkRed.hpp"
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 #include "SdkRecordColor.hpp"
 
@@ -80,7 +82,7 @@ namespace sdk_programs
     public:
         using Descriptor = TriangleGeometry;
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.triangle"}, 0, 0, {}, "Indexed fullscreen triangle.", EResourceDomain::DEVICE
         };
@@ -120,7 +122,7 @@ namespace sdk_programs
 
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, TriangleGeometry, &create>(nullptr, nullptr);
+            return makeResourceRegistration<Descriptor, TriangleGeometry, &create>();
         }
 
         IndexedGeometryInput input(std::span<const GeometryAttribute> attributes) const noexcept
@@ -138,7 +140,7 @@ namespace sdk_programs
     public:
         using Descriptor = ColorPage;
         using Config = void;
-        using Ops = void;
+
         static constexpr auto capability = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.color_page"}, capability, 0, {}, "Two RGBA records.", EResourceDomain::DEVICE
@@ -185,7 +187,7 @@ namespace sdk_programs
 
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, ColorPage, &create>(nullptr, nullptr);
+            return makeResourceRegistration<Descriptor, ColorPage, &create>();
         }
 
         ColorIndex select(const RasterRecordWriter& writer) const noexcept
@@ -215,7 +217,7 @@ namespace sdk_programs
     {
         using Descriptor = DrawMask;
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.draw_mask"}, 0, 0, {}, "Fraction of the output height to draw.",
             EResourceDomain::DEVICE
@@ -229,7 +231,7 @@ namespace sdk_programs
 
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, DrawMask, &create>(nullptr, nullptr);
+            return makeResourceRegistration<Descriptor, DrawMask, &create>();
         }
     };
 
@@ -238,12 +240,10 @@ namespace sdk_programs
     {
         using Descriptor = CodeStorage;
         using Config = void;
-        using Ops = void;
-        using Commands = std::tuple<HoldCode, SetDrawOrder>;
+
         using PerFrameData = std::tuple<DrawOrder>;
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.sdk.shader_code"}, 0, 0, {}, "Two resident raster uses.", EResourceDomain::DEVICE,
-            resourceCommandDescriptors(static_cast<Commands*>(nullptr)),
             resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
         };
 
@@ -343,6 +343,14 @@ namespace sdk_programs
             return std::make_unique<CodeStorage>(context, id);
         }
 
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{
+                CommandBinding::declare<HoldCode, &hold>(), CommandBinding::declare<SetDrawOrder, &setOrder>()
+            };
+            return commands;
+        }
+
         static ResourceRegistration factory() noexcept
         {
             static constexpr auto snapshot = []() noexcept
@@ -356,11 +364,8 @@ namespace sdk_programs
                 return ops;
             }();
             static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
-            static const std::array commands{
-                CommandBinding::declare<HoldCode, &hold>(), CommandBinding::declare<SetDrawOrder, &setOrder>()
-            };
             static const auto frame = FrameDataCall::declare<CodeStorage, CodeStorage, &apply>();
-            return makeResourceRegistration<Descriptor, CodeStorage, &create>(nullptr, &binding, commands, frame);
+            return makeResourceRegistration<Descriptor, CodeStorage, &create>(&binding, frame);
         }
 
         static inline std::atomic gate{EDriverGate::OPEN};
@@ -400,11 +405,9 @@ namespace sdk_programs
     {
         using Descriptor = BackgroundSettings;
         using Config = void;
-        using Ops = void;
-        using Commands = std::tuple<SetBackground>;
+
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.sdk.background"}, 0, 0, {}, "Background program input.", EResourceDomain::DEVICE,
-            resourceCommandDescriptors(static_cast<Commands*>(nullptr))
+            ResourceNameView{"test.sdk.background"}, 0, 0, {}, "Background program input.", EResourceDomain::DEVICE
         };
 
         static RenderResult<std::unique_ptr<BackgroundSettings>> create(ResourceCreateContext&, ResourceInstanceId) noexcept
@@ -424,13 +427,18 @@ namespace sdk_programs
             return SnapshotValue<std::uint32_t>{value, revision.value()};
         }
 
+        static std::span<const CommandBinding> commandBindings() noexcept
+        {
+            static const std::array commands{CommandBinding::declare<SetBackground, &set>()};
+            return commands;
+        }
+
         static ResourceRegistration factory() noexcept
         {
             static constexpr auto snapshot =
                 detail::StorageSnapshotOps::make<BackgroundSettings, std::uint32_t, &BackgroundSettings::selectValue, &BackgroundSettings::revision>();
             static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
-            static const std::array commands{CommandBinding::declare<SetBackground, &set>()};
-            return makeResourceRegistration<Descriptor, BackgroundSettings, &create>(nullptr, &binding, commands);
+            return makeResourceRegistration<Descriptor, BackgroundSettings, &create>(&binding);
         }
 
         std::uint32_t value = 0;

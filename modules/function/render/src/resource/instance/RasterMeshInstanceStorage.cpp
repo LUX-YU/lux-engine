@@ -1,5 +1,7 @@
-#include <lux/engine/render/extensions/resource/ReplicaMutation.hpp>
-#include <lux/engine/render/extensions/FrameDataCall.hpp>
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/resource/ReplicaMutation.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -7,8 +9,8 @@
 #include <set>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
-#include <lux/engine/render/extensions/graph/GraphResource.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/memory/DirtyRanges.hpp>
 #include <lux/engine/render/resource/ResourceSet.hpp>
@@ -1298,23 +1300,27 @@ namespace lux::render::detail
         return {};
     }
 
-    ResourceRegistration RasterMeshInstanceStorage::factory() noexcept
+    std::span<const CommandBinding> rasterMeshInstanceStorageCommands() noexcept
     {
-        static const auto frame_call =
-            FrameDataCall::declare<InstanceResource, RasterMeshInstanceStorage, &applyInputs>();
-
         static const std::array commands{
             CommandBinding::declare<InstanceCommands::CreateInstance, &createInstance>(),
             CommandBinding::declare<InstanceCommands::CreateInstances, &createInstances>(),
             CommandBinding::declare<InstanceCommands::ReleaseInstance, &releaseInstance>(),
             CommandBinding::declare<InstanceCommands::Update, &updateInstances>()
         };
+        return commands;
+    }
+
+    ResourceRegistration RasterMeshInstanceStorage::factory() noexcept
+    {
+        static const auto frame_call =
+            FrameDataCall::declare<InstanceResource, RasterMeshInstanceStorage, &applyInputs>();
+
         static constexpr auto snapshot = StorageSnapshotOps::make<
             RasterMeshInstanceStorage, MeshInstanceSnapshot, &RasterMeshInstanceStorage::selectMeshInstances,
             &RasterMeshInstanceStorage::selection_revision_
         >();
         static const StorageBindingOps binding{
-            nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<RasterMeshInstanceStorage*>(value)->prepareFrame(frame.slot, uploads); },
             [](const void* value) noexcept
@@ -1343,7 +1349,8 @@ namespace lux::render::detail
             return std::make_unique<RasterMeshInstanceStorage>(dependencies, id, **storage);
         };
         return makeResourceRegistration<render::InstanceResource, RasterMeshInstanceStorage, create>(
-            nullptr, &binding, commands, frame_call
+            &binding,
+            frame_call
         );
     }
 } // namespace lux::render::detail

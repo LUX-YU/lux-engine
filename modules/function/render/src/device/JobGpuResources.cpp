@@ -1,13 +1,15 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <algorithm>

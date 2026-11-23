@@ -1,3 +1,5 @@
+#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
 #include "MaterialFixture.hpp"
 #include "FullscreenVertex.hpp"
 #include "GraphShadowSampler.hpp"
@@ -5,23 +7,22 @@
 #include "ShadowReadback.hpp"
 #include "SceneCapture.hpp"
 #include "SceneComparison.hpp"
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/effect/ClusterLists.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/MeshVisibility.hpp>
-#include <lux/engine/render/effect/Shadow.hpp>
+#include <lux/engine/render/effect/builtin/ClusterLists.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
+#include <lux/engine/render/effect/builtin/Shadow.hpp>
 #include <cmath>
 #include <cstdlib>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/resources/lighting/Commands.hpp>
-#include <lux/engine/render/resources/material/Commands.hpp>
-#include <lux/engine/render/resources/mesh/Commands.hpp>
-#include <lux/engine/render/resources/instance/Commands.hpp>
-#include <lux/engine/render/resources/mesh/Binding.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/runtime/commands/LightingCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/resource/mesh/Binding.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #include <lux/engine/render/features/shadow/ShadowInputs.hpp>
 
 struct SamplerProbe final
@@ -29,7 +30,7 @@ struct SamplerProbe final
     static constexpr std::string_view name = "test.graph.sampler_probe";
     static constexpr auto color = effectPortSemantic("color");
 
-    static CapabilityDefinition definition()
+    static EffectNodeDefinition definition()
     {
         return {
             .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
@@ -153,7 +154,7 @@ static void verifySamplers(RenderServer& server, const RenderServerConfig& confi
         call<RemoveEffect>(*client, commands, {invalid_effect});
     }
     JobBinding binding;
-    const auto readback = GraphCaptureBuffer::bind(*client, commands, session, {scene, view}, {&pixels});
+    const auto readback = GraphCaptureBuffer::bind({*client, commands, session}, {scene, view}, {&pixels});
     binding.resources.push_back({std::string{ColorCapture::name}, readback});
     const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, std::move(binding));
     const auto deadline = Clock::now() + 10s;
@@ -242,7 +243,7 @@ struct ShadowReadback final
     };
     static constexpr std::uint32_t maximum_views = 9;
 
-    static CapabilityDefinition definition()
+    static EffectNodeDefinition definition()
     {
         using enum lux::graph::EPinDirection;
         return {
@@ -429,7 +430,7 @@ static void runPresets(
         const auto effect = createPreparedEffect(client, commands, session, std::move(request));
         const auto view = call<CreateView>(client, commands, {scene}).view;
         const auto image = call<CreateTarget>(client, commands, {session, target}).target;
-        const ViewRequest view_scope{scene, view};
+        const ViewScope view_scope{scene, view};
         JobBinding binding = scene_binding;
         const auto camera_resource = call<GetOrCreateResource>(client, commands,
             {session, view_scope, kViewParameterResourceName}).resource_id;
@@ -441,7 +442,7 @@ static void runPresets(
             binding.resources.push_back({std::string{Shadow::lights_binding}, lights, 0, EJobResourceUse::CPU_SNAPSHOT});
         if (!profile_frames)
         {
-            const auto readback = GraphCaptureBuffer::bind(client, commands, session, view_scope, {&pixels, target.format});
+            const auto readback = GraphCaptureBuffer::bind({client, commands, session}, view_scope, {&pixels, target.format});
             binding.resources.push_back({std::string{ColorCapture::name}, readback});
         }
         const auto attached = call<CreateRenderJob>(client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
@@ -842,7 +843,7 @@ int main(int argc, char** argv)
         auto effect = createPreparedEffect(*client, commands, session, std::move(request));
         const auto make_binding = [&](ViewId view, const ViewGpuParameters& input)
         {
-            const ViewRequest scope{scene, view};
+            const ViewScope scope{scene, view};
             auto binding = scene_binding;
             const auto camera_resource = call<GetOrCreateResource>(
                 *client, commands, {session, scope, kViewParameterResourceName}
@@ -858,7 +859,7 @@ int main(int argc, char** argv)
             };
             const auto capture_count = clustered ? configurations.size() : configurations.size() - 2;
             const auto readback = GraphCaptureBuffer::bind(
-                *client, commands, session, scope, std::span{configurations}.first(capture_count)
+                {*client, commands, session}, scope, std::span{configurations}.first(capture_count)
             );
             binding.resources.push_back({std::string{Shadow::lights_binding}, light_storage, 0, EJobResourceUse::CPU_SNAPSHOT});
             binding.resources.push_back({std::string{ColorCapture::name}, readback});
@@ -870,7 +871,7 @@ int main(int argc, char** argv)
         const auto output = call<CreateTarget>(*client, commands, {session, target}).target;
         const auto binding = make_binding(view, camera);
         const auto camera_resource = call<QueryResource>(*client, commands, {
-            session, ViewRequest{scene, view}, kViewParameterResourceName
+            session, ViewScope{scene, view}, kViewParameterResourceName
         }).resource_id;
         const auto attachment = startRenderJob(*client, commands, session, scene, view, output, effect, binding);
         const auto second_view = call<CreateView>(*client, commands, {scene}).view;

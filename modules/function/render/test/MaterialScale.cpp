@@ -1,4 +1,13 @@
-#include <lux/engine/render/resources/transform/Resource.hpp>
+#include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/render/runtime/commands/TextureCommands.hpp>
+#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
+#include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/effect/EffectId.hpp>
+#include <lux/engine/render/resource/transform/Resource.hpp>
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 
@@ -8,17 +17,16 @@
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/effect/DepthPyramid.hpp>
-#include <lux/engine/render/effect/GBuffer.hpp>
-#include <lux/engine/render/effect/Lighting.hpp>
-#include <lux/engine/render/effect/MeshRaster.hpp>
-#include <lux/engine/render/effect/MeshVisibility.hpp>
-#include <lux/engine/render/effect/ToneMapping.hpp>
+#include <lux/engine/render/effect/builtin/DepthPyramid.hpp>
+#include <lux/engine/render/effect/builtin/GBuffer.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/MeshRaster.hpp>
+#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
+#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
-#include <lux/engine/render/extensions/effect/EffectImplementation.hpp>
-#include <lux/engine/render/resources/transform/Binding.hpp>
-#include <lux/engine/render/resources/view/Resource.hpp>
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+#include <lux/engine/render/resource/transform/Binding.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #ifdef _WIN32
 #include "Allocation.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -58,7 +66,7 @@ namespace
         struct Descriptor final
         {
             using Config = void;
-            using Ops = void;
+
             static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.allocations"}, 0, 0, {}};
         };
 
@@ -134,7 +142,7 @@ namespace
 
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, MaterialAllocationProbe, &create>(nullptr);
+            return makeResourceRegistration<Descriptor, MaterialAllocationProbe, &create>();
         }
 
     private:
@@ -148,7 +156,7 @@ namespace
         struct Descriptor final
         {
             using Config = void;
-            using Ops = void;
+
             static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.pipeline_gate"}, 0, 0, {}};
         };
 
@@ -274,7 +282,7 @@ namespace
 
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, PipelineIsolationProbe, &create>(nullptr);
+            return makeResourceRegistration<Descriptor, PipelineIsolationProbe, &create>();
         }
 
     private:
@@ -307,7 +315,7 @@ namespace
     struct MaterialReadbackDescriptor final
     {
         using Config = void;
-        using Ops = void;
+
         static inline const ResourceDefinition descriptor{
             ResourceNameView{"test.material.readback"}, 0, 0, {}, "View-owned material capture.", EResourceDomain::VIEW
         };
@@ -356,14 +364,14 @@ namespace
                     );
                 }
             };
-            return makeResourceRegistration<Descriptor, MaterialReadback, &create>(nullptr, &binding);
+            return makeResourceRegistration<Descriptor, MaterialReadback, &create>(&binding);
         }
 
         CaptureBuffer storage;
         Configuration configuration;
     };
 
-    CapabilityDefinition captureDefinition(EMaterialPurpose purpose)
+    EffectNodeDefinition captureDefinition(EMaterialPurpose purpose)
     {
         constexpr auto direction = graph::EPinDirection::INPUT;
         const auto name = purpose == EMaterialPurpose::GBUFFER ? "test.material.capture.gbuffer" :
@@ -405,7 +413,7 @@ namespace
         return context.publish(capture_output, {{capture_output, copied.written.front()}});
     }
 
-    CapabilityDefinition hdrDefinition()
+    EffectNodeDefinition hdrDefinition()
     {
         return {
             .identity = {graph::nodeTypeId(hdr_capability), std::string{hdr_capability}, 1},
@@ -521,10 +529,11 @@ namespace
     }
 
     JobBinding materialBinding(
-        ipc::IpcRequester& ipc, const CommandList& commands, DeviceSessionId session, ViewRequest view,
+        CaptureDevice device, ViewScope view,
         const MaterialReadback::Configuration& capture
     )
     {
+        const auto& [ipc, commands, session] = device;
         const auto local = [&](ResourceNameView name)
         {
             return call<GetOrCreateResource>(ipc, commands, {session, view, name}).resource_id;
@@ -654,7 +663,7 @@ namespace
             view_ = call<CreateView>(ipc, commands, {scene_id}).view;
             output_ = call<CreateTarget>(ipc, commands, {session, kTarget}).target;
             const MaterialReadback::Configuration capture{{{&pixels_, format}, {}}};
-            auto binding = materialBinding(ipc, commands, session, {scene_id, view_}, capture);
+            auto binding = materialBinding({ipc, commands, session}, {scene_id, view_}, capture);
             job = startRenderJob(ipc, commands, session, scene_id, view_, output_, effect_, std::move(binding));
         }
 
@@ -1162,7 +1171,7 @@ namespace
             const MaterialReadback::Configuration capture{{
                 {&job.pixels, kTarget.format}, {samples_hdr ? &imported_pixels : nullptr, kTarget.format}
             }};
-            job.binding = materialBinding(client, commands, session, {scenes[i], job.view}, capture);
+            job.binding = materialBinding({client, commands, session}, {scenes[i], job.view}, capture);
             if (samples_hdr) job.binding.target_images.push_back({.target = source, .binding = std::string{imported_hdr}});
             job.job = call<CreateRenderJob>(client, commands, {
                 scenes[i], job.view, job.effect, EJobCadence::REQUESTED

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include <lux/engine/systems/render/visibility.h>
 
 #include <lux/engine/assets/AssetRepository.hpp>

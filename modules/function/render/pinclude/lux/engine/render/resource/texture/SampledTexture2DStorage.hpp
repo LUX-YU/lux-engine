@@ -1,15 +1,15 @@
 #pragma once
 
-#include <lux/engine/render/extensions/resource/ResourceCreateContext.hpp>
-#include <lux/engine/render/resources/texture/Resource.hpp>
+#include <lux/engine/render/resource/ResourceCreateContext.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
 
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <map>
-#include <lux/engine/render/extensions/device/DescriptorTable.hpp>
-#include <lux/engine/render/resources/texture/Binding.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
-#include <lux/engine/render/extensions/resource/StorageMeta.hpp>
-#include <lux/engine/render/extensions/upload/ResourceUploader.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
+#include <lux/engine/render/resource/texture/Binding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageMeta.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {

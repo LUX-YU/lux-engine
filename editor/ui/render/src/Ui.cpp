@@ -1,6 +1,6 @@
 #include <lux/editor/ui/render/UiFeature.hpp>
 #include <lux/editor/ui/render/UiState.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 #include <cmath>
@@ -45,7 +45,7 @@ namespace lux::editor::ui
 
     RenderResult<CapabilityImplementationId> registerUi(RenderServer& server) noexcept
     {
-        auto resource = server.registerResource<UiState>();
+        auto resource = server.registerResource<UiState>(UiState::commandBindings());
         if (!resource)
         {
             return cxx::unexpected(resource.error());

@@ -121,10 +121,10 @@ int main(int argc, char**)
         const auto a = integration_test::call<CreateView>(*rendering, {scene_id}).view;
         const auto b = integration_test::call<CreateView>(*rendering, {scene_id}).view;
         const auto route_a = integration_test::take(
-            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewRequest{scene_id, a}})
+            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewScope{scene_id, a}})
         );
         const auto route_b = integration_test::take(
-            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewRequest{scene_id, b}})
+            client.commandBinding<fixture::RoleCommand<2>>({role_effect, 0, ViewScope{scene_id, b}})
         );
         CHECK(route_a.destination != route_b.destination);
         const auto storage_a =

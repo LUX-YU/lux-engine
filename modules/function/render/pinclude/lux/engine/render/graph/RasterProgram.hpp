@@ -3,7 +3,7 @@
 #include <NRI.h>
 #include <array>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
-#include <lux/engine/render/extensions/graph/Draw.hpp>
+#include <lux/engine/render/graph/Draw.hpp>
 #include <span>
 #include <utility>
 

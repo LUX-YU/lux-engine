@@ -32,7 +32,7 @@ target. An application that creates ExecutionRuntime also declares its own Core 
 
 ### EffectGraph authoring
 
-Pass an owned `EffectGraph` to `CreateEffect`. Register a `CapabilityDefinition` and an
+Pass an owned `EffectGraph` to `CreateEffect`. Register a `EffectNodeDefinition` and an
 `EffectImplementation` on the Server before running it. `EffectGraphEdit` connects versioned semantic ports
 and publishes named outputs. Register node-targeted typed bindings with `registerNodeEffectCommand`, then list their
 locations in the selected implementation. Each live node can initialize one typed state. Commands select that state by
@@ -133,8 +133,7 @@ Resource before publishing replacements. Two output names can address overlappin
 projection, retain its canonical state on the same physical queue, and the cold binding predicate disables access
 through one name. This also accounts for barriers recorded by a disabled pass. Conflicting names return
 `kGraphConflictingOutput`. An installed Job retains its Resource owners. Binding a shared input adds no declared
-Job scheduling edge. The first positional `StorageBindingOps::Resolve` signature remains available to the deferred
-Editor consumer.
+Job scheduling edge.
 
 The built-in `Lighting` node consumes a GBuffer surface and an optional connected shadow bundle. Its
 `direct` implementation binds the four `EDirectLightingBuffer` projections of a scene `LightResource`
@@ -277,7 +276,7 @@ Built-in node arguments use named options from the installed `lux-cxx` arguments
 publish a typed immutable value with `EffectInitializationContext::setConfiguration` and borrow it in
 a device build with `EffectCompileContext::configuration<T>()`. The value belongs to the logical Effect.
 
-`effect/EffectBundles.hpp` defines the GBuffer, Shadow, HDR and cluster-list schemas shared by Effect producers
+The built-in GBuffer, Shadow and Lighting headers publish their respective bundle schemas for Effect producers
 and consumers. Use the schema's type, version and member names when declaring or connecting these bundles.
 Cold graph failures report an `EffectDiagnostic` through `RenderErrorSink` with the source node and pins where
 available. The sink may retain a copy of this value after returning from the callback.
@@ -423,11 +422,11 @@ callbacks and state.
 ## Requests and execution
 
 Framework commands are split by Scene, View, Target, Effect, Job, Discovery and Server responsibilities.
-`commands/Commands.hpp` is their aggregate. A Job owns its logical Scene, View and Effect relationship from Create
+`runtime/commands/Commands.hpp` is their aggregate. A Job owns its logical Scene, View and Effect relationship from Create
 to Remove. Start selects the Target and builds a private device execution. Stop closes future frame admission and
 returns writer eligibility while an admitted Run retains its execution through native acceptance. Remove requires
 those borrows to settle. Rebind checks a candidate before publishing a new Effect or Target on the same JobId.
-Mesh and Instance commands have independent namespaces under `resources/mesh` and `resources/instance`.
+Mesh and Instance commands have independent namespaces in `runtime/commands/MeshCommands.hpp` and `runtime/commands/InstanceCommands.hpp`.
 
 The host serializes catalog setup before calling `run()`. The call seals registration and transfers the
 catalog to the Server thread through shutdown. Runtime clients discover IDs through the fixed
@@ -1193,7 +1192,7 @@ Resource declarations and Storage implementations have separate identities. Each
 owns at most one instance of each declaration. Two declarations can reuse one typed factory implementation and
 register independent metadata. ResourceSet owns instances. ResourceRegistry owns registration metadata and indexes instances.
 
-Ordinary clients include `commands/ResourceCommands.hpp` and `resources/BuiltinResources.hpp`.
+Ordinary clients include `runtime/commands/ResourceCommands.hpp` and `resource/BuiltinResources.hpp`.
 They query or explicitly create the desired Resource before uploading:
 
 ```cpp
@@ -1395,7 +1394,7 @@ projection. The batch qualifies every record and field before adopting any value
 supplies each FIF's upload, and the full material update command handles texture and structural changes.
 
 To supply a View block, create `kViewParameterResourceName` with `GetOrCreateResource` in the Job's device and
-`ViewRequest` scope. Add a `JobResourceInput` with the name `ViewParameterResource::snapshot_binding`,
+`ViewScope` scope. Add a `JobResourceInput` with the name `ViewParameterResource::snapshot_binding`,
 that Resource identity, projection zero and `EJobResourceUse::CPU_SNAPSHOT` to `JobBinding::resources`. The application supplies complete
 `ViewGpuParameters`, including column-major matrices, and publishes through `ViewParameterCommands::Update` or the
 `ViewParameterResource` FrameData column. Each batch validates every value before applying the last element.
@@ -1411,6 +1410,9 @@ writable FIF replica and invalidates the recording that references that block.
 `makeFrameLayout(std::type_identity<std::tuple<Resources...>>{}, revision)` creates a standalone typed schema.
 `QueryRenderJobInputLayout` returns an independent copy with a Server-issued `FrameLayoutKey`. Admission checks the
 Server instance and input revision. A Rebind with the same Target, channels and Resource identities retains the key.
+Each installed Resource receives consecutive columns in declaration order. Its FrameDataCall receives the first
+column index and executes against the Resource retained by the Job. Rebuild extensions that register frame calls
+against the matching Render SDK.
 
 `FrameData::create<Resources>(layout, initial_capacities)` checks the complete typed contract and fixes its
 column directory. Each column owns one typed vector. `appendData<Resource, T>(count)` grows that column and
@@ -1440,7 +1442,7 @@ own batch before applying it. Mesh instance updates change references, and Trans
 ## Shared copy recording and preparation settlement
 
 Graph transfers, staged asset/table uploads, texture clones and producer buffer preservation use the physical
-recording functions in `extensions/device/CopyEncoding.hpp`. Callers supply the exclusive command buffer and
+recording functions in the private `device/CopyEncoding.hpp` header. Callers supply the exclusive command buffer and
 qualified resource ranges. The shared texture encoder expands mip/layer regions; upload/readback retain the
 qualified native row and slice layout. Graph compilation still owns graph barriers; Uploader owns its transfer
 and queue-family handoffs. The encoders neither allocate resources nor submit or wait for GPU work.

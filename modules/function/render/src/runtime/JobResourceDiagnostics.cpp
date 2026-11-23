@@ -1,5 +1,5 @@
 #include <lux/engine/render/runtime/JobExecution.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <algorithm>
 #include <numeric>

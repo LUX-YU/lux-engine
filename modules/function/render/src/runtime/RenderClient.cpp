@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <algorithm>
 #include <chrono>

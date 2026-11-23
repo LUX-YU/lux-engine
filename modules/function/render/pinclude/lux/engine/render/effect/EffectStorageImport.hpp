@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/render/graph/DrawResource.hpp>
-#include <lux/engine/render/core/Resource.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
 #include <lux/engine/render/graph/StorageBindingSlot.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 
 namespace lux::render::runtime_detail
 {

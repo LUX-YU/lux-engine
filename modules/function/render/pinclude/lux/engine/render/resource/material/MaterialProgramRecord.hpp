@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/resources/material/Data.hpp>
+#include <lux/engine/render/resource/material/Data.hpp>
 
 namespace lux::render::detail
 {

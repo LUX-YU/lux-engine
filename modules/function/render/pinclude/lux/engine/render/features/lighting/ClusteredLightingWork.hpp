@@ -1,10 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/Work.hpp>
-#include <lux/engine/render/capabilities/ClusterGrid.hpp>
-#include <lux/engine/render/effect/ClusterLists.hpp>
-#include <lux/engine/render/effect/EffectBundles.hpp>
-#include <lux/engine/render/resources/transform/Data.hpp>
+#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/builtin/ClusterLists.hpp>
+#include <lux/engine/render/resource/transform/Data.hpp>
 #include <utility>
 
 namespace lux::render

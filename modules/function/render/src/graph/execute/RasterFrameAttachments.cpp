@@ -1,9 +1,11 @@
+#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <algorithm>
 #include <cmath>
@@ -232,7 +234,7 @@ namespace lux::render::detail
         {
             const auto* program = graph_.programs().rasterStream(p);
             if (!program) continue;
-            const auto& stream = frame_.stream_inputs[program->list];
+            const auto& stream = draws_[program->list];
             if (!stream.written) return cxx::unexpected(RenderError{kFrameContract, {p}});
             const auto layer_count = static_cast<std::uint32_t>(stream.sections.size());
             const auto limit = session_.description().dimensions.textureLayerMaxNum;
@@ -271,7 +273,7 @@ namespace lux::render::detail
             for (const auto& section : stream.sections)
             {
                 const bool covers_next_draws =
-                    section.draws.first == next_draw && containsStreamRange(stream.draws.size(), section.draws);
+                    section.draws.first == next_draw && section.draws.fits(stream.draws.size());
                 const bool new_layer = section.layer < layer_count && !seen[section.layer];
                 if (!covers_next_draws || !new_layer)
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {p, section.layer}});
@@ -302,7 +304,7 @@ namespace lux::render::detail
     }
 
     RenderResult<void>
-    RasterFramePreparation::materializeSections(std::uint32_t p, const OwnedRasterStream& stream) noexcept
+    RasterFramePreparation::materializeSections(std::uint32_t p, const RasterDrawInput& stream) noexcept
     {
         auto& candidate = frame_.stream_scratch;
         candidate.has_explicit_sections = !stream.sections.empty();

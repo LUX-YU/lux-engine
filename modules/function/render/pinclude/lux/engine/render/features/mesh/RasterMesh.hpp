@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/extensions/graph/Work.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
-#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/graph/Work.hpp>
+#include <lux/engine/render/resource/material/Data.hpp>
+#include <lux/engine/render/resource/mesh/Data.hpp>
 #include <array>
 #include <cstdint>
 #include <string_view>

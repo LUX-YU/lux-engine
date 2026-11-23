@@ -1,4 +1,4 @@
-#include <lux/engine/render/resources/material/Binding.hpp>
+#include <lux/engine/render/resource/material/Binding.hpp>
 
 namespace lux::render
 {

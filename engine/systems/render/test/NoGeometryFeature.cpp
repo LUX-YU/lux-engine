@@ -1,6 +1,6 @@
 // Extension-author composition TU. The ordinary Scene consumer does not include author interfaces.
 #include <lux/engine/render/capabilities/CapabilityCatalog.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 
 namespace
@@ -48,7 +48,6 @@ namespace
     template <bool Surface> struct NoGeometryCapability final
     {
         using PrerequisiteCapabilities = std::tuple<>;
-        using Commands = std::tuple<>;
         using PerFrameData = std::tuple<>;
     };
 

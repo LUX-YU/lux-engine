@@ -35,11 +35,6 @@ namespace lux::render::detail
             return nonzero_words_.empty();
         }
 
-        [[nodiscard]] std::size_t wordCount() const noexcept
-        {
-            return nonzero_words_.size();
-        }
-
         [[nodiscard]] std::uint64_t recordCount() const noexcept
         {
             return records_;

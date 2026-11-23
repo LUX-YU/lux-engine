@@ -346,7 +346,6 @@ namespace lux::render::detail
         const auto& layouts = bindings;
         auto& resources = plan.resources_;
         auto& recording = plan.recording_;
-        const auto& target = plan.output_description_;
         const auto backend = device.limits.graphicsAPI;
         const bool legacy_d3d12 = backend == nri::GraphicsAPI::D3D12 && !device.limits.features.enhancedBarriers;
         // Image cells extend that algorithm to actual aspects/mips/layers; NRI Buffer barriers are whole-resource.
@@ -591,24 +590,15 @@ namespace lux::render::detail
         }
         for (const auto& output : graph.outputs())
         {
-            const bool presented = output.target && target.kind == ETargetKind::SURFACE;
-            const bool sampled_target = output.target && target.sampled;
             Access state{.known = true};
-            if (presented)
+            if (output.final_use == EGraphUse::PRESENT)
             {
-                if (output.final_use)
-                {
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                }
                 state.stages = nri::StageBits::NONE;
                 state.layout = nri::Layout::PRESENT;
             }
-            else if (output.final_use || sampled_target)
+            else if (output.final_use)
             {
-                const auto use = output.final_use.value_or(EGraphUse::SAMPLED);
-                if (sampled_target && use != EGraphUse::SAMPLED)
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                state = externalState(output.version.resource, use);
+                state = externalState(output.version.resource, *output.final_use);
             }
             else if (legacy_d3d12 && output.target)
             {

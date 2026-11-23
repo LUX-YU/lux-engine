@@ -7,11 +7,11 @@
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <lux/engine/render/effect/EffectStorageImport.hpp>
 #include <lux/engine/render/effect/CpuCall.hpp>
-#include <lux/engine/render/core/Resource.hpp>
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 #include <algorithm>
 #include <span>
@@ -118,8 +118,9 @@ namespace lux::render::runtime_detail
 
     struct EffectBuildContract final
     {
-        const EffectOutputDesc& target;
+        const GraphOutputRequirements& target;
         const EffectBuildDevice& device;
+        std::optional<EGraphUse> target_final_use;
     };
 
     [[nodiscard]] RenderResult<EffectGraphBuild>

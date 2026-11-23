@@ -33,7 +33,7 @@ namespace lux::render
     }
 
     RenderResult<graph::NodeId> EffectGraphEdit::addNode(
-        const CapabilityDefinition& capability,
+        const EffectNodeDefinition& capability,
         ImplementationSelection implementation,
         std::string arguments
     ) noexcept

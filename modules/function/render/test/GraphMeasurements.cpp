@@ -1,3 +1,4 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "GraphMeasurements.hpp"

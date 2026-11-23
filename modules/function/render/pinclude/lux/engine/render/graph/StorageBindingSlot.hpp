@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/detail/BufferBoundary.hpp>
+#include <lux/engine/render/graph/BufferBoundary.hpp>
 
 namespace lux::render::detail
 {

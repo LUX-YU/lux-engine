@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/resources/material/Data.hpp>
-#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/resource/material/Data.hpp>
+#include <lux/engine/render/resource/mesh/Data.hpp>
 #include <array>
 #include <cstddef>
 #include <map>
@@ -59,7 +59,6 @@ namespace lux::render::detail
 
         void update(std::uint32_t instance, const Selection*) noexcept;
         void setViewCount(std::uint32_t) noexcept;
-        void invalidateSource() noexcept { ++source_.revision; }
         [[nodiscard]] RenderResult<void>
         pack(const void* owner, ResolveGeometry, std::array<std::uint32_t, 2> dispatch_limit) noexcept;
         [[nodiscard]] const MeshDrawGroupSource& source() const noexcept { return source_; }

@@ -7,7 +7,7 @@ context. The statically linked extension stays alive through all registered call
 
 Query the UI implementation from `ListCapabilities` using the active `DeviceSessionId`, then call `makeUiRenderEffect` to create its ordinary Feature
 recipe. Its View-domain `UiResource` is created with the Effect dependencies. Resolve that Resource via `QueryResource`
-with a `ViewRequest`, then send `SubmitDrawData` to its identity. Request spans borrow the producer's ImGui draw arrays
+with a `ViewScope`, then send `SubmitDrawData` to its identity. Request spans borrow the producer's ImGui draw arrays
 only until the response. A successful command owns the complete converted snapshot; later executions of the UI Job
 can render it without the original arrays. Empty draw data replaces the snapshot with no geometry. A failed command
 preserves the previous snapshot. Capture `ImDrawData` list spans before the next `NewFrame`; no ImGui context pointer

@@ -1,8 +1,9 @@
 #pragma once
 
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
-#include <lux/engine/render/runtime/DeviceOptions.hpp>
+#include <lux/engine/render/device/DeviceOptions.hpp>
 #include <optional>
 
 namespace lux::render::detail
@@ -32,7 +33,7 @@ namespace lux::render::detail
 
     struct GraphCompileOptions final
     {
-        std::optional<EffectOutputDesc> target;
+        std::optional<GraphOutputRequirements> target;
         ETransientAllocation allocation = ETransientAllocation::ALIAS_MEMORY;
         bool exercise_async = false;
     };

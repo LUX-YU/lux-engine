@@ -1,9 +1,11 @@
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <lux/editor/ui/render/UiState.hpp>
-#include <lux/engine/render/extensions/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/extensions/resource/StorageBinding.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
 
 namespace lux::editor::ui
 {
@@ -209,14 +211,15 @@ namespace lux::editor::ui
         publish();
     }
 
-    ResourceRegistration UiState::factory() noexcept
+    std::span<const CommandBinding> UiState::commandBindings() noexcept
     {
         static const std::array commands{CommandBinding::declare<SubmitDrawData, &UiState::submit>()};
-        static const render::detail::StorageBindingOps binding{
-            [](void*, const VGraphResourceDesc&, const void*, render::detail::StorageSubscription&,
-               std::span<render::detail::ResourceInput>) noexcept -> RenderResult<void> { return {}; }
-        };
-        return makeResourceRegistration<UiResource, UiState, &UiState::create>(nullptr, &binding, commands);
+        return commands;
+    }
+
+    ResourceRegistration UiState::factory() noexcept
+    {
+        return makeResourceRegistration<UiResource, UiState, &UiState::create>();
     }
 
     RenderResult<std::unique_ptr<render::detail::InstanceData>> UiInstance::create(

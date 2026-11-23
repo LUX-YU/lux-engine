@@ -2,7 +2,7 @@
 #include <lux/engine/render/device/JobGpuResources.hpp>
 
 #include <lux/engine/render/graph/RenderGraph.hpp>
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
 
 namespace lux::render::detail
 {

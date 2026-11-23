@@ -182,7 +182,7 @@ namespace fixture
             {
                 return installed;
             }
-            const auto* view = std::get_if<render::ViewRequest>(&inputs.scope);
+            const auto* view = std::get_if<render::ViewScope>(&inputs.scope);
             if (!view)
             {
                 return {};

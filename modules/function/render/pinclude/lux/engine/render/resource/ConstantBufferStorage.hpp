@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
-#include <lux/engine/render/extensions/execution/ResourceInput.hpp>
+#include <lux/engine/render/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/resource/ResourceBinding.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/graph/Ids.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <optional>
 #include <vector>

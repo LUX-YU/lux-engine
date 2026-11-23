@@ -1,5 +1,5 @@
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/resources/mesh/Data.hpp>
+#include <lux/engine/render/resource/mesh/Data.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/visibility.h>
 

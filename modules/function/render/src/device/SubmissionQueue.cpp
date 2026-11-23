@@ -1,11 +1,11 @@
-#include <lux/engine/render/extensions/device/SubmissionQueue.hpp>
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <optional>
 #include <vector>
 

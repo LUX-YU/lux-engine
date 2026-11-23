@@ -2,7 +2,7 @@
 
 #include <lux/engine/systems/render/visibility.h>
 
-#include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/runtime/Target.hpp>
 #include <lux/engine/window/NativeWindowHandle.hpp>
 
 namespace lux::engine::render

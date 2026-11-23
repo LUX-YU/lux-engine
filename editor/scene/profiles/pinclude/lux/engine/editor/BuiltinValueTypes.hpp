@@ -1,11 +1,10 @@
 #pragma once
 
 #include <lux/cxx/reflection/runtime/Marker.hpp>
-#include <lux/engine/render/capabilities/ClusterGrid.hpp>
+#include <lux/engine/render/effect/builtin/Lighting.hpp>
 #include <lux/engine/render/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/capabilities/MeshShadows.hpp>
 #include <lux/engine/render/capabilities/RasterSurface.hpp>
-#include <lux/engine/render/capabilities/ColorEncoding.hpp>
 #include <lux/engine/scene/ViewComponent.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/Visual.hpp>
@@ -28,4 +27,3 @@ LUX_REFLECT_EXTERNAL(luxeditor, ::lux::render::MeshShadowsConfiguration)
 LUX_REFLECT_EXTERNAL(luxeditor, ::lux::render::ClusterGrid)
 LUX_REFLECT_EXTERNAL(luxeditor, ::lux::render::DeferredLightingConfiguration)
 LUX_REFLECT_EXTERNAL_ENUM(luxeditor, ::lux::render::EClusterDepth)
-LUX_REFLECT_EXTERNAL_ENUM(luxeditor, ::lux::render::EColorEncoding)

@@ -1,8 +1,9 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/device/Error.hpp>
-#include <lux/engine/render/commands/Error.hpp>
+#include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/target/SwapchainTarget.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>

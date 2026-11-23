@@ -7,8 +7,8 @@
 #include <lux/engine/process/assets/AssetRepository.hpp>
 #include <lux/engine/render/capabilities/UiScene.hpp>
 #include <lux/engine/render/commands/ImageCommands.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/frame/RenderFrame.hpp>
 #include <lux/engine/render/inputs/SampledTextureInputs.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
@@ -37,7 +37,7 @@ namespace
         struct Descriptor final
         {
             using Config = void;
-            using Ops = void;
+
             static inline constexpr StorageNameView name{"test.ui.view-allocation-failure"};
             static inline const StorageDescriptor descriptor{name, 0, 0, {}, "One real output-view failure"};
         };

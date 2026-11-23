@@ -8,8 +8,8 @@
 #include <lux/engine/systems/render/RenderSystem.hpp>
 #include <lux/engine/world/World.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/extensions/Registration.hpp>
-#include <lux/engine/render/extensions/device/DeviceSession.hpp>
+#include <lux/engine/render/runtime/commands/Registration.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/extensions/features/FeatureBinding.hpp>
 #include <lux/engine/render/extensions/features/FeatureBuildContext.hpp>
 #include <lux/engine/render/runtime/RenderClient.hpp>
@@ -186,7 +186,6 @@ namespace
         }
 
         using Storages = std::tuple<>;
-        using Commands = std::tuple<>;
 
         static const FeatureGraphOps& graph(bool) noexcept
         {

@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/resource/GraphInstallation.hpp>

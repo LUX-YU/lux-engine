@@ -1,3 +1,4 @@
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <algorithm>

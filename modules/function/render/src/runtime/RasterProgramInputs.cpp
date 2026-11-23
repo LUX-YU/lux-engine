@@ -155,30 +155,16 @@ namespace lux::render::detail
             selection.ready = gpu_.dynamicRasterPrograms(stream.list) != nullptr;
         }
 
-        // The resource callback borrows these operation-local values only on the owner. Its mapping,
-        // shader bytes and linked native recipes are owned before the first driver suspension.
-        struct Capture final
-        {
-            StorageSnapshotOps::Selection value;
-            std::uint64_t revision;
-        };
-        std::vector<Capture> captures;
-        captures.reserve(build.sources.size());
+        data.snapshot_reads = build.reads;
+        data.snapshots.reserve(build.sources.size());
         for (const auto slot : build.sources)
         {
             const auto& source = sources_[slot];
-            auto value = source.binding.ops->create();
-            if (!value) return cxx::unexpected(RenderError{kStorageContract, {slot}});
-            auto revision = source.binding.ops->capture(source.binding.storage, value.get());
-            if (!revision) return cxx::unexpected(revision.error());
-            if (*revision != source.revision->value()) return cxx::unexpected(RenderError{kStorageContract, {slot}});
-            captures.push_back({std::move(value), *revision});
-        }
-        for (const auto local : build.reads)
-        {
-            const auto& source = sources_[build.sources[local]];
-            const auto& capture = captures[local];
-            data.snapshots.push_back({source.binding.id, {capture.value.get(), capture.revision}});
+            auto selected = source.binding.ops->select(source.binding.storage);
+            if (!selected) return cxx::unexpected(selected.error());
+            if (!selected->value || selected->revision != source.revision->value())
+                return cxx::unexpected(RenderError{kStorageContract, {slot}});
+            data.snapshots.push_back({source.binding.id, *selected});
         }
         RasterProgramBuildContext context{data};
         auto mapping = build.compile(build.inputs, context, build.mapping.get());

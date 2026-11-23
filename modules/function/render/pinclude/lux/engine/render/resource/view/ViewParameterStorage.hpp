@@ -12,10 +12,9 @@ namespace lux::render::detail
         [[nodiscard]] static ResourceRegistration factory() noexcept;
 
         [[nodiscard]] RenderResult<void> update(std::span<const ViewGpuParameters>) noexcept;
-        [[nodiscard]] RenderResult<std::uint64_t> capture(ViewGpuParameters& output) const noexcept
+        [[nodiscard]] RenderResult<SnapshotValue<ViewGpuParameters>> selectParameters() const noexcept
         {
-            output = parameters_;
-            return revision_;
+            return SnapshotValue<ViewGpuParameters>{parameters_, revision_};
         }
 
     private:

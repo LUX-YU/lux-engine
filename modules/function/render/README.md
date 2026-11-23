@@ -171,7 +171,7 @@ Use `importStorageSnapshot<T>()` for CPU preparation data supplied by a Resource
 `EJobResourceUse::CPU_SNAPSHOT` and list the input IDs in `CpuCallDependencies::storage_inputs` in callback order.
 The second parameter can be `const CpuFrameInputs<T...>&`. In its `values` tuple, a value type selects an upstream
 CPU value and a const reference borrows a Resource snapshot. Both carry their revision. Each kind consumes its own
-dependency list in declaration order. Two names bound to one Resource observe the same captured object.
+dependency list in declaration order. Two names bound to one Resource observe the same object.
 Calls without either kind of input can take `CpuCallFrame&`.
 
 Pass `ESnapshotScope::JOB_LOCAL` when the named input requires the Resource in the Job’s own scope.
@@ -182,15 +182,18 @@ through a GPU binding as well.
 List the snapshots for a cold Raster build in declaration order on its Raster pass. Declare a snapshot on the CPU
 call as well when the frame reads it.
 Store a `ProgramInputRevision` member in the Resource and register its member pointer with `StorageSnapshotOps::make`.
-On the device owner, call `advance()` when the program input changes and return `value()` from snapshot capture.
+The registered selector takes no arguments and returns `RenderResult<SnapshotValue<T>>`. It lends the
+Resource’s selected value and revision for the synchronous preparation call on the device owner. Call
+`advance()` when the program input changes and publish its `value()` with the selection.
 Start and Rebind attach the installed execution once per physical source, including when several names resolve to it.
 Each runtime Raster builder has its own revision, ready mapping and cached failure. Advancing a source invalidates
 the builders that read it. The device schedules pending builds by installed Job and generation. An unrelated input
 can change while the driver compiles a program, and the original build can still publish its result.
 Compiler checks the count, order and types of the pass’s inputs against the build function’s `SnapshotValues<T...>` parameter.
 The builder receives the selected values and revisions directly. Its native operation
-owns the shader bytes, linked recipes and candidate draw mapping across suspension. Frame preparation captures
-its own values and reads the published mapping after all required builds are ready.
+owns the shader bytes, linked recipes and candidate draw mapping across suspension. Frame preparation borrows the Resource selections and reads the published mapping after all required builds are ready.
+A Mesh instance Storage owns one instance and section table for its current selection revision. Program builders
+and frame calls from every bound Job read those tables. A failed rebuild leaves the previous publication intact.
 
 For Mesh preparation, bind the scene's `InstanceResource` as a `MeshInstanceSnapshot` to read instance,
 mesh, material and submesh identities as well as render permission. The snapshot revision advances when membership,

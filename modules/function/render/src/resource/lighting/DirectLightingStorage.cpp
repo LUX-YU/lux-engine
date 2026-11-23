@@ -382,10 +382,11 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<std::uint64_t> DirectLightingStorage::captureShadows(ShadowLightSnapshot& snapshot) const noexcept
+    RenderResult<SnapshotValue<ShadowLightSnapshot>> DirectLightingStorage::selectShadows() noexcept
     {
         if (updating_) return cxx::unexpected(RenderError{kDeviceBusy});
-        if (snapshot.revision == shadow_revision_) return snapshot.revision;
+        auto& snapshot = shadow_selection_;
+        if (snapshot.revision == shadow_revision_) return SnapshotValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
 
         snapshot.counts = counts();
         snapshot.casters.clear();
@@ -412,7 +413,7 @@ namespace lux::render::detail
         capture.template operator()<PointLightGpu>(EDirectLightingBuffer::POINT);
         capture.template operator()<SpotLightGpu>(EDirectLightingBuffer::SPOT);
         snapshot.revision = shadow_revision_;
-        return snapshot.revision;
+        return SnapshotValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
     }
 
     exec::task<RenderResult<void>>
@@ -726,7 +727,7 @@ namespace lux::render::detail
             CommandBinding::declare<LightingCommands::Update, &updateLightsCommand>()
         };
         static constexpr auto snapshot =
-            StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::captureShadows>();
+            StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::selectShadows>();
         static const StorageBindingOps binding{
             nullptr,
             [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept

@@ -111,6 +111,6 @@ namespace lux::render
 
     RevisionedValue<const void*> RasterProgramBuildContext::snapshot(std::size_t input) const noexcept
     {
-        return data_.snapshots[input].selection;
+        return data_.snapshots[data_.snapshot_reads[input]].selection;
     }
 } // namespace lux::render

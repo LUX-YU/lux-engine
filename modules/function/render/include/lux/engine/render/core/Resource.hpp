@@ -25,8 +25,8 @@ namespace lux::render
         std::uint64_t revision;
     };
 
-    template <class... T>
-    using SnapshotValues = std::tuple<RevisionedValue<std::reference_wrapper<const T>>...>;
+    template <class T> using SnapshotValue = RevisionedValue<std::reference_wrapper<const T>>;
+    template <class... T> using SnapshotValues = std::tuple<SnapshotValue<T>...>;
 
     namespace extension_detail
     {

@@ -295,17 +295,16 @@ struct ColdResource final
     static ResourceRegistration factory() noexcept
     {
         static const std::array commands{CommandBinding::declare<HoldSceneResource, &hold>()};
-        static constexpr auto snapshot = detail::StorageSnapshotOps::make<ColdResource, bool, &ColdResource::capture>();
+        static constexpr auto snapshot = detail::StorageSnapshotOps::make<ColdResource, bool, &ColdResource::selectReady>();
         static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
         return makeResourceRegistration<Descriptor, ColdResource, &create>(nullptr, &binding, commands);
     }
 
 private:
-    RenderResult<std::uint64_t> capture(bool& ready) const noexcept
+    RenderResult<SnapshotValue<bool>> selectReady() const noexcept
     {
         if (auto* counter = capture_counter.load(std::memory_order_relaxed)) ++*counter;
-        ready = ready_;
-        return 1;
+        return SnapshotValue<bool>{ready_, 1};
     }
 
     bool ready_ = true;

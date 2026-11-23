@@ -30,6 +30,7 @@ namespace lux::render::detail
         const DeviceSession& device;
         std::vector<Stream> streams;
         std::vector<Snapshot> snapshots;
+        std::span<const std::uint32_t> snapshot_reads;
 
         [[nodiscard]] Stream* find(DrawStreamSlot) noexcept;
         [[nodiscard]] bool canRead(const Stream&, ResourceInstanceId) const noexcept;

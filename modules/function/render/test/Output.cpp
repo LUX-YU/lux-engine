@@ -1874,7 +1874,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         {
             static constexpr auto snapshot = StorageSnapshotOps::make<
                 StreamProgramStorage, ETestStreamPrograms,
-                &StreamProgramStorage::capture, &StreamProgramStorage::revision_
+                &StreamProgramStorage::selectPrograms, &StreamProgramStorage::revision_
             >();
             static const StorageBindingOps bindings{.cpu_snapshot = &snapshot};
             static const std::array commands{CommandBinding::declare<SetStreamPrograms, &set>()};
@@ -1888,10 +1888,9 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             return std::make_unique<StreamProgramStorage>();
         }
 
-        RenderResult<std::uint64_t> capture(ETestStreamPrograms& selected) const noexcept
+        RenderResult<SnapshotValue<ETestStreamPrograms>> selectPrograms() const noexcept
         {
-            selected = mode_;
-            return revision_.value();
+            return SnapshotValue<ETestStreamPrograms>{mode_, revision_.value()};
         }
 
         static void
@@ -4535,6 +4534,27 @@ static void meshRasterStream(bool d3d12)
     constexpr std::uint64_t tail_indirect_offset = 120;
     static std::atomic draw_mode{EDraw::DIRECT};
     static std::atomic_uint32_t program_selections;
+    // Only numeric identities escape the synchronous call. Rebuilding a nonempty table while the
+    // previous revision is still published necessarily allocates different backing.
+    static const auto observe_selection = [](const SnapshotValue<MeshInstanceSnapshot>& selected) noexcept
+    {
+        const auto& mesh = selected.value.get();
+        CHECK(!mesh.instances.empty() && !mesh.sections.empty());
+        const std::array identity{
+            reinterpret_cast<std::uintptr_t>(&mesh),
+            reinterpret_cast<std::uintptr_t>(mesh.instances.data()),
+            reinterpret_cast<std::uintptr_t>(mesh.sections.data())
+        };
+        static std::uint64_t revision = 0;
+        static std::array<std::uintptr_t, 3> previous{};
+        if (revision == selected.revision) CHECK(std::ranges::equal(identity, previous));
+        else
+        {
+            CHECK(selected.revision > revision);
+            previous = identity;
+            revision = selected.revision;
+        }
+    };
     static std::array<MeshId, 2> meshes;
     static std::uint32_t vertex_stride;
     class Producer final
@@ -4576,6 +4596,7 @@ static void meshRasterStream(bool d3d12)
         buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const SnapshotValues<MeshInstanceSnapshot>& sources, const DrawMapping*) noexcept
         {
             const auto& snapshot = std::get<0>(sources);
+            observe_selection(snapshot);
             const auto& instances = snapshot.value.get().instances;
             CHECK(instances.size() == 1);
             const auto& selected = instances.front();
@@ -4621,6 +4642,7 @@ static void meshRasterStream(bool d3d12)
         {
             auto& frame = inputs.frame;
             const auto& snapshot = std::get<0>(inputs.values);
+            observe_selection(snapshot);
             CHECK(mapping && snapshot.revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
@@ -4890,6 +4912,16 @@ static void meshRasterStream(bool d3d12)
     CHECK(busy.error.type == kDeviceBusy);
     const auto first = held.get();
     CHECK(program_selections == 2);
+    const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
+    const auto peer_target = call<CreateTarget>(*client, commands, {
+        device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
+    }).target;
+    const auto peer = call<CreateRenderJob>(*client, commands, {scene, peer_view, effect, EJobCadence::REQUESTED}).job;
+    auto peer_binding = binding;
+    peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+        device, ViewRequest{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
+    }).resource_id;
+    call<StartRenderJob>(*client, commands, {device, peer, peer_target, std::move(peer_binding)});
     select_mesh(meshes[1]);
     draw_mode = EDraw::INDIRECT;
     const auto second = call<RequestRenderJob>(*client, commands, {job});
@@ -4941,6 +4973,11 @@ static void meshRasterStream(bool d3d12)
             CHECK(reads && reads->raster_geometry_ranges == accepted->raster_geometry_ranges);
         }
     }
+    draw_mode = EDraw::DIRECT;
+    const auto peer_frame = call<RequestRenderJob>(*client, commands, {peer});
+    CHECK(program_selections == 4);
+    stopAndRemoveJob(*client, commands, peer);
+    call<RemoveView>(*client, commands, {scene, peer_view});
     stopAndRemoveJob(*client, commands, job);
     call<RemoveView>(*client, commands, {scene, view});
     call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
@@ -4956,6 +4993,11 @@ static void meshRasterStream(bool d3d12)
         CHECK(pixels[capture.pitch * 32 + x * 4] == std::byte{191});
         CHECK(pixels[capture.pitch * 32 + (64 - x) * 4] == std::byte{0});
     }
+    const auto& peer_pixels = EffectCaptureBuffer::pixels[1];
+    CHECK(peer_pixels.ready.load() == 1);
+    const auto& peer_image = peer_pixels.frames[peer_frame.slot_index];
+    CHECK(peer_image[peer_pixels.pitch * 32 + 48 * 4] == std::byte{191});
+    CHECK(peer_image[peer_pixels.pitch * 32 + 16 * 4] == std::byte{0});
     const auto& shared = capture.frames[third.slot_index];
     CHECK(shared[capture.pitch * 32 + 16 * 4] == std::byte{191});
     CHECK(shared[capture.pitch * 32 + 48 * 4] == std::byte{191});

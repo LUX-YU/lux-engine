@@ -249,7 +249,7 @@ namespace sdk_programs
 
         CodeStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
             : core(const_cast<nri::CoreInterface&>(context.device.nriCore())),
-              item(extension_detail::ResourceIdentity::make<ItemId>(id, lux::cxx::SlotKey<ShaderItem>{0, 1})),
+              snapshot_{extension_detail::ResourceIdentity::make<ItemId>(id, lux::cxx::SlotKey<ShaderItem>{0, 1}), false},
               uses(context.device)
         {
             native_create = core.CreateGraphicsPipeline;
@@ -310,16 +310,16 @@ namespace sdk_programs
         ResourceProgramUses* lookup(ItemId requested) noexcept
         {
             CHECK(!held.load());
-            return requested == item ? &uses : nullptr;
+            return requested == snapshot_.item ? &uses : nullptr;
         }
 
         static RenderResult<void> apply(CodeStorage& storage, std::span<const DrawOrder> values) noexcept
         {
             if (std::ranges::any_of(values, [](DrawOrder value) noexcept { return value.swapped > 1; }))
                 return lux::cxx::unexpected(RenderError{kFrameContract});
-            if (!values.empty() && storage.swapped != bool(values.back().swapped))
+            if (!values.empty() && storage.snapshot_.swapped != bool(values.back().swapped))
             {
-                storage.swapped = values.back().swapped != 0;
+                storage.snapshot_.swapped = values.back().swapped != 0;
                 storage.revision.advance();
             }
             return {};
@@ -331,11 +331,10 @@ namespace sdk_programs
             reply.error = result ? RenderError{} : result.error();
         }
 
-        RenderResult<std::uint64_t> capture(CodeSnapshot& output) const noexcept
+        RenderResult<SnapshotValue<CodeSnapshot>> selectCode() const noexcept
         {
             ++captures;
-            output = {item, swapped};
-            return revision.value();
+            return SnapshotValue<CodeSnapshot>{snapshot_, revision.value()};
         }
 
         static RenderResult<std::unique_ptr<CodeStorage>>
@@ -348,7 +347,7 @@ namespace sdk_programs
         {
             static constexpr auto snapshot = []() noexcept
             {
-                auto ops = detail::StorageSnapshotOps::make<CodeStorage, CodeSnapshot, &CodeStorage::capture>();
+                auto ops = detail::StorageSnapshotOps::make<CodeStorage, CodeSnapshot, &CodeStorage::selectCode>();
                 ops.program_input = [](void* object) noexcept -> ProgramInputRevision&
                 {
                     ++source_links;
@@ -377,9 +376,8 @@ namespace sdk_programs
         static inline void* pending = nullptr;
         static inline void (*resume)(void*) noexcept = nullptr;
         nri::CoreInterface& core;
-        bool swapped = false;
+        CodeSnapshot snapshot_;
         ProgramInputRevision revision;
-        ItemId item;
         ResourceProgramUses uses;
     };
 
@@ -387,7 +385,7 @@ namespace sdk_programs
     concept ProgramLookup = requires(ItemId item) { ResourceProgramSource::from<CodeStorage, Lookup>(item); };
 
     static_assert(ProgramLookup<&CodeStorage::lookup>);
-    static_assert(!ProgramLookup<&CodeStorage::capture>);
+    static_assert(!ProgramLookup<&CodeStorage::selectCode>);
 
     struct SetBackground final
     {
@@ -421,16 +419,15 @@ namespace sdk_programs
             reply = {};
         }
 
-        RenderResult<std::uint64_t> capture(std::uint32_t& output) const noexcept
+        RenderResult<SnapshotValue<std::uint32_t>> selectValue() const noexcept
         {
-            output = value;
-            return revision.value();
+            return SnapshotValue<std::uint32_t>{value, revision.value()};
         }
 
         static ResourceRegistration factory() noexcept
         {
             static constexpr auto snapshot =
-                detail::StorageSnapshotOps::make<BackgroundSettings, std::uint32_t, &BackgroundSettings::capture, &BackgroundSettings::revision>();
+                detail::StorageSnapshotOps::make<BackgroundSettings, std::uint32_t, &BackgroundSettings::selectValue, &BackgroundSettings::revision>();
             static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
             static const std::array commands{CommandBinding::declare<SetBackground, &set>()};
             return makeResourceRegistration<Descriptor, BackgroundSettings, &create>(nullptr, &binding, commands);

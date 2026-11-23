@@ -1,3 +1,4 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 #include <lux/engine/render/graph/Range.hpp>
@@ -300,8 +301,7 @@ namespace lux::render
     RevisionedValue<const void*> CpuCallFrame::snapshot(std::size_t ordinal) const noexcept
     {
         const auto slot = job_.snapshot_sources_[linked_.first_snapshot + ordinal];
-        const auto& selected = job_.storage_snapshots_[slot];
-        return {selected.value.get(), selected.revision};
+        return job_.selected_snapshots_[slot];
     }
 
     std::uint64_t CpuCallFrame::copyInput(std::size_t ordinal, std::span<std::byte> bytes) const noexcept
@@ -415,9 +415,7 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kStorageMismatch, {i}});
                 continue;
             }
-            auto value = source.ops->create();
-            if (!value) return cxx::unexpected(RenderError{kStorageContract, {i}});
-            snapshots.emplace_back(source, std::move(value), 0, program_inputs_.revisionSource(source.id));
+            snapshots.emplace_back(source, program_inputs_.revisionSource(source.id));
         }
         std::vector<extension_detail::AlgorithmWorkspace> workspaces;
         workspaces.reserve(plan.workspace_count);
@@ -436,6 +434,7 @@ namespace lux::render::detail
         prepared_buffer_inputs_.resize(plan.buffers.size());
         for (auto& frame : gpu_.frames) frame.prepared_buffers.resize(plan.buffers.size());
         workspaces_ = std::move(workspaces);
+        selected_snapshots_.reserve(snapshots.size());
         storage_snapshots_ = std::move(snapshots);
         snapshot_sources_.reserve(plan.snapshot_reads.size());
         for (auto source : plan.snapshot_reads) snapshot_sources_.push_back(source_slots[source]);
@@ -458,13 +457,15 @@ namespace lux::render::detail
             if (snapshot_registry_->hasExclusiveCommand(snapshot.source.id))
                 return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        for (auto& snapshot : storage_snapshots_)
+        cxx::scope_exit release_selections([&]() noexcept { selected_snapshots_.clear(); });
+        for (const auto& snapshot : storage_snapshots_)
         {
-            auto revision = snapshot.source.ops->capture(snapshot.source.storage, snapshot.value.get());
-            if (!revision) return cxx::unexpected(revision.error());
-            if (snapshot.program_input && *revision != snapshot.program_input->value())
+            auto selected = snapshot.source.ops->select(snapshot.source.storage);
+            if (!selected) return cxx::unexpected(selected.error());
+            if (!selected->value) return cxx::unexpected(RenderError{kStorageContract});
+            if (snapshot.program_input && selected->revision != snapshot.program_input->value())
                 return cxx::unexpected(RenderError{program_inputs_.pending() ? kDeviceBusy : kStorageContract});
-            snapshot.revision = *revision;
+            selected_snapshots_.push_back(*selected);
         }
         ++preparation_revision_;
         for (auto& buffer : prepared_buffer_inputs_)

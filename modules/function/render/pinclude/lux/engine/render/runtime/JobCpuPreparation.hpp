@@ -48,8 +48,6 @@ namespace lux::render::detail
         struct StorageSnapshot final
         {
             SnapshotSource source;
-            StorageSnapshotOps::Selection value;
-            std::uint64_t revision = 0;
             const ProgramInputRevision* program_input = nullptr;
         };
 
@@ -57,6 +55,7 @@ namespace lux::render::detail
         std::vector<std::span<const std::byte>> effect_values_;
         std::vector<BoundDrawResource> draw_resources_;
         std::vector<StorageSnapshot> storage_snapshots_;
+        std::vector<RevisionedValue<const void*>> selected_snapshots_;
         std::vector<std::uint32_t> snapshot_sources_;
         std::vector<extension_detail::AlgorithmWorkspace> workspaces_;
         std::vector<std::byte> selected_bytes_;

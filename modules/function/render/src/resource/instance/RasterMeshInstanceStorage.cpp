@@ -525,13 +525,13 @@ namespace lux::render::detail
         return pages_[index / kMeshInstancePageSlots]->records[index % kMeshInstancePageSlots];
     }
 
-    RenderResult<std::uint64_t>
-    RasterMeshInstanceStorage::captureMeshSelections(MeshInstanceSnapshot& output) const noexcept
+    RenderResult<SnapshotValue<MeshInstanceSnapshot>> RasterMeshInstanceStorage::selectMeshInstances() noexcept
     {
-        if (output.revision == selection_revision_.value()) return output.revision;
-        output.instances.clear();
+        if (mesh_selection_.revision == selection_revision_.value())
+            return SnapshotValue<MeshInstanceSnapshot>{mesh_selection_, mesh_selection_.revision};
+
+        MeshInstanceSnapshot output;
         output.instances.reserve(live_records_);
-        output.sections.clear();
         std::set<std::pair<MeshId, std::uint32_t>> sections;
         for (const auto& entry : entries_)
         {
@@ -560,7 +560,8 @@ namespace lux::render::detail
             output.sections.push_back({mesh, submesh, *geometry});
         }
         output.revision = selection_revision_.value();
-        return output.revision;
+        mesh_selection_ = std::move(output);
+        return SnapshotValue<MeshInstanceSnapshot>{mesh_selection_, mesh_selection_.revision};
     }
 
     RenderResult<MeshInstanceGpuProperty>
@@ -1309,7 +1310,7 @@ namespace lux::render::detail
             CommandBinding::declare<InstanceCommands::Update, &updateInstances>()
         };
         static constexpr auto snapshot = StorageSnapshotOps::make<
-            RasterMeshInstanceStorage, MeshInstanceSnapshot, &RasterMeshInstanceStorage::captureMeshSelections,
+            RasterMeshInstanceStorage, MeshInstanceSnapshot, &RasterMeshInstanceStorage::selectMeshInstances,
             &RasterMeshInstanceStorage::selection_revision_
         >();
         static const StorageBindingOps binding{

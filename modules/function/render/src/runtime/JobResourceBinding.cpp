@@ -121,7 +121,7 @@ namespace lux::render
                 const auto* ops_snapshot = ops ? ops->cpu_snapshot : nullptr;
                 if (input.use != EJobResourceUse::CPU_SNAPSHOT || !ops_snapshot)
                     return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                if (!ops_snapshot->create || !ops_snapshot->capture)
+                if (!ops_snapshot->select)
                     return cxx::unexpected(RenderError{kStorageContract, {i}});
                 if (type->scope == ESnapshotScope::JOB_LOCAL)
                 {

@@ -67,7 +67,7 @@ namespace lux::render::detail
     ResourceRegistration ViewParameterStorage::factory() noexcept
     {
         static constexpr auto snapshot =
-            StorageSnapshotOps::make<ViewParameterStorage, ViewGpuParameters, &ViewParameterStorage::capture>();
+            StorageSnapshotOps::make<ViewParameterStorage, ViewGpuParameters, &ViewParameterStorage::selectParameters>();
         static constexpr StorageBindingOps binding{.cpu_snapshot = &snapshot};
         static const auto frame_call =
             FrameDataCall::declare<ViewParameterResource, ViewParameterStorage, &updateViewParameters>();

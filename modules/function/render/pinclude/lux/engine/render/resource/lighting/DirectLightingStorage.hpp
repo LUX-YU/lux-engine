@@ -31,7 +31,7 @@ namespace lux::render::detail
         ) noexcept;
         [[nodiscard]] RenderResult<bool> prepareFrame(std::uint32_t, ResourceUploader&) noexcept;
         [[nodiscard]] std::array<std::uint32_t, 3> counts() const noexcept;
-        [[nodiscard]] RenderResult<std::uint64_t> captureShadows(ShadowLightSnapshot&) const noexcept;
+        [[nodiscard]] RenderResult<SnapshotValue<ShadowLightSnapshot>> selectShadows() noexcept;
 
     private:
         struct Entry final
@@ -75,6 +75,7 @@ namespace lux::render::detail
         std::array<LightArray, 4> arrays_;
         bool updating_ = false;
         std::uint64_t shadow_revision_ = 1;
+        ShadowLightSnapshot shadow_selection_;
     };
 
 } // namespace lux::render::detail

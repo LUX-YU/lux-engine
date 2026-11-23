@@ -64,7 +64,7 @@ namespace lux::render::detail
         [[nodiscard]] std::uint64_t capacity() const noexcept;
 
     private:
-        [[nodiscard]] RenderResult<std::uint64_t> captureMeshSelections(MeshInstanceSnapshot&) const noexcept;
+        [[nodiscard]] RenderResult<SnapshotValue<MeshInstanceSnapshot>> selectMeshInstances() noexcept;
         [[nodiscard]] ResourceInput pagedRoot(std::uint32_t frame) noexcept;
         [[nodiscard]] RenderResult<StorageGraphImport> describeGraphImport(std::uint32_t projection) const noexcept;
         [[nodiscard]] RenderResult<void> resolveGraphImport(
@@ -103,6 +103,7 @@ namespace lux::render::detail
         ResourceInstanceId id_;
         std::uint64_t preparation_revision_ = 1;
         ProgramInputRevision selection_revision_;
+        MeshInstanceSnapshot mesh_selection_;
         const bool paged_;
         bool updating_ = false;
         std::uint32_t live_records_ = 0;

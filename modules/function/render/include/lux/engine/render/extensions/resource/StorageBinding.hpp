@@ -6,6 +6,7 @@
 #include <lux/engine/description/ShaderBlock.hpp>
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/resource/ProgramInputRevision.hpp>
 #include <lux/engine/render/extensions/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/extensions/execution/ResourceInput.hpp>
@@ -44,31 +45,24 @@ namespace lux::render::detail
 
     struct StorageSnapshotOps final
     {
-        using Selection = std::unique_ptr<void, void (*)(void*) noexcept>;
-
         cxx::basic_type_info type;
-        Selection (*create)() noexcept;
-        RenderResult<std::uint64_t> (*capture)(const void*, void*) noexcept;
-        // Resolved once during cold binding for snapshots that select programs.
+        RenderResult<RevisionedValue<const void*>> (*select)(void*) noexcept;
         ProgramInputRevision& (*program_input)(void*) noexcept = nullptr;
 
-        // Capture fills Job-owned reusable memory on the Server owner. Copy every value
-        // needed by the producer, including any variable-length data.
-        template <
-            class Storage, class T, RenderResult<std::uint64_t> (Storage::*Capture)(T&) const noexcept,
-            ProgramInputRevision Storage::*Revision = nullptr
-        >
+        // The Resource keeps its selected value valid throughout the synchronous preparation on the device owner.
+        template <class Storage, class T, auto Select, ProgramInputRevision Storage::*Revision = nullptr>
+            requires requires(Storage& storage) {
+                { std::invoke(Select, storage) } noexcept -> std::same_as<RenderResult<SnapshotValue<T>>>;
+            }
         [[nodiscard]] static constexpr StorageSnapshotOps make() noexcept
         {
             StorageSnapshotOps ops{
                 cxx::make_basic_type_info<T>(),
-                []() noexcept -> Selection
+                [](void* storage) noexcept -> RenderResult<RevisionedValue<const void*>>
                 {
-                    return {new T{}, [](void* output) noexcept { delete static_cast<T*>(output); }};
-                },
-                [](const void* storage, void* output) noexcept
-                {
-                    return (static_cast<const Storage*>(storage)->*Capture)(*static_cast<T*>(output));
+                    auto selected = std::invoke(Select, *static_cast<Storage*>(storage));
+                    if (!selected) return cxx::unexpected(selected.error());
+                    return RevisionedValue<const void*>{std::addressof(selected->value.get()), selected->revision};
                 }
             };
             if constexpr (Revision != nullptr)

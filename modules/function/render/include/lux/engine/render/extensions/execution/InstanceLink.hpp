@@ -4,11 +4,6 @@
 
 namespace lux::render
 {
-    namespace extension_detail
-    {
-        enum class ECpuPort : std::uint8_t { INPUT, OUTPUT };
-    }
-
     class InstanceLinkContext
     {
     public:
@@ -42,26 +37,6 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveRasterArgument(GraphPassId, std::string_view) const noexcept = 0;
 
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveCpuInput(GraphCpuDataId source) const noexcept
-        {
-            auto slot = resolveCpuSlot(
-                source, cxx::make_basic_type_info<T>(), sizeof(T), extension_detail::ECpuPort::INPUT
-            );
-            if (!slot) return cxx::unexpected(slot.error());
-            return CpuInputSlot<T>{*slot};
-        }
-
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<CpuOutputSlot<T>> resolveCpuOutput(GraphCpuDataId source) const noexcept
-        {
-            auto slot = resolveCpuSlot(
-                source, cxx::make_basic_type_info<T>(), sizeof(T), extension_detail::ECpuPort::OUTPUT
-            );
-            if (!slot) return cxx::unexpected(slot.error());
-            return CpuOutputSlot<T>{*slot};
-        }
-
         // Grants a value snapshot of this producer's owning EffectGraph node.
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveEffectInput() noexcept
@@ -85,11 +60,6 @@ namespace lux::render
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
-
-        [[nodiscard]] virtual RenderResult<std::uint32_t>
-        resolveCpuSlot(
-            GraphCpuDataId, cxx::basic_type_info, std::size_t, extension_detail::ECpuPort
-        ) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;

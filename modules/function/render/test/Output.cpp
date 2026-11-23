@@ -123,7 +123,6 @@ template <> struct lux::render::ConstantBlockTraits<TestUniformBlock> final
 
 struct ProducerSourceConfig final
 {
-    lux::render::GraphCpuDataId output;
     std::shared_ptr<const int> lifetime;
 };
 
@@ -1556,8 +1555,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
 
-    enum class ETestProducerResult : std::uint8_t { SUCCESS, FAIL_AFTER_WRITE, OMIT_OUTPUT };
-    std::atomic<ETestProducerResult> producer_result{ETestProducerResult::SUCCESS};
+    std::atomic_bool reject_value_preparation{}, reject_staged_constants{};
     std::atomic_uint source_links{}, sink_links{}, source_instances{}, sink_preparations{};
     std::atomic_uint source_workspaces_destroyed{};
     std::atomic<const void*> source_linked_inputs{};
@@ -1569,19 +1567,13 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
     public:
         using Configuration = ProducerSourceConfig;
-        struct LinkedData final
-        {
-            CpuOutputSlot<std::uint32_t> output;
-        };
+        using LinkedData = std::size_t;
 
-        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext&) noexcept
         {
             ++source_links;
-            const auto denied = link.resolveCpuInput<std::uint32_t>(config.output);
-            CHECK(!denied && denied.error().type == kGraphUnknownResource);
-            const auto output = link.resolveCpuOutput<std::uint32_t>(config.output);
-            if (!output) return lux::cxx::unexpected(output.error());
-            return LinkedData{*output};
+            if (!config.lifetime) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            return static_cast<LinkedData>(*config.lifetime);
         }
 
         struct Workspace final
@@ -1601,50 +1593,32 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             return std::make_unique<Workspace>();
         }
 
-        static RenderResult<void>
-        prepare(const LinkedData& linked, const CpuFrameInputs<ViewGpuParameters>& inputs, Workspace& workspace) noexcept
+        static RenderResult<std::tuple<std::uint32_t>>
+        prepare(
+            const LinkedData& channel, const CpuFrameInputs<const ViewGpuParameters&>& inputs, Workspace& workspace
+        ) noexcept
         {
-            auto& frame = inputs.frame;
-            const auto selected = producer_result.exchange(ETestProducerResult::SUCCESS);
-            if (selected == ETestProducerResult::OMIT_OUTPUT) return {};
-            if (selected == ETestProducerResult::FAIL_AFTER_WRITE)
-            {
-                if (auto staged = frame.publish(linked.output, 0xbad0bad0u); !staged) return staged;
-                return lux::cxx::unexpected(RenderError{kFrameContract});
-            }
-            const auto& view = std::get<0>(inputs.snapshots);
-            CHECK(view.revision > workspace.view_revision);
+            if (reject_value_preparation.exchange(false)) return lux::cxx::unexpected(RenderError{kFrameContract});
+            const auto& view = std::get<0>(inputs.values);
+            CHECK(view.revision >= workspace.view_revision && view.revision != 0);
             workspace.view_revision = view.revision;
-            return frame.publish(linked.output, std::bit_cast<std::uint32_t>(view.value.get().background[0]));
+            return std::tuple{std::bit_cast<std::uint32_t>(view.value.get().background[channel])};
         }
     };
 
     class TestInlineProducer final
     {
     public:
-        struct Configuration final
-        {
-            GraphCpuDataId input;
-            GraphPassId pass;
-        };
+        using Configuration = GraphPassId;
+        using LinkedData = InlineConstantWriter<ProducerConstants>;
 
-        struct LinkedData final
-        {
-            CpuInputSlot<std::uint32_t> input;
-            InlineConstantWriter<ProducerConstants> constants;
-        };
-
-        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& link) noexcept
         {
             ++sink_links;
-            const auto denied = link.resolveCpuOutput<std::uint32_t>(config.input);
-            CHECK(!denied && denied.error().type == kGraphUnknownResource);
-            auto input = link.resolveCpuInput<std::uint32_t>(config.input);
-            if (!input) return lux::cxx::unexpected(input.error());
-            auto constants = link.resolveInlineConstants<ProducerConstants>(config.pass);
+            auto constants = link.resolveInlineConstants<ProducerConstants>(pass);
             if (!constants) return lux::cxx::unexpected(constants.error());
             if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return LinkedData{*input, *constants};
+            return *constants;
         }
 
         struct Workspace final
@@ -1660,14 +1634,16 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
+        prepare(const LinkedData& writer, const CpuFrameInputs<std::uint32_t>& inputs, Workspace& workspace) noexcept
         {
-            auto value = frame.read(linked.input);
-            if (!value) return lux::cxx::unexpected(value.error());
-            CHECK(value->revision > workspace.revision);
-            workspace.revision = value->revision;
+            const auto& [value] = inputs.values;
+            CHECK(value.revision > workspace.revision);
+            workspace.revision = value.revision;
             ++sink_preparations;
-            return frame.write(linked.constants, ProducerConstants{value->value});
+            auto staged = inputs.frame.write(writer, ProducerConstants{value.value});
+            if (!staged) return staged;
+            if (reject_staged_constants.exchange(false)) return lux::cxx::unexpected(RenderError{kFrameContract});
+            return {};
         }
     };
 
@@ -1795,8 +1771,9 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         ));
 
         CHECK((context.addCpuCall<TestInlineProducer, &TestInlineProducer::createWorkspace>(
-            TestInlineProducer::Configuration{slot, produced.pass},
-            {{slot}, {}, {produced.pass}}
+            produced.pass,
+            {.inputs = args == "input-count" ? std::vector<GraphCpuDataId>{} : std::vector{slot},
+             .inline_blocks = {produced.pass}}
         )));
         if (args != "missing")
         {
@@ -1806,9 +1783,11 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             ));
             auto lifetime = std::make_shared<const int>(0);
             if (args.empty()) producer_source_lifetime = lifetime;
+            std::vector outputs{slot};
+            if (args == "output-count") outputs.push_back(take(context.declareCpuData<float>()));
             CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-                ProducerSourceConfig{slot, std::move(lifetime)},
-                {.outputs = {slot}, .passes = {companion.pass}, .storage_inputs = {camera}}
+                ProducerSourceConfig{std::move(lifetime)},
+                {.outputs = std::move(outputs), .passes = {companion.pass}, .storage_inputs = {camera}}
             )));
         }
         // The unused preparation has an unlinkable configuration. Even a dead cycle has to be rejected.
@@ -2023,7 +2002,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            const CpuFrameInputs<ETestStreamPrograms>& inputs,
+            const CpuFrameInputs<const ETestStreamPrograms&>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
@@ -2031,7 +2010,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             auto& frame = inputs.frame;
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
             if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
-            const auto& snapshot = std::get<0>(inputs.snapshots);
+            const auto& snapshot = std::get<0>(inputs.values);
             CHECK(mapping && mapping->revision == snapshot.revision && mapping->mode == snapshot.value.get());
             const bool reversed = mapping->mode != ETestStreamPrograms::INITIAL;
             auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
@@ -3038,6 +3017,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         {"missing", kGraphUndefinedRead},
         {"cycle", kGraphDependencyCycle},
         {"type", kGraphInvalidDescriptor},
+        {"input-count", kGraphInvalidDescriptor},
+        {"output-count", kGraphInvalidDescriptor},
         {"duplicate", kGraphAmbiguousProducer},
         {"copy-type", kGraphInvalidDescriptor},
         {"copy-source", kGraphInvalidDescriptor},
@@ -3134,18 +3115,19 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     UniformUploadProbe::submission_gate = SubmitGate::OPEN;
     UniformUploadProbe::submission_gate.notify_all();
     const auto prepared_first = frozen_view.get();
-    producer_result = ETestProducerResult::FAIL_AFTER_WRITE;
+    reject_value_preparation = true;
     CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kFrameContract);
-    producer_result = ETestProducerResult::OMIT_OUTPUT;
-    CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kGraphUndefinedRead);
     CHECK(sink_preparations.load() == 1);
+    reject_staged_constants = true;
+    CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kFrameContract);
+    CHECK(!reject_staged_constants.load() && sink_preparations.load() == 2);
     packet = take(FrameData::create<std::tuple<ViewParameterResource>>(view_schema));
     CHECK(packet.addData<ViewParameterResource>(changed_view));
     CHECK(packet.seal());
     const auto prepared_recovered = call<RequestRenderJob>(*client, commands, {prepared_job, &packet});
     packet.release();
     const auto prepared_peer_first = call<RequestRenderJob>(*client, commands, {prepared_peer});
-    CHECK(sink_preparations.load() == 3);
+    CHECK(sink_preparations.load() == 4);
     stopAndRemoveJob(*client, commands, prepared_job);
     stopAndRemoveJob(*client, commands, prepared_peer);
     CHECK(source_workspaces_destroyed.load() == source_instances.load());
@@ -3649,7 +3631,7 @@ static void preparedBuffers(bool d3d12)
         using LinkedData = Configuration;
 
         static RenderResult<void>
-        prepare(const LinkedData& scratch_bytes, const CpuFrameInputs<ShadowLightSnapshot>& inputs) noexcept
+        prepare(const LinkedData& scratch_bytes, const CpuFrameInputs<const ShadowLightSnapshot&>& inputs) noexcept
         {
             auto& frame = inputs.frame;
             const auto selected = phase.load();
@@ -3659,7 +3641,7 @@ static void preparedBuffers(bool d3d12)
             const auto duplicate = frame.sizeBuffer(0, scratch_bytes);
             CHECK(!duplicate && duplicate.error().type == kFrameContract);
             if (selected == EPhase::OMIT) return {};
-            const auto& lights = std::get<0>(inputs.snapshots);
+            const auto& lights = std::get<0>(inputs.values);
             const auto& snapshot = lights.value.get();
             const bool invalid_counts = snapshot.counts != std::array{1u, 0u, 0u} || snapshot.casters.size() != 1;
             if (invalid_counts) return lux::cxx::unexpected(RenderError{kFrameContract});
@@ -4607,13 +4589,13 @@ static void meshRasterStream(bool d3d12)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            const CpuFrameInputs<MeshInstanceSnapshot>& inputs,
+            const CpuFrameInputs<const MeshInstanceSnapshot&>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
         {
             auto& frame = inputs.frame;
-            const auto& snapshot = std::get<0>(inputs.snapshots);
+            const auto& snapshot = std::get<0>(inputs.values);
             CHECK(mapping && snapshot.revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
@@ -4968,10 +4950,10 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         using LinkedData = Configuration;
 
         static RenderResult<void>
-        prepare(const LinkedData& maximum_instances, const CpuFrameInputs<MeshInstanceSnapshot>& inputs) noexcept
+        prepare(const LinkedData& maximum_instances, const CpuFrameInputs<const MeshInstanceSnapshot&>& inputs) noexcept
         {
             auto& frame = inputs.frame;
-            const auto& selected = std::get<0>(inputs.snapshots);
+            const auto& selected = std::get<0>(inputs.values);
             const auto& snapshot = selected.value.get();
             CHECK(snapshot.revision == selected.revision && snapshot.instances.size() <= maximum_instances);
             if (!snapshot.instances.empty()) CHECK(snapshot.instances.front().mesh == expected_mesh);

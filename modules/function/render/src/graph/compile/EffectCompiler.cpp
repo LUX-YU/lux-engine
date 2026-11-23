@@ -106,17 +106,7 @@ namespace lux::render::detail
                 const auto& source = workspace_.build.producers[source_index];
                 auto call = source.bind(std::move(configuration), *this);
                 if (!call) return cxx::unexpected(call.error());
-                const auto types = call->methods->snapshots;
-                if (types.size() != producer_.storage_inputs.size())
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
-                for (std::size_t i = 0; i < types.size(); ++i)
-                {
-                    const auto id = producer_.storage_inputs[i].index;
-                    const auto declared = workspace_.build.snapshots[id].type;
-                    if (types[i] != declared || types[i].name() != declared.name())
-                        return cxx::unexpected(RenderError{kStorageMismatch, {source_index, id}});
-                    plan.snapshot_reads.push_back(workspace_.snapshot_slots[id]);
-                }
+                if (auto ports = linkValues(*call->methods, source_index); !ports) return ports;
                 const auto expected = std::ranges::count_if(producer_.inline_blocks, [&](GraphPassId pass) noexcept
                 {
                     return workspace_.destinations(pass)[0].index != kGraphInvalidIndex;
@@ -168,14 +158,8 @@ namespace lux::render::detail
                         return cxx::unexpected(RenderError{kRuntimeCapacity});
                     linked.workspace_slot = plan.workspace_count++;
                 }
-                if (!producer_.outputs.empty())
-                {
-                    // assignSlots lays out all outputs of one live call consecutively.
-                    linked.outputs = {
-                        workspace_.data_slots[producer_.outputs.front().index],
-                        static_cast<std::uint32_t>(producer_.outputs.size())
-                    };
-                }
+                // assignSlots lays out a live call's result tuple consecutively.
+                if (!producer_.outputs.empty()) linked.first_output = workspace_.data_slots[producer_.outputs.front().index];
                 plan.calls.push_back(std::move(linked));
                 return {};
             }
@@ -329,20 +313,46 @@ namespace lux::render::detail
                 return slot;
             }
 
-            RenderResult<std::uint32_t>
-            resolveCpuSlot(
-                GraphCpuDataId id, cxx::basic_type_info type, std::size_t bytes, extension_detail::ECpuPort direction
-            ) const noexcept override
+            RenderResult<void>
+            linkValues(const extension_detail::PreparationMethods& methods, std::uint32_t source) noexcept
             {
-                const bool output = direction == extension_detail::ECpuPort::OUTPUT;
-                const auto& ports = output ? producer_.outputs : producer_.inputs;
-                const auto found = std::ranges::find(ports, id);
-                if (found == ports.end()) return cxx::unexpected(RenderError{kGraphUnknownResource, {id.index}});
-                const auto& data = workspace_.build.cpu_data[id.index];
-                if (data.type != type || data.type.name() != type.name() || data.bytes != bytes)
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {kGraphInvalidIndex, id.index}});
-                if (output) return workspace_.data_slots[id.index];
-                return inputs_.first + static_cast<std::uint32_t>(found - ports.begin());
+                const auto matches = [&](const extension_detail::CpuValueType& port, GraphCpuDataId id) noexcept
+                {
+                    const auto& declared = workspace_.build.cpu_data[id.index];
+                    return declared.bytes == port.bytes && declared.type == port.type &&
+                        declared.type.name() == port.type.name();
+                };
+                const auto invalid = RenderError{kGraphInvalidDescriptor, {source}};
+                if (methods.outputs.size() != producer_.outputs.size()) return cxx::unexpected(invalid);
+                for (std::size_t i = 0; i < methods.outputs.size(); ++i)
+                {
+                    const auto id = producer_.outputs[i];
+                    if (!matches(methods.outputs[i], id))
+                        return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source, id.index}});
+                }
+                std::size_t value = 0, snapshot = 0;
+                for (const auto& port : methods.inputs)
+                {
+                    if (port.bytes)
+                    {
+                        if (value == producer_.inputs.size()) return cxx::unexpected(invalid);
+                        const auto id = producer_.inputs[value++];
+                        if (!matches(port, id))
+                            return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source, id.index}});
+                    }
+                    else
+                    {
+                        if (snapshot == producer_.storage_inputs.size()) return cxx::unexpected(invalid);
+                        const auto id = producer_.storage_inputs[snapshot++].index;
+                        const auto declared = workspace_.build.snapshots[id].type;
+                        if (port.type != declared || port.type.name() != declared.name())
+                            return cxx::unexpected(RenderError{kStorageMismatch, {source, id}});
+                        workspace_.plan.snapshot_reads.push_back(workspace_.snapshot_slots[id]);
+                    }
+                }
+                if (value != producer_.inputs.size() || snapshot != producer_.storage_inputs.size())
+                    return cxx::unexpected(invalid);
+                return {};
             }
 
             RenderResult<std::uint32_t>

@@ -155,10 +155,10 @@ namespace lux::render
                 return inputs;
             }
 
-            static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<ViewGpuParameters>& inputs) noexcept
+            static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<const ViewGpuParameters&>& inputs) noexcept
             {
                 auto& frame = inputs.frame;
-                const auto& view = std::get<0>(inputs.snapshots).value.get();
+                const auto& view = std::get<0>(inputs.values).value.get();
                 if (linked.cluster)
                 {
                     auto constants = linked.cluster->constants;

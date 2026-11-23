@@ -10,12 +10,23 @@ namespace lux::render
     {
         using AlgorithmWorkspace = std::unique_ptr<void, void (*)(void*) noexcept>;
 
+        struct CpuValueType final
+        {
+            cxx::basic_type_info type;
+            std::size_t bytes; // Zero denotes a borrowed Resource snapshot.
+        };
+
+        template <class... T>
+        inline constexpr std::array<CpuValueType, sizeof...(T)> cpu_value_types{{
+            CpuValueType{cxx::make_basic_type_info<std::remove_cvref_t<T>>(), std::is_reference_v<T> ? 0 : sizeof(T)}...
+        }};
+
         struct PreparationMethods final
         {
             RenderResult<void> (*prepare)(const void*, CpuCallFrame&, void*, const void*) noexcept;
             RenderResult<AlgorithmWorkspace> (*create_workspace)(const void*, const TargetDesc&) noexcept;
             cxx::basic_type_info mapping_type;
-            std::span<const cxx::basic_type_info> snapshots;
+            std::span<const CpuValueType> inputs, outputs;
         };
 
         struct PreparationCall final
@@ -27,22 +38,32 @@ namespace lux::render
         template <class T> concept HasWorkspace = requires { typename T::Workspace; };
         template <class T> concept HasDrawMapping = requires { typename T::DrawMapping; };
 
-        template <class Linked, class Frame, class... Tail>
+        template <class Output, class Linked, class Frame, class... Tail>
         std::type_identity<std::remove_cvref_t<Frame>>
-        frameArgument(RenderResult<void> (*)(const Linked&, Frame, Tail...) noexcept);
+        frameArgument(RenderResult<Output> (*)(const Linked&, Frame, Tail...) noexcept);
+
+        template <class Output, class... Args>
+        std::type_identity<RenderResult<Output>> callResult(RenderResult<Output> (*)(Args...) noexcept);
 
         template <class T> using FrameArgument = decltype(frameArgument(&T::prepare));
 
-        constexpr std::span<const cxx::basic_type_info> frameSnapshotTypes(std::type_identity<CpuCallFrame>) noexcept
+        constexpr std::span<const CpuValueType> inputTypes(std::type_identity<CpuCallFrame>) noexcept { return {}; }
+
+        template <CpuFrameInput... T>
+        constexpr std::span<const CpuValueType> inputTypes(std::type_identity<CpuFrameInputs<T...>>) noexcept
+        {
+            return cpu_value_types<T...>;
+        }
+
+        constexpr std::span<const CpuValueType> outputTypes(std::type_identity<RenderResult<void>>) noexcept
         {
             return {};
         }
 
-        template <class... T>
-        constexpr std::span<const cxx::basic_type_info>
-        frameSnapshotTypes(std::type_identity<CpuFrameInputs<T...>>) noexcept
+        template <CpuPreparationValue... T>
+        constexpr std::span<const CpuValueType> outputTypes(std::type_identity<RenderResult<std::tuple<T...>>>) noexcept
         {
-            return snapshot_types<T...>;
+            return cpu_value_types<T...>;
         }
 
         template <class T, class... Args>
@@ -50,8 +71,9 @@ namespace lux::render
             const typename T::LinkedData& inputs, typename FrameArgument<T>::type& frame, Args... args
         )
         {
-            frameSnapshotTypes(FrameArgument<T>{});
-            { T::prepare(inputs, frame, args...) } noexcept -> std::same_as<RenderResult<void>>;
+            inputTypes(FrameArgument<T>{});
+            { T::prepare(inputs, frame, args...) } noexcept;
+            outputTypes(std::type_identity<decltype(T::prepare(inputs, frame, args...))>{});
         };
 
         template <class T, class... Args>
@@ -126,14 +148,27 @@ namespace lux::render
                     return T::prepare(inputs, selected, state..., static_cast<const typename T::DrawMapping*>(map));
                 else return T::prepare(inputs, selected, state...);
             };
-            if constexpr (extension_detail::HasWorkspace<T>)
-                return run(*static_cast<typename T::Workspace*>(workspace));
-            else return run();
+            auto result = [&]() noexcept
+            {
+                if constexpr (HasWorkspace<T>) return run(*static_cast<typename T::Workspace*>(workspace));
+                else return run();
+            }();
+            if (!result) return cxx::unexpected(result.error());
+            if constexpr (!std::same_as<decltype(result), RenderResult<void>>)
+            {
+                std::apply([&frame](const auto&... values) noexcept
+                {
+                    std::size_t ordinal = 0;
+                    (frame.storeOutput(ordinal++, std::as_bytes(std::span{std::addressof(values), 1})), ...);
+                }, *result);
+            }
+            return {};
         }
 
         template <class T, auto Create>
         RenderResult<PreparationCall> bindCpuCall(ConfigValue configuration, InstanceLinkContext& context) noexcept
         {
+            using Result = decltype(callResult(&T::prepare));
             static constexpr PreparationMethods methods{&prepareCpuCall<T>, []() constexpr -> decltype(PreparationMethods::create_workspace)
             {
                 if constexpr (HasWorkspace<T>) return &createWorkspace<T, Create>;
@@ -143,7 +178,7 @@ namespace lux::render
                 if constexpr (extension_detail::HasDrawMapping<T>)
                     return cxx::make_basic_type_info<typename T::DrawMapping>();
                 else return cxx::make_basic_type_info<void>();
-            }(), frameSnapshotTypes(FrameArgument<T>{})};
+            }(), inputTypes(FrameArgument<T>{}), outputTypes(Result{})};
             if constexpr (NeedsCpuBinding<T>)
             {
                 auto linked = T::resolve(*static_cast<const typename T::Configuration*>(configuration.data()), context);

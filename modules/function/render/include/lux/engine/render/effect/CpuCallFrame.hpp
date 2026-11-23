@@ -41,14 +41,6 @@ namespace lux::render
         std::uint32_t slot_;
     };
 
-    template <CpuPreparationValue T> class CpuOutputSlot final
-    {
-        friend class CpuCallFrame;
-        friend class InstanceLinkContext;
-        explicit constexpr CpuOutputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
-    };
-
     template <ShaderConstantBlock T> class InlineConstantWriter final
     {
         friend class CpuCallFrame;
@@ -99,10 +91,16 @@ namespace lux::render
         extension_detail::RasterRecordDestination destination_;
     };
 
-    template <class... T> struct CpuFrameInputs final
+    template <class T>
+    concept CpuFrameInput = CpuPreparationValue<T> ||
+        (std::is_object_v<std::remove_reference_t<T>> && std::same_as<T, const std::remove_cvref_t<T>&>);
+
+    template <CpuFrameInput... T> struct CpuFrameInputs final
     {
         CpuCallFrame& frame;
-        SnapshotValues<T...> snapshots;
+        // Const references borrow captured Resource snapshots. Values come from upstream CPU calls.
+        std::tuple<RevisionedValue<std::conditional_t<std::is_reference_v<T>,
+            std::reference_wrapper<const std::remove_reference_t<T>>, T>>...> values;
     };
 
     namespace extension_detail
@@ -162,12 +160,6 @@ namespace lux::render
             return RevisionedValue<T>{std::bit_cast<T>(bytes), *revision};
         }
 
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<void> publish(CpuOutputSlot<T> slot, const T& value) noexcept
-        {
-            return publishBytes(slot.slot_, std::as_bytes(std::span{&value, 1}));
-        }
-
         // A nonzero revision identifies stable bytes from this writer's selected source.
         template <ShaderConstantBlock T>
         [[nodiscard]] RenderResult<void>
@@ -210,15 +202,31 @@ namespace lux::render
 
         CpuCallFrame& arguments(std::type_identity<CpuCallFrame>) noexcept { return *this; }
 
-        template <class... T> CpuFrameInputs<T...> arguments(std::type_identity<CpuFrameInputs<T...>>) noexcept
+        template <CpuFrameInput T> auto argument(std::size_t& value, std::size_t& source) const noexcept
         {
-            return {*this, extension_detail::snapshotValues<T...>(
-                [this](std::size_t index) noexcept { return snapshot(index); }, std::index_sequence_for<T...>{}
-            )};
+            if constexpr (std::is_reference_v<T>)
+            {
+                const auto selected = snapshot(source++);
+                const auto& borrowed = *static_cast<std::remove_reference_t<T>*>(selected.value);
+                return RevisionedValue{std::cref(borrowed), selected.revision};
+            }
+            else
+            {
+                std::array<std::byte, sizeof(T)> bytes;
+                const auto revision = copyInput(value++, bytes);
+                return RevisionedValue<T>{std::bit_cast<T>(bytes), revision};
+            }
         }
 
+        template <CpuFrameInput... T> CpuFrameInputs<T...> arguments(std::type_identity<CpuFrameInputs<T...>>) noexcept
+        {
+            std::size_t value = 0, source = 0;
+            return {*this, {argument<T>(value, source)...}};
+        }
+
+        [[nodiscard]] std::uint64_t copyInput(std::size_t, std::span<std::byte>) const noexcept;
+        void storeOutput(std::size_t, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<std::uint64_t> readBytes(std::uint32_t, std::span<std::byte>) const noexcept;
-        [[nodiscard]] RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t>

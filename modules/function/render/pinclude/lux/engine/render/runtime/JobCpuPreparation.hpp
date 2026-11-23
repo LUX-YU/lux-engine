@@ -42,18 +42,11 @@ namespace lux::render::detail
         const RasterProgramInputs& program_inputs_;
         friend class lux::render::CpuCallFrame;
 
-        struct PreparedBytes final
-        {
-            std::span<std::byte> bytes;
-            bool written = false;
-
-            RenderResult<void> write(std::span<const std::byte>, bool unchanged = false) noexcept;
-        };
-
         struct PreparedInlineBlock final
         {
-            PreparedBytes payload;
+            std::span<std::byte> bytes;
             std::uint64_t source_revision = 0;
+            bool written = false;
         };
 
         struct StorageSnapshot final
@@ -73,7 +66,7 @@ namespace lux::render::detail
         std::vector<std::byte> selected_bytes_;
         std::vector<PreparedInlineBlock> constants_;
         std::vector<OwnedRasterStream> streams_;
-        std::vector<PreparedBytes> cpu_data_;
+        std::vector<std::span<std::byte>> cpu_data_;
         std::vector<PreparedBufferInput> prepared_buffer_inputs_;
         std::uint64_t preparation_revision_ = 0;
         std::vector<BoundConstantBuffer> constant_buffers_;

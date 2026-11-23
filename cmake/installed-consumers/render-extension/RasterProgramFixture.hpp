@@ -556,7 +556,7 @@ namespace sdk_programs
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            const CpuFrameInputs<ViewGpuParameters>& inputs,
+            const CpuFrameInputs<const ViewGpuParameters&>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
@@ -618,7 +618,7 @@ namespace sdk_programs
                     draws[i].constants = {0, sizeof(color)};
                 }
             }
-            const auto& camera = std::get<0>(inputs.snapshots);
+            const auto& camera = std::get<0>(inputs.values);
             const auto& viewport = camera.value.get().viewport;
             const auto mask = frame.readDrawResource(linked.mask);
             if (!mask) return lux::cxx::unexpected(mask.error());

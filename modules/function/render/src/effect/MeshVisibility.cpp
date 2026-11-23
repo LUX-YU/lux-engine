@@ -111,8 +111,8 @@ namespace lux::render
             }
 
             using FrameInputs = std::conditional_t<ShadowPass,
-                CpuFrameInputs<MeshInstanceSnapshot, ViewGpuParameters, ShadowLightSnapshot>,
-                CpuFrameInputs<MeshInstanceSnapshot, ViewGpuParameters>
+                CpuFrameInputs<const MeshInstanceSnapshot&, const ViewGpuParameters&, const ShadowLightSnapshot&>,
+                CpuFrameInputs<const MeshInstanceSnapshot&, const ViewGpuParameters&>
             >;
 
             static RenderResult<void>
@@ -124,10 +124,10 @@ namespace lux::render
             ) noexcept
             {
                 auto& frame = inputs.frame;
-                const auto& view = std::get<1>(inputs.snapshots).value.get();
+                const auto& view = std::get<1>(inputs.values).value.get();
                 if constexpr (ShadowPass)
                 {
-                    const auto& lights = std::get<2>(inputs.snapshots).value.get();
+                    const auto& lights = std::get<2>(inputs.values).value.get();
                     const detail::ShadowCamera camera{
                         view.inverse_view_projection, view.position_near, view.direction_far
                     };
@@ -153,7 +153,7 @@ namespace lux::render
                     auto constants = frame.write(*linked.view, {view.view, view.projection});
                     if (!constants) return constants;
                 }
-                const auto& selected = std::get<0>(inputs.snapshots);
+                const auto& selected = std::get<0>(inputs.values);
                 const auto& snapshot = selected.value.get();
                 if (workspace.selection != selected.revision)
                 {

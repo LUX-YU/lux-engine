@@ -161,17 +161,17 @@ explicit graph dependencies. The compiler links typed configurations to final sl
 final slots and owned values. Each Job allocates a workspace for calls that declare one. Stateless calls
 share the device graph’s immutable inputs and function table.
 
-During preparation, a producer reads published values with `CpuCallFrame::read`, stages outputs with
-`publish`, and supplies complete inline constants with `write`. All declared outputs must be supplied on each
-successful call. Values belong to the current Job preparation revision. Failure stops the chain before any
+A preparation receives its upstream CPU values as typed arguments and returns its complete fixed outputs in a tuple.
+It supplies inline constants with `frame.write`. Values belong to the current Job preparation revision. Failure stops the chain before any
 inline blocks are adopted into the writable frame. CPU-only slots are outside the GPU resource,
 descriptor and synchronization tables.
 
 Use `importStorageSnapshot<T>()` for CPU preparation data supplied by a Resource. Bind the named input with
 `EJobResourceUse::CPU_SNAPSHOT` and list the input IDs in `CpuCallDependencies::storage_inputs` in callback order.
-The second parameter of a snapshot reader is `CpuFrameInputs<T...>`. It supplies the current frame and a tuple of
-borrowed values with their revisions for this call. The compiler checks each live call’s signature and the Job binds the
-operands once; two names bound to one Resource observe the same captured object. Calls without snapshots use `CpuCallFrame&`.
+The second parameter can be `const CpuFrameInputs<T...>&`. In its `values` tuple, a value type selects an upstream
+CPU value and a const reference borrows a Resource snapshot. Both carry their revision. Each kind consumes its own
+dependency list in declaration order. Two names bound to one Resource observe the same captured object.
+Calls without either kind of input can take `CpuCallFrame&`.
 
 Pass `ESnapshotScope::JOB_LOCAL` when the named input requires the Resource in the Job’s own scope.
 The default permits a named input to share a Resource on the same device.
@@ -451,10 +451,12 @@ A kernel declaring `Workspace` receives Job-owned state as the third argument. S
 as the second template argument for fallible construction from the linked inputs and Target.
 Algorithms with a cold draw mapping receive that mapping as their final prepare argument.
 
-Declare the CPU dependency in `CpuCallDependencies::inputs` or `outputs`. At link time resolve a reader with
-`resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
-During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
-address the selected value directly. CPU calls receive the snapshots declared by their input signatures. Cold Raster builds receive their pass’s declared snapshots in a typed tuple. Job installation binds both to concrete Resources; only frame sources are captured per frame.
+Declare graph value IDs in `CpuCallDependencies::inputs` and `outputs`. For example, a call with two outputs returns
+`RenderResult<std::tuple<float, std::uint32_t>>` and lists the float ID before the integer ID. A call with zero
+outputs can return `RenderResult<void>`. The compiler checks the arity and types of each live call against its
+declarations. A failed call supplies no output values. Effect state uses `resolveEffectInput<T>` and `frame.read`.
+Cold Raster builds receive their pass's declared snapshots in a typed tuple. Job installation binds snapshot names
+to concrete Resources. Only frame sources are captured per frame.
 The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.
 Each Job binds these byte ranges to a single staging allocation. All declared outputs must be written before
 the selection is published to the writable FIF.

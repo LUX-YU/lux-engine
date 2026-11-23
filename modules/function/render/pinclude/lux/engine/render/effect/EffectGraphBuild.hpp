@@ -42,12 +42,6 @@ namespace lux::render::runtime_detail
         std::size_t bytes;
     };
 
-    struct CpuDataDefinition final
-    {
-        cxx::basic_type_info type;
-        std::size_t bytes;
-    };
-
     struct EffectGraphBuild final
     {
         struct Buffer final
@@ -84,7 +78,7 @@ namespace lux::render::runtime_detail
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<EffectStorageImport> storage_imports;
         std::vector<InlineCopy> inline_copies;
-        std::vector<CpuDataDefinition> cpu_data;
+        std::vector<extension_detail::CpuValueType> cpu_data;
         std::vector<Buffer> buffers;
         std::vector<Snapshot> snapshots;
         std::vector<Producer> producers;

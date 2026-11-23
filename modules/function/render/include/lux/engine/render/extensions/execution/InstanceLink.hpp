@@ -37,15 +37,6 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveRasterArgument(GraphPassId, std::string_view) const noexcept = 0;
 
-        // Grants a value snapshot of this producer's owning EffectGraph node.
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveEffectInput() noexcept
-        {
-            auto slot = claimEffectInput(cxx::make_basic_type_info<T>(), sizeof(T));
-            if (!slot) return cxx::unexpected(slot.error());
-            return CpuInputSlot<T>{*slot};
-        }
-
         template <ShaderConstantBlock T>
         [[nodiscard]] RenderResult<InlineConstantWriter<T>> resolveInlineConstants(GraphPassId pass) noexcept
         {
@@ -57,9 +48,6 @@ namespace lux::render
     private:
         [[nodiscard]] virtual RenderResult<extension_detail::DrawSourceAddress>
         resolveDrawSource(GraphPassId, std::string_view, cxx::basic_type_info) const noexcept = 0;
-
-        [[nodiscard]] virtual RenderResult<std::uint32_t>
-        claimEffectInput(cxx::basic_type_info, std::size_t) noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;

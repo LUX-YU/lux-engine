@@ -253,13 +253,10 @@ Declare whole-buffer accesses and use the version produced by the GPU write for 
 Each writable frame keeps its own growable allocation. Descriptors and indirect draw ranges are checked against
 the selected logical size.
 
-A node initializes its state with `EffectInitializationContext::initializeState`. Producers use
-`InstanceLinkContext::resolveEffectInput<T>()` to link a typed input slot and `CpuCallFrame::read(slot)`
-to read the selected value. The compiled graph contains input indices. Each Job binds those indices to its
-Effect and captures their bytes on the Server owner before invoking producers.
-Rebuild external producers against these installed headers. Calls to the former `resolveNodeState<T>()` and
-`readNodeState(slot)` become `resolveEffectInput<T>()` and `read(slot)`; the latter returns the value and its
-selection revision. A domain-specific revision stored inside the value remains available as part of that value.
+A node publishes its owned state with `EffectInitializationContext::initializeState<T>()`. In its build function,
+call `context.importEffectState<T>()` and list the returned ID in the CPU call's `inputs`. The callback receives the
+value and its selection revision in `CpuFrameInputs<T>`. Multiple readers of the same state share one selection
+per Job preparation. A domain revision inside the state remains part of the selected value.
 
 For a pass that consumes a complete constant member, declare the pass's typed inline range, then call
 `context.copyInlineBlock<Block, State, &State::member>(pass)`. The compiler checks the block's type, size,
@@ -454,7 +451,8 @@ Algorithms with a cold draw mapping receive that mapping as their final prepare 
 Declare graph value IDs in `CpuCallDependencies::inputs` and `outputs`. For example, a call with two outputs returns
 `RenderResult<std::tuple<float, std::uint32_t>>` and lists the float ID before the integer ID. A call with zero
 outputs can return `RenderResult<void>`. The compiler checks the arity and types of each live call against its
-declarations. A failed call supplies no output values. Effect state uses `resolveEffectInput<T>` and `frame.read`.
+declarations. A failed call supplies no output values. The compiler qualifies imported node state against its initialized type
+for live readers. A Job selects its bytes before invoking the first CPU call.
 Cold Raster builds receive their pass's declared snapshots in a typed tuple. Job installation binds snapshot names
 to concrete Resources. Only frame sources are captured per frame.
 The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.

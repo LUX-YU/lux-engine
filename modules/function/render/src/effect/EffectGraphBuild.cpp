@@ -421,12 +421,13 @@ namespace lux::render
         return ResourceVersion{*resource, 0};
     }
 
-    RenderResult<GraphCpuDataId> EffectCompileContext::declareCpuValue(cxx::basic_type_info type, std::size_t bytes) noexcept
+    RenderResult<GraphCpuDataId>
+    EffectCompileContext::declareCpuValue(graph::NodeId owner, cxx::basic_type_info type, std::size_t bytes) noexcept
     {
         if (workspace_.draft.cpu_data.size() >= kGraphInvalidIndex)
             return cxx::unexpected(RenderError{kRuntimeCapacity});
         const GraphCpuDataId id{static_cast<std::uint32_t>(workspace_.draft.cpu_data.size())};
-        workspace_.draft.cpu_data.push_back({type, bytes});
+        workspace_.draft.cpu_data.push_back({owner, type, bytes});
         return id;
     }
 

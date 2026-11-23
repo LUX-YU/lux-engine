@@ -33,14 +33,6 @@ namespace lux::render
         bool operator==(const GraphCpuDataId&) const noexcept = default;
     };
 
-    template <CpuPreparationValue T> class CpuInputSlot final
-    {
-        friend class CpuCallFrame;
-        friend class InstanceLinkContext;
-        explicit constexpr CpuInputSlot(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
-    };
-
     template <ShaderConstantBlock T> class InlineConstantWriter final
     {
         friend class CpuCallFrame;
@@ -151,15 +143,6 @@ namespace lux::render
             return appendSampledImage(source.address_, image, range);
         }
 
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<RevisionedValue<T>> read(CpuInputSlot<T> slot) const noexcept
-        {
-            std::array<std::byte, sizeof(T)> bytes;
-            auto revision = readBytes(slot.slot_, bytes);
-            if (!revision) return cxx::unexpected(revision.error());
-            return RevisionedValue<T>{std::bit_cast<T>(bytes), *revision};
-        }
-
         // A nonzero revision identifies stable bytes from this writer's selected source.
         template <ShaderConstantBlock T>
         [[nodiscard]] RenderResult<void>
@@ -226,7 +209,6 @@ namespace lux::render
 
         [[nodiscard]] std::uint64_t copyInput(std::size_t, std::span<std::byte>) const noexcept;
         void storeOutput(std::size_t, std::span<const std::byte>) noexcept;
-        [[nodiscard]] RenderResult<std::uint64_t> readBytes(std::uint32_t, std::span<std::byte>) const noexcept;
         [[nodiscard]] RenderResult<void>
         writeInlineBlock(std::uint32_t, std::span<const std::byte>, std::uint64_t revision) noexcept;
         [[nodiscard]] RenderResult<std::uint32_t>

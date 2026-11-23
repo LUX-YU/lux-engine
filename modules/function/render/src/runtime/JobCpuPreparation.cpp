@@ -303,21 +303,9 @@ namespace lux::render
         return {selected.value.get(), selected.revision};
     }
 
-    RenderResult<std::uint64_t> CpuCallFrame::readBytes(std::uint32_t slot, std::span<std::byte> bytes) const noexcept
-    {
-        if (!linked_.inputs.contains(slot))
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
-        const auto input = job_.graph_.cpuProgram().cpu_reads[slot].index;
-        const auto& selection = job_.cpu_data_[input];
-        if (selection.size() != bytes.size())
-            return cxx::unexpected(RenderError{kFrameContract, {slot}});
-        std::ranges::copy(selection, bytes.begin());
-        return job_.preparation_revision_;
-    }
-
     std::uint64_t CpuCallFrame::copyInput(std::size_t ordinal, std::span<std::byte> bytes) const noexcept
     {
-        const auto input = job_.graph_.cpuProgram().cpu_reads[linked_.inputs.first + ordinal].index;
+        const auto input = job_.graph_.cpuProgram().cpu_reads[linked_.first_input + ordinal].index;
         std::ranges::copy(job_.cpu_data_[input], bytes.begin());
         return job_.preparation_revision_;
     }

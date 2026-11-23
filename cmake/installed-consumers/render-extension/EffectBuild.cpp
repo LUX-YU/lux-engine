@@ -333,12 +333,12 @@ struct NamedSnapshots final
     using LinkedData = Configuration;
 
     static RenderResult<std::tuple<std::uint32_t, std::int32_t>>
-    prepare(const LinkedData&, const CpuFrameInputs<const bool&, const bool&>& inputs) noexcept
+    prepare(const LinkedData&, const CpuFrameInputs<const bool&, std::uint32_t, const bool&>& inputs) noexcept
     {
-        const auto& [a, b] = inputs.values;
+        const auto& [a, state, b] = inputs.values;
         CHECK(a.value.get() && b.value.get());
         const std::int32_t value = &a.value.get() == &b.value.get() ? 7 : -11;
-        return std::tuple{0x1234u, value};
+        return std::tuple{state.value, value};
     }
 };
 
@@ -349,11 +349,13 @@ struct CheckPreparedWords final
     static inline std::atomic_bool same_selection{};
 
     static RenderResult<void>
-    prepare(const LinkedData&, const CpuFrameInputs<std::uint32_t, const bool&, std::int32_t>& inputs) noexcept
+    prepare(
+        const LinkedData&, const CpuFrameInputs<std::uint32_t, const bool&, std::int32_t, std::uint32_t>& inputs
+    ) noexcept
     {
-        const auto& [marker, snapshot, selected] = inputs.values;
+        const auto& [marker, snapshot, selected, state] = inputs.values;
         CHECK(snapshot.value.get() && marker.value == 0x1234u && (selected.value == 7 || selected.value == -11));
-        CHECK(marker.revision == selected.revision);
+        CHECK(marker.value == state.value && marker.revision == selected.revision);
         same_selection = selected.value == 7;
         return {};
     }
@@ -405,6 +407,11 @@ static CapabilityDefinition clearDefinition()
     };
 }
 
+static bool usesNamedInputs(std::string_view args) noexcept
+{
+    return args == "named-snapshots" || args == "swapped-cpu-inputs" || args.starts_with("state-");
+}
+
 static void registerClearNode(RenderServer& server)
 {
     CHECK(server.registerEffectCapability(clearDefinition()));
@@ -412,9 +419,12 @@ static void registerClearNode(RenderServer& server)
     implementation.capability = graph::nodeTypeId(clear_node);
     implementation.identity = {std::string{clear_node}, 1};
     implementation.supported_outputs = {clear_color};
-    implementation.initialize = [](EffectInitializationContext& context, std::string_view) noexcept -> RenderResult<void>
+    implementation.initialize = [](EffectInitializationContext& context, std::string_view args) noexcept -> RenderResult<void>
     {
-        return context.setConfiguration(std::array{0.0f, 1.0f, 0.0f, 1.0f});
+        auto configured = context.setConfiguration(std::array{0.0f, 1.0f, 0.0f, 1.0f});
+        if (!configured || !usesNamedInputs(args) || args == "state-missing") return configured;
+        if (args == "state-wrong-type") return context.initializeState<std::int32_t>(0x1234);
+        return context.initializeState<std::uint32_t>(0x1234u);
     };
     implementation.build = [](EffectCompileContext& context, std::string_view args) noexcept -> RenderResult<void>
     {
@@ -434,7 +444,7 @@ static void registerClearNode(RenderServer& server)
         const auto cleared = take(context.addTransferPass(
             "clear", TransferWork{{ClearImage{{{output, 0}}, *color}}}
         ));
-        if (args == "named-snapshots" || args == "swapped-cpu-inputs")
+        if (usesNamedInputs(args))
         {
             const auto other = take(context.importStorageSnapshot<bool>(
                 "companion", {ResourceName{ColdResource::descriptor.type.name()}}
@@ -443,14 +453,16 @@ static void registerClearNode(RenderServer& server)
                 take(context.declareCpuData<std::int32_t>()), take(context.declareCpuData<std::uint32_t>())
             };
             // Register the downstream reader first. The compiled DAG orders the two stateless calls.
-            std::vector reads{words[1], words[0]};
+            std::vector reads{words[1], words[0], take(context.importEffectState<std::uint32_t>())};
             if (args == "swapped-cpu-inputs") std::swap(reads[0], reads[1]);
             auto checked = context.addCpuCall<CheckPreparedWords>({}, {
                 .inputs = std::move(reads), .passes = {cleared.pass}, .storage_inputs = {state}
             });
             if (!checked) return checked;
+            const auto owner = take(context.importEffectState<std::uint32_t>());
             auto added = context.addCpuCall<NamedSnapshots>({}, {
-                .outputs = {words[1], words[0]}, .storage_inputs = {state, other}
+                .inputs = {owner}, .outputs = {args == "state-write" ? owner : words[1], words[0]},
+                .storage_inputs = {state, other}
             });
             if (!added) return added;
         }
@@ -826,7 +838,8 @@ static void verifySnapshotBindings(
 {
     for (const auto& [argument, expected] : std::array{
         std::pair{"missing-frame-input", kGraphInvalidDescriptor}, std::pair{"wrong-frame-input", kStorageMismatch},
-        std::pair{"swapped-cpu-inputs", kGraphInvalidDescriptor}
+        std::pair{"swapped-cpu-inputs", kGraphInvalidDescriptor}, std::pair{"state-missing", kGraphInvalidDescriptor},
+        std::pair{"state-wrong-type", kGraphInvalidDescriptor}, std::pair{"state-write", kGraphAmbiguousProducer}
     })
     {
         const auto invalid = call<CreateEffect>(client, clearEffect(argument));
@@ -848,7 +861,7 @@ static void verifySnapshotBindings(
     binding.resources.back().resource = owners[1];
     CHECK(!call<RebindRenderJobEffect>(client, {device, job, effect, target, binding}).error.type);
     CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !CheckPreparedWords::same_selection);
-    std::puts("CPU DAG: reversed registration, ordered tuple outputs, interleaved value and snapshot inputs");
+    std::puts("CPU DAG: read-only Effect state, reversed registration, ordered results and mixed snapshot inputs");
     CHECK(call<QueryRenderStats>(client, {}).compiled_graphs == compiled);
     ColdResource::capture_counter = nullptr;
     CHECK(!call<StopRenderJob>(client, job).error.type);

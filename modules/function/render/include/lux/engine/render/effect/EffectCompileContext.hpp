@@ -172,7 +172,14 @@ namespace lux::render
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<GraphCpuDataId> declareCpuData() noexcept
         {
-            return declareCpuValue(cxx::make_basic_type_info<T>(), sizeof(T));
+            return declareCpuValue({}, cxx::make_basic_type_info<T>(), sizeof(T));
+        }
+
+        // A read-only CPU graph value selected from this node's initialized state.
+        template <CpuPreparationValue T>
+        [[nodiscard]] RenderResult<GraphCpuDataId> importEffectState() noexcept
+        {
+            return declareCpuValue(nodeId(), cxx::make_basic_type_info<T>(), sizeof(T));
         }
 
         template <class T>
@@ -226,7 +233,8 @@ namespace lux::render
         declareConstantBuffer(extension_detail::ConstantBufferField) noexcept;
         [[nodiscard]] RenderResult<void>
         declareInlineCopy(GraphPassId, extension_detail::InlineBlockInput) noexcept;
-        [[nodiscard]] RenderResult<GraphCpuDataId> declareCpuValue(cxx::basic_type_info, std::size_t) noexcept;
+        [[nodiscard]] RenderResult<GraphCpuDataId>
+        declareCpuValue(graph::NodeId, cxx::basic_type_info, std::size_t) noexcept;
         [[nodiscard]] RenderResult<GraphStorageSnapshotId>
         importStorageValue(
             std::string_view, const ResourceRequirement&, cxx::basic_type_info, ESnapshotScope

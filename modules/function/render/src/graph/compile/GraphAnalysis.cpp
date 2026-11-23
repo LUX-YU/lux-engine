@@ -820,7 +820,7 @@ namespace lux::render::runtime_detail
                 if (output.index >= writers.size())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output.index}});
                 auto& writer = writers[output.index];
-                if (writer != kGraphInvalidIndex)
+                if (writer != kGraphInvalidIndex || definition.cpu_data[output.index].node.valid())
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, output.index}});
                 writer = i;
             }
@@ -900,6 +900,13 @@ namespace lux::render::runtime_detail
             {
                 if (input.index >= writers.size())
                     return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, input.index}});
+                const auto owner = definition.cpu_data[input.index].node;
+                if (owner.valid())
+                {
+                    if (owner != definition.producers[i].node)
+                        return cxx::unexpected(RenderError{kGraphUnknownResource, {i, input.index}});
+                    continue;
+                }
                 const auto writer = writers[input.index];
                 if (writer == kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kGraphUndefinedRead, {kGraphInvalidIndex, input.index}});

@@ -92,8 +92,8 @@ namespace lux::render::detail
         extension_detail::PreparationCall call;
         std::uint32_t workspace_slot = kGraphInvalidIndex;
         std::uint32_t program_slot = kGraphInvalidIndex;
-        PreparationRange inputs, inline_blocks, streams, buffers;
-        std::uint32_t upload_count = 0, first_snapshot = 0, first_output = 0;
+        PreparationRange inline_blocks, streams, buffers;
+        std::uint32_t upload_count = 0, first_snapshot = 0, first_input = 0, first_output = 0;
     };
 
     struct CpuProgram final

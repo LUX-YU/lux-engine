@@ -101,77 +101,56 @@ namespace lux::render
             }
         };
 
-        class LightingPreparation final
+        struct ClusterPreparation final
         {
-        public:
-            struct ClusterConfiguration final
+            struct Configuration final
             {
                 GraphPassId pass;
                 ClusterGrid grid;
             };
 
-            struct Configuration final
-            {
-                std::optional<GraphPassId> lighting;
-                std::optional<ClusterConfiguration> cluster;
-            };
-
-            struct ClusterWriter final
+            struct LinkedData final
             {
                 InlineConstantWriter<detail::ClusterBuildConstants> writer;
                 detail::ClusterBuildConstants constants;
             };
 
-            struct LightingWriter final
+            static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                CpuInputSlot<LightingState> state;
-                InlineConstantWriter<detail::LightingConstants> writer;
-            };
-
-            struct LinkedData final
-            {
-                std::optional<LightingWriter> lighting;
-                std::optional<ClusterWriter> cluster;
-            };
-
-            [[nodiscard]] static RenderResult<LinkedData>
-            resolve(const Configuration& config, InstanceLinkContext& context) noexcept
-            {
-                LinkedData inputs{};
-                if (config.lighting)
-                {
-                    auto state = context.resolveEffectInput<LightingState>();
-                    if (!state) return cxx::unexpected(state.error());
-                    auto writer = context.resolveInlineConstants<detail::LightingConstants>(*config.lighting);
-                    if (!writer) return cxx::unexpected(writer.error());
-                    inputs.lighting = LightingWriter{*state, *writer};
-                }
-                if (config.cluster)
-                {
-                    auto cluster = context.resolveInlineConstants<detail::ClusterBuildConstants>(config.cluster->pass);
-                    if (!cluster) return cxx::unexpected(cluster.error());
-                    inputs.cluster = ClusterWriter{*cluster, detail::clusterBuildConstants(config.cluster->grid)};
-                }
-                return inputs;
+                auto writer = context.resolveInlineConstants<detail::ClusterBuildConstants>(config.pass);
+                if (!writer) return cxx::unexpected(writer.error());
+                return LinkedData{*writer, detail::clusterBuildConstants(config.grid)};
             }
 
-            static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<const ViewGpuParameters&>& inputs) noexcept
+            static RenderResult<void>
+            prepare(const LinkedData& linked, const CpuFrameInputs<const ViewGpuParameters&>& inputs) noexcept
             {
-                auto& frame = inputs.frame;
                 const auto& view = std::get<0>(inputs.values).value.get();
-                if (linked.cluster)
-                {
-                    auto constants = linked.cluster->constants;
-                    constants.inverse_view_projection = view.inverse_view_projection;
-                    constants.position_near = view.position_near;
-                    constants.direction_far = view.direction_far;
-                    if (auto written = frame.write(linked.cluster->writer, constants); !written) return written;
-                }
-                if (!linked.lighting) return {};
-                const auto state = frame.read(linked.lighting->state);
-                if (!state) return cxx::unexpected(state.error());
-                return frame.write(linked.lighting->writer, {
-                    view.inverse_view_projection, view.position_near, view.viewport, view.background, state->value.environment
+                auto constants = linked.constants;
+                constants.inverse_view_projection = view.inverse_view_projection;
+                constants.position_near = view.position_near;
+                constants.direction_far = view.direction_far;
+                return inputs.frame.write(linked.writer, constants);
+            }
+        };
+
+        struct LightingPreparation final
+        {
+            using Configuration = GraphPassId;
+            using LinkedData = InlineConstantWriter<detail::LightingConstants>;
+
+            static RenderResult<LinkedData> resolve(const Configuration& pass, InstanceLinkContext& context) noexcept
+            {
+                return context.resolveInlineConstants<detail::LightingConstants>(pass);
+            }
+
+            static RenderResult<void>
+            prepare(const LinkedData& writer, const CpuFrameInputs<LightingState, const ViewGpuParameters&>& inputs) noexcept
+            {
+                const auto& [state, camera] = inputs.values;
+                const auto& view = camera.value.get();
+                return inputs.frame.write(writer, {
+                    view.inverse_view_projection, view.position_near, view.viewport, view.background, state.value.environment
                 });
             }
         };
@@ -291,8 +270,6 @@ namespace lux::render
                 ESnapshotScope::JOB_LOCAL
             );
             if (!camera) return cxx::unexpected(camera.error());
-            LightingPreparation::Configuration preparation{};
-            std::vector<GraphPassId> writers;
             if constexpr (Clustered)
             {
                 const auto* grid = context.configuration<ClusterGrid>();
@@ -310,8 +287,10 @@ namespace lux::render
                     if (auto published = context.publish(Lighting::cluster_lists, std::move(bundle)); !published)
                         return published;
                 }
-                preparation.cluster = LightingPreparation::ClusterConfiguration{lists->build, *grid};
-                writers.push_back(lists->build);
+                auto prepared = context.addCpuCall<ClusterPreparation>({lists->build, *grid}, {
+                    .inline_blocks = {lists->build}, .storage_inputs = {*camera}
+                });
+                if (!prepared) return prepared;
             }
             if (context.outputDemanded(Lighting::hdr))
             {
@@ -323,14 +302,16 @@ namespace lux::render
                 work->colors.push_back({{{*hdr, 0}}});
                 auto pass = context.addRasterPass(key, std::move(*work));
                 if (!pass) return cxx::unexpected(pass.error());
-                preparation.lighting = pass->pass;
-                writers.push_back(pass->pass);
+                auto state = context.importEffectState<LightingState>();
+                if (!state) return cxx::unexpected(state.error());
+                auto prepared = context.addCpuCall<LightingPreparation>(pass->pass, {
+                    .inputs = {*state}, .inline_blocks = {pass->pass}, .storage_inputs = {*camera}
+                });
+                if (!prepared) return prepared;
                 if (auto published = context.publish(Lighting::hdr, {{Lighting::hdr, pass->written.front()}}); !published)
                     return published;
             }
-            return context.addCpuCall<LightingPreparation>(std::move(preparation), {
-                .inline_blocks = std::move(writers), .storage_inputs = {*camera}
-            });
+            return {};
         }
     }
 

@@ -78,7 +78,8 @@ namespace lux::render::runtime_detail
         std::vector<detail::TargetImageSlot> target_imports;
         std::vector<EffectStorageImport> storage_imports;
         std::vector<InlineCopy> inline_copies;
-        std::vector<extension_detail::CpuValueType> cpu_data;
+        // Local CPU values have no node owner. Imported values name their Effect state owner.
+        std::vector<EffectInputDefinition> cpu_data;
         std::vector<Buffer> buffers;
         std::vector<Snapshot> snapshots;
         std::vector<Producer> producers;

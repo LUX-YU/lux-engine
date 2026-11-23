@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
+#include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/extensions/graph/GraphError.hpp>
 #include <lux/engine/render/extensions/graph/ParameterBinding.hpp>
 #include <lux/engine/render/extensions/resource/ResourceProgramUses.hpp>
@@ -31,9 +31,6 @@ namespace lux::render
         // In graphics.vertex_attributes order. Empty uses the shader locations directly.
         std::vector<std::uint32_t> geometry_locations;
     };
-
-    template <class... T>
-    using RasterProgramSnapshots = std::tuple<RevisionedValue<std::reference_wrapper<const T>>...>;
 
     class LUX_RENDER_PUBLIC RasterProgramBuildContext final
     {
@@ -71,16 +68,11 @@ namespace lux::render
         readResourceValue(DrawStreamSlot, ResourceInstanceId, cxx::basic_type_info) const noexcept;
         [[nodiscard]] RevisionedValue<const void*> snapshot(std::size_t input) const noexcept;
 
-        template <class T> [[nodiscard]] auto snapshotValue(std::size_t input) const noexcept
+        template <class... T> [[nodiscard]] SnapshotValues<T...> values() const noexcept
         {
-            auto selected = snapshot(input);
-            return RevisionedValue{std::cref(*static_cast<const T*>(selected.value)), selected.revision};
-        }
-
-        template <class... T, std::size_t... I>
-        [[nodiscard]] RasterProgramSnapshots<T...> values(std::index_sequence<I...>) const noexcept
-        {
-            return {snapshotValue<T>(I)...};
+            return extension_detail::snapshotValues<T...>(
+                [this](std::size_t index) noexcept { return snapshot(index); }, std::index_sequence_for<T...>{}
+            );
         }
     };
 
@@ -98,7 +90,7 @@ namespace lux::render
     private:
         template <class K, auto Method, class... T>
         static constexpr RasterProgramBuilder bind(RenderResult<void> (*)(
-            const typename K::LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<T...>&
+            const typename K::LinkedData&, RasterProgramBuildContext&, const SnapshotValues<T...>&
         ) noexcept) noexcept
         {
             using Inputs = typename K::LinkedData;
@@ -107,7 +99,7 @@ namespace lux::render
 
         template <class K, auto Method, class... T>
         static constexpr RasterProgramBuilder bind(RenderResult<std::unique_ptr<typename K::DrawMapping>> (*)(
-            const typename K::LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<T...>&,
+            const typename K::LinkedData&, RasterProgramBuildContext&, const SnapshotValues<T...>&,
             const typename K::DrawMapping*
         ) noexcept) noexcept requires std::is_nothrow_destructible_v<typename K::DrawMapping>
         {
@@ -133,12 +125,9 @@ namespace lux::render
             std::span<const cxx::basic_type_info> snapshots;
         };
 
-        template <class... T>
-        static constexpr std::array<cxx::basic_type_info, sizeof...(T)> snapshot_types{cxx::make_basic_type_info<T>()...};
-
         template <class Inputs, class Map, Build Method, class... T>
         static constexpr Registration registration{
-            cxx::make_basic_type_info<Inputs>(), cxx::make_basic_type_info<Map>(), Method, snapshot_types<T...>
+            cxx::make_basic_type_info<Inputs>(), cxx::make_basic_type_info<Map>(), Method, extension_detail::snapshot_types<T...>
         };
 
         explicit constexpr RasterProgramBuilder(const Registration& entry) noexcept : registration_(&entry) {}
@@ -159,7 +148,7 @@ namespace lux::render
         build(const void* linked, RasterProgramBuildContext& selection, const void*) noexcept
         {
             auto built = Method(
-                *static_cast<const Inputs*>(linked), selection, selection.values<T...>(std::index_sequence_for<T...>{})
+                *static_cast<const Inputs*>(linked), selection, selection.values<T...>()
             );
             if (!built) return cxx::unexpected(built.error());
             return Mapping{nullptr, nullptr};
@@ -170,7 +159,7 @@ namespace lux::render
         buildMapped(const void* linked, RasterProgramBuildContext& selection, const void* previous) noexcept
         {
             auto built = Method(
-                *static_cast<const Inputs*>(linked), selection, selection.values<T...>(std::index_sequence_for<T...>{}),
+                *static_cast<const Inputs*>(linked), selection, selection.values<T...>(),
                 static_cast<const Map*>(previous)
             );
             if (!built) return cxx::unexpected(built.error());

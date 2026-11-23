@@ -112,7 +112,6 @@ namespace lux::render
 
             struct Configuration final
             {
-                GraphStorageSnapshotId camera;
                 std::optional<GraphPassId> lighting;
                 std::optional<ClusterConfiguration> cluster;
             };
@@ -131,7 +130,6 @@ namespace lux::render
 
             struct LinkedData final
             {
-                StorageSnapshotSlot<ViewGpuParameters> camera;
                 std::optional<LightingWriter> lighting;
                 std::optional<ClusterWriter> cluster;
             };
@@ -139,9 +137,7 @@ namespace lux::render
             [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                const auto camera = context.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
-                if (!camera) return cxx::unexpected(camera.error());
-                LinkedData inputs{*camera, {}, {}};
+                LinkedData inputs{};
                 if (config.lighting)
                 {
                     auto state = context.resolveEffectInput<LightingState>();
@@ -159,11 +155,10 @@ namespace lux::render
                 return inputs;
             }
 
-            static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
+            static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<ViewGpuParameters>& inputs) noexcept
             {
-                const auto snapshot = frame.readStorage(linked.camera);
-                if (!snapshot) return cxx::unexpected(snapshot.error());
-                const auto& view = snapshot->value.get();
+                auto& frame = inputs.frame;
+                const auto& view = std::get<0>(inputs.snapshots).value.get();
                 if (linked.cluster)
                 {
                     auto constants = linked.cluster->constants;
@@ -296,7 +291,7 @@ namespace lux::render
                 ESnapshotScope::JOB_LOCAL
             );
             if (!camera) return cxx::unexpected(camera.error());
-            LightingPreparation::Configuration preparation{*camera, {}, {}};
+            LightingPreparation::Configuration preparation{};
             std::vector<GraphPassId> writers;
             if constexpr (Clustered)
             {

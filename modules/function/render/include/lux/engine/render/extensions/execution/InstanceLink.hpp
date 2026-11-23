@@ -56,16 +56,6 @@ namespace lux::render
             return FrameBufferSizer{*slot};
         }
 
-        template <class T>
-        [[nodiscard]] RenderResult<StorageSnapshotSlot<T>>
-        resolveStorageSnapshot(GraphStorageSnapshotId source) const noexcept
-        {
-            static constexpr auto type = cxx::make_basic_type_info<T>();
-            auto slot = resolveStorageSlot(source, type);
-            if (!slot) return cxx::unexpected(slot.error());
-            return StorageSnapshotSlot<T>{*slot};
-        }
-
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveCpuInput(GraphCpuDataId source) const noexcept
         {
@@ -114,9 +104,6 @@ namespace lux::render
         resolveCpuSlot(
             GraphCpuDataId, cxx::basic_type_info, std::size_t, extension_detail::ECpuPort
         ) const noexcept = 0;
-
-        [[nodiscard]] virtual RenderResult<extension_detail::SnapshotOperand>
-        resolveStorageSlot(GraphStorageSnapshotId, const cxx::basic_type_info&) const noexcept = 0;
 
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;

@@ -124,7 +124,6 @@ template <> struct lux::render::ConstantBlockTraits<TestUniformBlock> final
 struct ProducerSourceConfig final
 {
     lux::render::GraphCpuDataId output;
-    lux::render::GraphStorageSnapshotId camera;
     std::shared_ptr<const int> lifetime;
 };
 
@@ -1573,7 +1572,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct LinkedData final
         {
             CpuOutputSlot<std::uint32_t> output;
-            StorageSnapshotSlot<ViewGpuParameters> camera;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
@@ -1583,9 +1581,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             CHECK(!denied && denied.error().type == kGraphUnknownResource);
             const auto output = link.resolveCpuOutput<std::uint32_t>(config.output);
             if (!output) return lux::cxx::unexpected(output.error());
-            const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
-            if (!camera) return lux::cxx::unexpected(camera.error());
-            return LinkedData{*output, *camera};
+            return LinkedData{*output};
         }
 
         struct Workspace final
@@ -1606,8 +1602,9 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
+        prepare(const LinkedData& linked, const CpuFrameInputs<ViewGpuParameters>& inputs, Workspace& workspace) noexcept
         {
+            auto& frame = inputs.frame;
             const auto selected = producer_result.exchange(ETestProducerResult::SUCCESS);
             if (selected == ETestProducerResult::OMIT_OUTPUT) return {};
             if (selected == ETestProducerResult::FAIL_AFTER_WRITE)
@@ -1615,11 +1612,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 if (auto staged = frame.publish(linked.output, 0xbad0bad0u); !staged) return staged;
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             }
-            const auto view = frame.readStorage(linked.camera);
-            if (!view) return lux::cxx::unexpected(view.error());
-            CHECK(view->revision > workspace.view_revision);
-            workspace.view_revision = view->revision;
-            return frame.publish(linked.output, std::bit_cast<std::uint32_t>(view->value.get().background[0]));
+            const auto& view = std::get<0>(inputs.snapshots);
+            CHECK(view.revision > workspace.view_revision);
+            workspace.view_revision = view.revision;
+            return frame.publish(linked.output, std::bit_cast<std::uint32_t>(view.value.get().background[0]));
         }
     };
 
@@ -1811,7 +1807,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             auto lifetime = std::make_shared<const int>(0);
             if (args.empty()) producer_source_lifetime = lifetime;
             CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-                ProducerSourceConfig{slot, camera, std::move(lifetime)},
+                ProducerSourceConfig{slot, std::move(lifetime)},
                 {{}, {slot}, {}, {companion.pass}, {}, {camera}}
             )));
         }
@@ -1928,7 +1924,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct Configuration final
         {
             GraphPassId pass;
-            GraphStorageSnapshotId programs;
             rdesc::EShaderTarget target;
             GraphResourceId indices, uniform, image, arguments, count;
             std::uint32_t sampler, comparison_sampler;
@@ -1937,7 +1932,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            StorageSnapshotSlot<ETestStreamPrograms> programs;
             rdesc::EShaderTarget target;
             RasterBufferSlot indices, uniform, arguments, count;
             RasterImageSlot image;
@@ -1947,8 +1941,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
         {
-            auto programs = link.resolveStorageSnapshot<ETestStreamPrograms>(input.programs);
-            if (!programs) return lux::cxx::unexpected(programs.error());
             auto stream = link.resolveDrawStream(input.pass);
             auto index = link.resolveRasterBuffer(input.pass, input.indices);
             auto uniform = link.resolveRasterBuffer(input.pass, input.uniform);
@@ -1966,7 +1958,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (!stream || missing_buffer || missing_texture_binding || missing_argument)
                 return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return LinkedData{
-                *stream, *programs, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
+                *stream, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
                 *tint_argument, *tiles_argument, *sampler_argument
             };
         }
@@ -1987,7 +1979,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<std::unique_ptr<DrawMapping>>
         buildPrograms(
             const LinkedData& linked,
-            RasterProgramBuildContext& selection, const RasterProgramSnapshots<ETestStreamPrograms>& sources,
+            RasterProgramBuildContext& selection, const SnapshotValues<ETestStreamPrograms>& sources,
             const DrawMapping* previous
         ) noexcept
         {
@@ -2031,16 +2023,16 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            CpuCallFrame& frame,
+            const CpuFrameInputs<ETestStreamPrograms>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
         {
+            auto& frame = inputs.frame;
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
             if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
-            const auto snapshot = frame.readStorage(linked.programs);
-            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            CHECK(mapping && mapping->revision == snapshot->revision && mapping->mode == snapshot->value.get());
+            const auto& snapshot = std::get<0>(inputs.snapshots);
+            CHECK(mapping && mapping->revision == snapshot.revision && mapping->mode == snapshot.value.get());
             const bool reversed = mapping->mode != ETestStreamPrograms::INITIAL;
             auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
             auto second_program = frame.rasterProgram(linked.stream, reversed ? 0 : 1);
@@ -2269,7 +2261,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             }}}
         ));
         CHECK(context.addCpuCall<TestRasterProducer>({
-            drawn.pass, *programs, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
+            drawn.pass, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
             comparison_sampler
         }, {
             .passes = {drawn.pass}, .storage_inputs = {*programs}
@@ -3656,14 +3648,12 @@ static void preparedBuffers(bool d3d12)
         struct Configuration final
         {
             GraphResourceId destination, scratch;
-            GraphStorageSnapshotId lights;
         };
 
         struct LinkedData final
         {
             PreparedBufferWriter writer;
             FrameBufferSizer scratch;
-            StorageSnapshotSlot<ShadowLightSnapshot> lights;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
@@ -3675,19 +3665,17 @@ static void preparedBuffers(bool d3d12)
             CHECK(!duplicate && duplicate.error().type == kGraphAmbiguousProducer);
             auto writer = link.resolvePreparedBuffer(source.destination);
             if (!writer) return lux::cxx::unexpected(writer.error());
-            auto lights = link.resolveStorageSnapshot<ShadowLightSnapshot>(source.lights);
-            if (!lights) return lux::cxx::unexpected(lights.error());
-            return LinkedData{*writer, *scratch, *lights};
+            return LinkedData{*writer, *scratch};
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<ShadowLightSnapshot>& inputs) noexcept
         {
+            auto& frame = inputs.frame;
             const auto selected = phase.load();
             if (auto sized = frame.sizeBuffer(linked.scratch, 16); !sized) return sized;
             if (selected == EPhase::OMIT) return {};
-            const auto lights = frame.readStorage(linked.lights);
-            if (!lights) return lux::cxx::unexpected(lights.error());
-            const auto& snapshot = lights->value.get();
+            const auto& lights = std::get<0>(inputs.snapshots);
+            const auto& snapshot = lights.value.get();
             const bool invalid_counts = snapshot.counts != std::array{1u, 0u, 0u} || snapshot.casters.size() != 1;
             if (invalid_counts) return lux::cxx::unexpected(RenderError{kFrameContract});
             const auto& light = snapshot.casters.front();
@@ -3702,9 +3690,9 @@ static void preparedBuffers(bool d3d12)
             if (selected == EPhase::OVERSIZED)
                 return frame.writeBuffer(linked.writer, std::as_bytes(std::span{oversized}));
             if (selected == EPhase::SMALL)
-                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights->revision);
+                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights.revision);
             const bool replacement = selected == EPhase::REPLACEMENT || selected == EPhase::PREFIX_EXTENT;
-            const auto revision = lights->revision * 2 + replacement;
+            const auto revision = lights.revision * 2 + replacement;
             if (selected == EPhase::PREFIX_EXTENT)
             {
                 std::array<std::uint32_t, 128> half{};
@@ -3761,7 +3749,7 @@ static void preparedBuffers(bool d3d12)
         if (!lights) return lux::cxx::unexpected(lights.error());
         const auto add_producer = [&]() noexcept -> RenderResult<void>
         {
-            return context.addCpuCall<Producer>({selected->resource, scratch->resource, *lights}, {
+            return context.addCpuCall<Producer>({selected->resource, scratch->resource}, {
                 .gpu_buffers = {selected->resource, scratch->resource}, .storage_inputs = {*lights}
             });
         };
@@ -3998,7 +3986,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         struct Workspace final { MaterialRecordReader records; };
 
         static RenderResult<void>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const RasterProgramSnapshots<>&) noexcept
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const SnapshotValues<>&) noexcept
         {
             RuntimeRasterProgram program{{0}};
             std::vector<rdesc::ShaderProgramArtifact> shaders;
@@ -4558,7 +4546,6 @@ static void meshRasterStream(bool d3d12)
             GraphPassId pass;
             GraphResourceId arguments;
             GraphResourceId arena_arguments;
-            GraphStorageSnapshotId instances;
         };
 
         struct LinkedData final
@@ -4569,7 +4556,6 @@ static void meshRasterStream(bool d3d12)
             RasterBufferSlot arena_arguments;
             FrameBufferSizer argument_sizer;
             PreparedBufferWriter arena_writer;
-            StorageSnapshotSlot<MeshInstanceSnapshot> instances;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
@@ -4580,8 +4566,7 @@ static void meshRasterStream(bool d3d12)
                 take(link.resolveRasterBuffer(input.pass, input.arguments)),
                 take(link.resolveRasterBuffer(input.pass, input.arena_arguments)),
                 take(link.resolveFrameBuffer(input.arguments)),
-                take(link.resolvePreparedBuffer(input.arena_arguments)),
-                take(link.resolveStorageSnapshot<MeshInstanceSnapshot>(input.instances))
+                take(link.resolvePreparedBuffer(input.arena_arguments))
             };
         }
 
@@ -4593,7 +4578,7 @@ static void meshRasterStream(bool d3d12)
         using DrawMapping = std::uint64_t;
 
         static RenderResult<std::unique_ptr<DrawMapping>>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const RasterProgramSnapshots<MeshInstanceSnapshot>& sources, const DrawMapping*) noexcept
+        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const SnapshotValues<MeshInstanceSnapshot>& sources, const DrawMapping*) noexcept
         {
             const auto& snapshot = std::get<0>(sources);
             const auto& instances = snapshot.value.get().instances;
@@ -4634,14 +4619,14 @@ static void meshRasterStream(bool d3d12)
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            CpuCallFrame& frame,
+            const CpuFrameInputs<MeshInstanceSnapshot>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
         {
-            auto snapshot = frame.readStorage(linked.instances);
-            if (!snapshot) return lux::cxx::unexpected(snapshot.error());
-            CHECK(mapping && snapshot->revision == *mapping);
+            auto& frame = inputs.frame;
+            const auto& snapshot = std::get<0>(inputs.snapshots);
+            CHECK(mapping && snapshot.revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
             auto sized = frame.sizeBuffer(linked.argument_sizer, bytes);
@@ -4676,7 +4661,7 @@ static void meshRasterStream(bool d3d12)
             }
             auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 1);
             if (!written) return written;
-            const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot->value.get().instances.front().mesh;
+            const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot.value.get().instances.front().mesh;
             auto geometry = MeshResource::geometry(frame, linked.meshes, mesh);
             if (!geometry) return lux::cxx::unexpected(geometry.error());
             if (mode == EDraw::MIXED_GEOMETRY || mode == EDraw::DIRECT)
@@ -4776,7 +4761,7 @@ static void meshRasterStream(bool d3d12)
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("draw uploaded mesh", std::move(raster)));
         auto producer = Producer::Configuration{
-            drawn.pass, arguments.resource, arena.resource, instances
+            drawn.pass, arguments.resource, arena.resource
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
             .passes = {drawn.pass}, .gpu_buffers = {arguments.resource, arena.resource},
@@ -4991,31 +4976,29 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     class Producer final
     {
     public:
-        struct Configuration final { GraphStorageSnapshotId instances; GraphResourceId output; };
+        struct Configuration final { GraphResourceId output; };
         struct LinkedData final
         {
-            StorageSnapshotSlot<MeshInstanceSnapshot> instances;
             PreparedBufferWriter output;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
         {
             return LinkedData{
-                take(link.resolveStorageSnapshot<MeshInstanceSnapshot>(source.instances)),
                 take(link.resolvePreparedBuffer(source.output))
             };
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
+        static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<MeshInstanceSnapshot>& inputs) noexcept
         {
-            auto selected = frame.readStorage(linked.instances);
-            if (!selected) return lux::cxx::unexpected(selected.error());
-            const auto& snapshot = selected->value.get();
-            CHECK(snapshot.revision == selected->revision && snapshot.instances.size() <= 1);
+            auto& frame = inputs.frame;
+            const auto& selected = std::get<0>(inputs.snapshots);
+            const auto& snapshot = selected.value.get();
+            CHECK(snapshot.revision == selected.revision && snapshot.instances.size() <= 1);
             if (!snapshot.instances.empty()) CHECK(snapshot.instances.front().mesh == expected_mesh);
-            observed_revision = selected->revision;
+            observed_revision = selected.revision;
             const auto count = static_cast<std::uint32_t>(snapshot.instances.size());
-            return frame.writeBuffer(linked.output, std::as_bytes(std::span{&count, 1}), selected->revision);
+            return frame.writeBuffer(linked.output, std::as_bytes(std::span{&count, 1}), selected.revision);
         }
     };
 
@@ -5114,7 +5097,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         };
         work.dispatch = DispatchArguments{{1, 1, 1}};
         const auto measured = take(context.addComputePass("load storage-owned mesh fields", std::move(work)));
-        auto producer = Producer::Configuration{storage, snapshot.resource};
+        auto producer = Producer::Configuration{snapshot.resource};
         CHECK(context.addCpuCall<Producer>(std::move(producer), {.gpu_buffers = {snapshot.resource}, .storage_inputs = {storage}}));
         const auto initialized = take(context.addTransferPass("initialize readback", TransferWork{{
             FillBuffer{{readback}, 0}

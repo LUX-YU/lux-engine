@@ -313,19 +313,12 @@ private:
 
 struct ClearPreparation final
 {
-    using Configuration = GraphStorageSnapshotId;
-    using LinkedData = StorageSnapshotSlot<bool>;
+    using Configuration = bool;
+    using LinkedData = bool;
 
-    static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
+    static RenderResult<void> prepare(const bool& required, const CpuFrameInputs<bool>& inputs) noexcept
     {
-        return link.resolveStorageSnapshot<bool>(source);
-    }
-
-    static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
-    {
-        const auto selected = frame.readStorage(linked);
-        if (!selected) return cxx::unexpected(selected.error());
-        if (!selected->value.get()) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (std::get<0>(inputs.snapshots).value.get() != required) return cxx::unexpected(RenderError{kDeviceBusy});
         return {};
     }
 };
@@ -345,46 +338,26 @@ static_assert(WritableWord<CpuOutputSlot<std::uint32_t>> && !ReadableWord<CpuOut
 
 struct NamedSnapshots final
 {
-    struct Configuration final
-    {
-        std::array<GraphStorageSnapshotId, 2> sources;
-        std::array<GraphCpuDataId, 2> words;
-    };
-
-    struct LinkedData final
-    {
-        std::array<StorageSnapshotSlot<bool>, 2> sources;
-        std::array<CpuOutputSlot<std::uint32_t>, 2> words;
-    };
+    using Configuration = std::array<GraphCpuDataId, 2>;
+    using LinkedData = std::array<CpuOutputSlot<std::uint32_t>, 2>;
 
     static inline thread_local std::optional<CpuOutputSlot<std::uint32_t>> upstream_writer;
-    static inline thread_local std::optional<StorageSnapshotSlot<bool>> upstream_snapshot;
 
     static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext& link) noexcept
     {
-        CHECK(config.sources[0].index != config.sources[1].index);
         return LinkedData{
-            {
-                take(link.resolveStorageSnapshot<bool>(config.sources[0])),
-                take(link.resolveStorageSnapshot<bool>(config.sources[1]))
-            },
-            {
-                take(link.resolveCpuOutput<std::uint32_t>(config.words[0])),
-                take(link.resolveCpuOutput<std::uint32_t>(config.words[1]))
-            }
+            take(link.resolveCpuOutput<std::uint32_t>(config[0])), take(link.resolveCpuOutput<std::uint32_t>(config[1]))
         };
     }
 
-    static RenderResult<void> prepare(const LinkedData& inputs, CpuCallFrame& frame) noexcept
+    static RenderResult<void> prepare(const LinkedData& words, const CpuFrameInputs<bool, bool>& inputs) noexcept
     {
-        const auto a = take(frame.readStorage(inputs.sources[0]));
-        const auto b = take(frame.readStorage(inputs.sources[1]));
+        const auto& [a, b] = inputs.snapshots;
         CHECK(a.value.get() && b.value.get() && !upstream_writer);
         const auto value = &a.value.get() == &b.value.get() ? 7u : 11u;
-        CHECK(frame.publish(inputs.words[1], 0x1234u));
-        CHECK(frame.publish(inputs.words[0], value));
-        upstream_writer = inputs.words[0];
-        upstream_snapshot = inputs.sources[0];
+        CHECK(inputs.frame.publish(words[1], 0x1234u));
+        CHECK(inputs.frame.publish(words[0], value));
+        upstream_writer = words[0];
         return {};
     }
 };
@@ -408,10 +381,6 @@ struct CheckPreparedWords final
         CHECK(foreign);
         const auto denied = frame.publish(*foreign, 99u);
         CHECK(!denied && denied.error().type == kGraphUnknownResource);
-        const auto snapshot = std::exchange(NamedSnapshots::upstream_snapshot, {});
-        CHECK(snapshot);
-        const auto inaccessible = frame.readStorage(*snapshot);
-        CHECK(!inaccessible && inaccessible.error().type == kGraphUnknownResource);
         const auto marker = take(frame.read(words[1]));
         const auto selected = take(frame.read(words[0]));
         CHECK(marker.value == 0x1234u && (selected.value == 7 || selected.value == 11));
@@ -506,13 +475,21 @@ static void registerClearNode(RenderServer& server)
             // Register the downstream reader first. The compiled DAG orders the two stateless calls.
             auto checked = context.addCpuCall<CheckPreparedWords>(words, {{words[1], words[0]}, {}, {}, {cleared.pass}});
             if (!checked) return checked;
-            auto added = context.addCpuCall<NamedSnapshots>({{state, other}, words}, {
+            auto added = context.addCpuCall<NamedSnapshots>(words, {
                 {}, {words[1], words[0]}, {}, {}, {}, {state, other}
             });
             if (!added) return added;
         }
-        else if (auto added = context.addCpuCall<ClearPreparation>(state, {{}, {}, {}, {cleared.pass}, {}, {state}}); !added)
-            return added;
+        else
+        {
+            CpuCallDependencies uses{.passes = {cleared.pass}, .storage_inputs = {state}};
+            if (args == "missing-frame-input") uses.storage_inputs.clear();
+            if (args == "wrong-frame-input")
+                uses.storage_inputs[0] = take(context.importStorageSnapshot<std::uint32_t>(
+                    "different type", {ResourceName{ColdResource::descriptor.type.name()}}
+                ));
+            if (auto added = context.addCpuCall<ClearPreparation>(true, std::move(uses)); !added) return added;
+        }
         return context.publish(clear_color, {{clear_color, cleared.written.front()}});
     };
     CHECK(server.registerEffectImplementation(std::move(implementation)));
@@ -873,6 +850,15 @@ static void verifySnapshotBindings(
     ipc::IpcRequester& client, DeviceSessionId device, ViewRequest scope, std::array<ResourceInstanceId, 2> owners
 )
 {
+    for (const auto& [argument, expected] : std::array{
+        std::pair{"missing-frame-input", kGraphInvalidDescriptor}, std::pair{"wrong-frame-input", kStorageMismatch}
+    })
+    {
+        const auto invalid = call<CreateEffect>(client, clearEffect(argument));
+        CHECK(!invalid.error.type);
+        CHECK(call<PrepareEffect>(client, {invalid.effect, device}).error.type == expected);
+        CHECK(!call<RemoveEffect>(client, {invalid.effect}).error.type);
+    }
     const auto effect = call<CreateEffect>(client, clearEffect("named-snapshots")).effect;
     CHECK(!call<PrepareEffect>(client, {effect, device}).error.type);
     const auto target = call<CreateTarget>(client, {device, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
@@ -887,7 +873,7 @@ static void verifySnapshotBindings(
     binding.resources.back().resource = owners[1];
     CHECK(!call<RebindRenderJobEffect>(client, {device, job, effect, target, binding}).error.type);
     CHECK(!call<RequestRenderJob>(client, {job}).error.type && captures == 3 && !CheckPreparedWords::same_selection);
-    std::puts("CPU DAG: two stateless calls, reversed dependencies and output slots, foreign writer/snapshot rejected");
+    std::puts("CPU DAG: reversed dependencies and outputs, foreign writer rejected, typed snapshot inputs");
     CHECK(call<QueryRenderStats>(client, {}).compiled_graphs == compiled);
     ColdResource::capture_counter = nullptr;
     CHECK(!call<StopRenderJob>(client, job).error.type);
@@ -1105,6 +1091,12 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     Monitor::injected.store(nri::Result::INVALID_ARGUMENT);
     Monitor::reject_after.store(2);
     const auto [prefix, rejected] = batch(job.job, suffix);
+    if (prefix.job != job.job || rejected.error.type != kDeviceFailure)
+        std::fprintf(stderr, "rejected submit: prefix=%u/%u error=%llu; suffix=%u/%u error=%llu; expected=%llu remaining=%u\n",
+            prefix.job.index, prefix.job.gen, static_cast<unsigned long long>(prefix.error.type),
+            rejected.job.index, rejected.job.gen, static_cast<unsigned long long>(rejected.error.type),
+            static_cast<unsigned long long>(kDeviceFailure), Monitor::reject_after.load()
+        );
     CHECK(prefix.job == job.job && rejected.error.type == kDeviceFailure);
     CHECK(executed(job.job) == prefix_before + 1 && executed(suffix) == suffix_before);
     CHECK(accepted() == submissions_before + 1);
@@ -1849,7 +1841,13 @@ int main(int argc, char** argv)
     CHECK(!Monitor::destroyed);
     Monitor::hold.store(false);
     Monitor::hold.notify_all();
-    CHECK(receive<PrepareEffect>(asynchronous, final_prepare).error.type == kCommandCancelled);
+    const auto final_reply = receive<PrepareEffect>(asynchronous, final_prepare);
+    if (final_reply.error.type != kCommandCancelled)
+        std::fprintf(stderr, "shutdown PrepareEffect returned %llu; cancelled=%llu cpu_stopped=%llu\n",
+            static_cast<unsigned long long>(final_reply.error.type), static_cast<unsigned long long>(kCommandCancelled),
+            static_cast<unsigned long long>(kCpuStopped)
+        );
+    CHECK(final_reply.error.type == kCommandCancelled);
     asynchronous.reset();
     render.join();
     CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);

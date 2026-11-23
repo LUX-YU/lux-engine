@@ -168,10 +168,11 @@ inline blocks are adopted into the writable frame. CPU-only slots are outside th
 descriptor and synchronization tables.
 
 Use `importStorageSnapshot<T>()` for CPU preparation data supplied by a Resource. Bind the named input with
-`EJobResourceUse::CPU_SNAPSHOT`, declare it in `CpuCallDependencies::storage_inputs`, and resolve its typed slot
-with `resolveStorageSnapshot<T>()`. The Resource registers a capture function for the owning value type.
-Each Job retains its actual Resource owner and reuses its own snapshot storage. Selection finishes before the
-producer callbacks, and the reference returned by `readStorage()` is valid for the current callback.
+`EJobResourceUse::CPU_SNAPSHOT` and list the input IDs in `CpuCallDependencies::storage_inputs` in callback order.
+The second parameter of a snapshot reader is `CpuFrameInputs<T...>`. It supplies the current frame and a tuple of
+borrowed values with their revisions for this call. The compiler checks each live call’s signature and the Job binds the
+operands once; two names bound to one Resource observe the same captured object. Calls without snapshots use `CpuCallFrame&`.
+
 Pass `ESnapshotScope::JOB_LOCAL` when the named input requires the Resource in the Job’s own scope.
 The default permits a named input to share a Resource on the same device.
 CPU snapshot inputs create no graph Buffer, GPU view, or barrier. Declare any GPU access to the same owner
@@ -185,7 +186,7 @@ Start and Rebind attach the installed execution once per physical source, includ
 Each runtime Raster builder has its own revision, ready mapping and cached failure. Advancing a source invalidates
 the builders that read it. The device schedules pending builds by installed Job and generation. An unrelated input
 can change while the driver compiles a program, and the original build can still publish its result.
-Compiler checks the count, order and types of the pass’s inputs against the build function’s `RasterProgramSnapshots<T...>` parameter.
+Compiler checks the count, order and types of the pass’s inputs against the build function’s `SnapshotValues<T...>` parameter.
 The builder receives the selected values and revisions directly. Its native operation
 owns the shader bytes, linked recipes and candidate draw mapping across suspension. Frame preparation captures
 its own values and reads the published mapping after all required builds are ready.
@@ -453,7 +454,7 @@ Algorithms with a cold draw mapping receive that mapping as their final prepare 
 Declare the CPU dependency in `CpuCallDependencies::inputs` or `outputs`. At link time resolve a reader with
 `resolveCpuInput<T>` or a writer with `resolveCpuOutput<T>`. Effect state uses `resolveEffectInput<T>`.
 During prepare use `frame.read(reader)` and `frame.publish(writer, value)`. The compiled read table and output intervals
-address the selected value directly. CPU calls read their linked snapshot operands. Cold Raster builds receive their pass’s declared snapshots in a typed tuple. Job installation binds both to concrete Resources; only frame sources are captured per frame.
+address the selected value directly. CPU calls receive the snapshots declared by their input signatures. Cold Raster builds receive their pass’s declared snapshots in a typed tuple. Job installation binds both to concrete Resources; only frame sources are captured per frame.
 The device graph stores each live CPU call's output ranges and the byte offsets of CPU values and inline blocks.
 Each Job binds these byte ranges to a single staging allocation. All declared outputs must be written before
 the selection is published to the writable FIF.
@@ -1390,7 +1391,7 @@ that Resource identity, projection zero and `EJobResourceUse::CPU_SNAPSHOT` to `
 `ViewGpuParameters`, including column-major matrices, and publishes through `ViewParameterCommands::Update` or the
 `ViewParameterResource` FrameData column. Each batch validates every value before applying the last element.
 At frame preparation, the Job captures the value and revision. Updates after that selection take effect in subsequent rounds.
-Producers read the selected values through `readStorage()` on the linked typed slot and write complete shader
+CPU preparation reads the selected View from its frame inputs and writes complete shader
 constant blocks. `SetToneMappingExposure` addresses a ToneMapping node by EffectId and NodeId. Compilation
 validates the block's reflected ABI and links its writer. Before Freeze, a changed exposure revision updates the
 writable FIF replica and invalidates the recording that references that block.

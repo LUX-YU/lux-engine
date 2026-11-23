@@ -536,7 +536,7 @@ namespace
         auto draw = context.addRasterPass("two programs", std::move(raster));
         if (!draw) return lux::cxx::unexpected(draw.error());
         auto configuration = ProgramDraws::Configuration{
-            draw->pass, camera, context.shaderTarget(), mode == "stale-code", reads_records
+            draw->pass, context.shaderTarget(), mode == "stale-code", reads_records
         };
         auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), {
             .passes = {draw->pass}, .storage_inputs = {camera}

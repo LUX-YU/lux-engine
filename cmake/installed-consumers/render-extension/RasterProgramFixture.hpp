@@ -431,7 +431,7 @@ namespace sdk_programs
         }
 
         static RenderResult<void> buildPrograms(
-            const LinkedData& linked, RasterProgramBuildContext& build, const RasterProgramSnapshots<std::uint32_t>& sources
+            const LinkedData& linked, RasterProgramBuildContext& build, const SnapshotValues<std::uint32_t>& sources
         ) noexcept
         {
             ++CodeStorage::clear_builds;
@@ -450,7 +450,6 @@ namespace sdk_programs
         struct Configuration final
         {
             GraphPassId pass;
-            GraphStorageSnapshotId camera;
             lux::rdesc::EShaderTarget target;
             bool stale, reads_records;
         };
@@ -458,7 +457,6 @@ namespace sdk_programs
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            StorageSnapshotSlot<ViewGpuParameters> camera;
             DrawResourceSlot<DrawMask> mask;
             DrawResourceSlot<TriangleGeometry> geometry;
             std::optional<DrawResourceSlot<ColorPage>> records;
@@ -476,8 +474,6 @@ namespace sdk_programs
         {
             auto stream = link.resolveDrawStream(input.pass);
             if (!stream) return lux::cxx::unexpected(stream.error());
-            const auto camera = link.resolveStorageSnapshot<ViewGpuParameters>(input.camera);
-            if (!camera) return lux::cxx::unexpected(camera.error());
             const auto undeclared = link.resolveDrawResource<DrawMask>(input.pass, "absent");
             CHECK(!undeclared && undeclared.error().type == kGraphUnknownResource);
             const auto wrong_type = link.resolveDrawResource<CodeStorage>(input.pass, "clip_height");
@@ -486,7 +482,7 @@ namespace sdk_programs
             if (!mask) return lux::cxx::unexpected(mask.error());
             const auto geometry = link.resolveDrawResource<TriangleGeometry>(input.pass, "triangle");
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            LinkedData linked{*stream, *camera, *mask, *geometry, {}, input.target, input.stale};
+            LinkedData linked{*stream, *mask, *geometry, {}, input.target, input.stale};
             if (input.reads_records)
             {
                 const auto records = link.resolveDrawResource<ColorPage>(input.pass, "colors");
@@ -502,7 +498,7 @@ namespace sdk_programs
         buildPrograms(
             const LinkedData& linked,
             RasterProgramBuildContext& selection,
-            const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>& sources,
+            const SnapshotValues<CodeSnapshot, CodeSnapshot>& sources,
             const DrawMapping* previous
         ) noexcept
         {
@@ -560,11 +556,12 @@ namespace sdk_programs
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
-            CpuCallFrame& frame,
+            const CpuFrameInputs<ViewGpuParameters>& inputs,
             Workspace& workspace,
             const DrawMapping* mapping
         ) noexcept
         {
+            auto& frame = inputs.frame;
             CHECK(mapping);
             const auto source = frame.readDrawResource(linked.geometry);
             if (!source) return lux::cxx::unexpected(source.error());
@@ -621,9 +618,8 @@ namespace sdk_programs
                     draws[i].constants = {0, sizeof(color)};
                 }
             }
-            const auto camera = frame.readStorage(linked.camera);
-            if (!camera) return lux::cxx::unexpected(camera.error());
-            const auto& viewport = camera->value.get().viewport;
+            const auto& camera = std::get<0>(inputs.snapshots);
+            const auto& viewport = camera.value.get().viewport;
             const auto mask = frame.readDrawResource(linked.mask);
             if (!mask) return lux::cxx::unexpected(mask.error());
             const auto height = *mask ? (*mask)->height * viewport[3] : viewport[3];
@@ -644,7 +640,7 @@ namespace sdk_programs
 
         static RenderResult<std::unique_ptr<DrawMapping>>
         build(
-            const LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>&,
+            const LinkedData&, RasterProgramBuildContext&, const SnapshotValues<CodeSnapshot, CodeSnapshot>&,
             const DrawMapping*
         ) noexcept
         {
@@ -658,7 +654,7 @@ namespace sdk_programs
         using LinkedData = ProgramDraws::LinkedData;
 
         static RenderResult<void>
-        build(const LinkedData&, RasterProgramBuildContext&, const RasterProgramSnapshots<CodeSnapshot, CodeSnapshot>&) noexcept
+        build(const LinkedData&, RasterProgramBuildContext&, const SnapshotValues<CodeSnapshot, CodeSnapshot>&) noexcept
         {
             CHECK(false);
             return lux::cxx::unexpected(RenderError{kFrameContract});

@@ -38,20 +38,17 @@ namespace lux::render
     {
         enum class EMeshEffect { VISIBILITY, GBUFFER, FORWARD, DEPTH_ONLY, SHADOW };
 
-        class PrepareMeshVisibility final
+        template <bool ShadowPass> class PrepareMeshVisibility final
         {
         public:
             struct ShadowConfiguration final
             {
-                GraphStorageSnapshotId lights;
                 std::array<GraphResourceId, 3> uploads;
                 detail::ShadowProjectionSettings settings;
             };
 
             struct Configuration final
             {
-                GraphStorageSnapshotId instances;
-                GraphStorageSnapshotId camera;
                 GraphPassId view;
                 std::array<GraphResourceId, 4> uploads;
                 GraphResourceId visible, commands;
@@ -62,15 +59,12 @@ namespace lux::render
 
             struct ShadowInputs final
             {
-                StorageSnapshotSlot<ShadowLightSnapshot> lights;
                 std::array<PreparedBufferWriter, 3> uploads;
                 detail::ShadowProjectionSettings settings;
             };
 
             struct LinkedData final
             {
-                StorageSnapshotSlot<MeshInstanceSnapshot> instances;
-                StorageSnapshotSlot<ViewGpuParameters> camera;
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
                 std::array<PreparedBufferWriter, 4> uploads;
                 FrameBufferSizer visible, commands;
@@ -82,24 +76,18 @@ namespace lux::render
             [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
-                const auto instances = context.resolveStorageSnapshot<MeshInstanceSnapshot>(config.instances);
-                if (!instances) return cxx::unexpected(instances.error());
-                const auto camera = context.resolveStorageSnapshot<ViewGpuParameters>(config.camera);
-                if (!camera) return cxx::unexpected(camera.error());
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
                 std::optional<ShadowInputs> shadow;
                 if (config.shadow)
                 {
                     const auto& source = *config.shadow;
-                    const auto lights = context.resolveStorageSnapshot<ShadowLightSnapshot>(source.lights);
-                    if (!lights) return cxx::unexpected(lights.error());
                     const auto views = context.resolvePreparedBuffer(source.uploads[0]);
                     if (!views) return cxx::unexpected(views.error());
                     const auto slices = context.resolvePreparedBuffer(source.uploads[1]);
                     if (!slices) return cxx::unexpected(slices.error());
                     const auto ranges = context.resolvePreparedBuffer(source.uploads[2]);
                     if (!ranges) return cxx::unexpected(ranges.error());
-                    shadow = ShadowInputs{*lights, {*views, *slices, *ranges}, source.settings};
+                    shadow = ShadowInputs{{*views, *slices, *ranges}, source.settings};
                 }
                 else
                 {
@@ -127,7 +115,7 @@ namespace lux::render
                     surface = *resolved;
                 }
                 return LinkedData{
-                    *instances, *camera, view, {*groups, *candidates, *chunks, *dispatch},
+                    view, {*groups, *candidates, *chunks, *dispatch},
                     *visible, *commands, config.dispatch_limit, surface, shadow
                 };
             }
@@ -157,7 +145,7 @@ namespace lux::render
             buildPrograms(
                 const LinkedData& linked,
                 RasterProgramBuildContext& selection,
-                const RasterProgramSnapshots<MeshInstanceSnapshot>& sources,
+                const SnapshotValues<MeshInstanceSnapshot>& sources,
                 const DrawMapping* previous
             ) noexcept
             {
@@ -165,25 +153,28 @@ namespace lux::render
                 return Surface::buildPrograms(*linked.surface, selection, std::get<0>(sources).value.get(), previous);
             }
 
+            using FrameInputs = std::conditional_t<ShadowPass,
+                CpuFrameInputs<MeshInstanceSnapshot, ViewGpuParameters, ShadowLightSnapshot>,
+                CpuFrameInputs<MeshInstanceSnapshot, ViewGpuParameters>
+            >;
+
             static RenderResult<void>
             prepare(
                 const LinkedData& linked,
-                CpuCallFrame& frame,
+                const FrameInputs& inputs,
                 Workspace& workspace,
                 const DrawMapping* mapping
             ) noexcept
             {
-                const auto selected_view = frame.readStorage(linked.camera);
-                if (!selected_view) return cxx::unexpected(selected_view.error());
-                const auto& view = selected_view->value.get();
-                if (workspace.shadow)
+                auto& frame = inputs.frame;
+                const auto& view = std::get<1>(inputs.snapshots).value.get();
+                if constexpr (ShadowPass)
                 {
-                    const auto lights = frame.readStorage(linked.shadow->lights);
-                    if (!lights) return cxx::unexpected(lights.error());
+                    const auto& lights = std::get<2>(inputs.snapshots).value.get();
                     const detail::ShadowCamera camera{
                         view.inverse_view_projection, view.position_near, view.direction_far
                     };
-                    const auto projected = workspace.shadow->select(camera, lights->value.get());
+                    const auto projected = workspace.shadow->select(camera, lights);
                     if (!projected) return cxx::unexpected(projected.error());
                     workspace.grouping.setViewCount(static_cast<std::uint32_t>(workspace.shadow->views().size()));
                     const std::array payloads{
@@ -204,13 +195,12 @@ namespace lux::render
                     auto constants = frame.write(*linked.view, {view.view, view.projection});
                     if (!constants) return constants;
                 }
-                const auto selected = frame.readStorage(linked.instances);
-                if (!selected) return cxx::unexpected(selected.error());
-                const auto& snapshot = selected->value.get();
-                if (workspace.selection != selected->revision)
+                const auto& selected = std::get<0>(inputs.snapshots);
+                const auto& snapshot = selected.value.get();
+                if (workspace.selection != selected.revision)
                 {
                     updateGroups(snapshot, workspace);
-                    workspace.selection = selected->revision;
+                    workspace.selection = selected.revision;
                 }
                 auto packed = workspace.grouping.pack(&snapshot, lookupGeometry, linked.dispatch_limit);
                 if (!packed) return packed;
@@ -228,12 +218,12 @@ namespace lux::render
                 if (!commands) return commands;
                 if (!workspace.surface) return {};
                 if (!mapping) return cxx::unexpected(RenderError{kFrameContract});
-                const detail::MeshSurfaceStream::DrawInputs inputs{frame, workspace.grouping.source(), *mapping};
-                if (workspace.shadow)
+                const detail::MeshSurfaceStream::DrawInputs draw_inputs{frame, workspace.grouping.source(), *mapping};
+                if constexpr (ShadowPass)
                     return workspace.surface->prepareShadow(
-                        inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
+                        draw_inputs, workspace.shadow->views(), workspace.shadow->rasterStates()
                     );
-                return workspace.surface->prepare(inputs, view);
+                else return workspace.surface->prepare(draw_inputs, view);
             }
 
         private:
@@ -322,6 +312,7 @@ namespace lux::render
         template <EMeshEffect Effect, bool CounterClockwise = true>
         RenderResult<void> buildVisibility(EffectCompileContext& context, std::string_view) noexcept
         {
+            using Kernel = PrepareMeshVisibility<Effect == EMeshEffect::SHADOW>;
             const auto& device = context.device();
             const auto max_bytes = std::min(device.storage_buffer_max_range, UINT64_MAX / 2) & ~std::uint64_t{3};
             const auto read = [&](std::string_view binding, ResourceNameView owner, std::uint64_t bytes, auto projection)
@@ -360,7 +351,9 @@ namespace lux::render
             const std::string key = "mesh-visibility/" + std::to_string(context.nodeId().value) + "/";
             ResourceVersion views;
             std::vector<GraphPassId> inline_blocks;
-            std::optional<PrepareMeshVisibility::ShadowConfiguration> shadow;
+            std::vector<GraphStorageSnapshotId> storage_inputs{*instances, *camera};
+            using ShadowConfiguration = typename Kernel::ShadowConfiguration;
+            std::optional<ShadowConfiguration> shadow;
             bool frustum_culling;
             if constexpr (Effect == EMeshEffect::SHADOW)
             {
@@ -388,9 +381,8 @@ namespace lux::render
                 );
                 if (!ranges) return cxx::unexpected(ranges.error());
                 views = *projected_views;
-                shadow = PrepareMeshVisibility::ShadowConfiguration{
-                    *lights, {views.resource, slices->resource, ranges->resource}, settings
-                };
+                storage_inputs.push_back(*lights);
+                shadow = ShadowConfiguration{{views.resource, slices->resource, ranges->resource}, settings};
             }
             else
             {
@@ -436,8 +428,8 @@ namespace lux::render
                 }, {frustum_culling, Effect == EMeshEffect::SHADOW}
             );
             if (!passes) return cxx::unexpected(passes.error());
-            auto config = PrepareMeshVisibility::Configuration{
-                *instances, *camera, inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
+            typename Kernel::Configuration config{
+                inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
                 {groups->resource, candidates->resource, chunks->resource, dispatch->resource},
                 visible->resource, commands->resource,
                 {device.compute_dispatch_limit[0], device.compute_dispatch_limit[1]}, {}, shadow
@@ -464,7 +456,7 @@ namespace lux::render
                 stage.purpose = "indexed-mesh";
                 stage.inputs = detail::meshRasterInputs(device.record_table);
                 stage.programs = RasterProgramSource{
-                    RasterProgramBuilder::make<PrepareMeshVisibility, &PrepareMeshVisibility::buildPrograms>(), {*instances}
+                    RasterProgramBuilder::make<Kernel, &Kernel::buildPrograms>(), {*instances}
                 };
                 stage.section_depth_bias = Effect == EMeshEffect::SHADOW;
                 const auto record_table = device.record_table ?
@@ -557,13 +549,7 @@ namespace lux::render
                 groups->resource, candidates->resource, chunks->resource, dispatch->resource,
                 visible->resource, commands->resource
             };
-            std::vector<GraphStorageSnapshotId> storage_inputs{*instances, *camera};
-            if (shadow)
-            {
-                prepared_buffers.insert(prepared_buffers.end(), shadow->uploads.begin(), shadow->uploads.end());
-                storage_inputs.push_back(shadow->lights);
-            }
-            using Kernel = PrepareMeshVisibility;
+            if (shadow) prepared_buffers.insert(prepared_buffers.end(), shadow->uploads.begin(), shadow->uploads.end());
             if (auto prepared = context.addCpuCall<Kernel, &Kernel::createWorkspace>(
                 std::move(config), {
                     .inline_blocks = std::move(inline_blocks), .passes = std::move(producer_passes),

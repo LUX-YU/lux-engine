@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/extensions/execution/StorageSnapshot.hpp>
+#include <lux/engine/render/core/Resource.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
@@ -115,6 +115,18 @@ namespace lux::render
         extension_detail::RasterRecordDestination destination_;
     };
 
+    template <class... T> struct CpuFrameInputs final
+    {
+        CpuCallFrame& frame;
+        SnapshotValues<T...> snapshots;
+    };
+
+    namespace extension_detail
+    {
+        template <class T>
+        RenderResult<void> prepareCpuCall(const void*, CpuCallFrame&, void*, const void*) noexcept;
+    }
+
     // Valid only for the current CPU call on this Job and frame slot.
     class LUX_RENDER_PUBLIC CpuCallFrame final
     {
@@ -155,16 +167,6 @@ namespace lux::render
         useSampledImage(DrawResourceSlot<Storage> source, const nri::Texture& image, GraphImageRange range) noexcept
         {
             return appendSampledImage(source.address_, image, range);
-        }
-
-        // The Job owns this selection. The reference is valid only during prepare().
-        template <class T>
-        [[nodiscard]] RenderResult<RevisionedValue<std::reference_wrapper<const T>>>
-        readStorage(StorageSnapshotSlot<T> slot) const noexcept
-        {
-            auto selected = readStorageValue(slot.operand_);
-            if (!selected) return cxx::unexpected(selected.error());
-            return RevisionedValue{std::cref(*static_cast<const T*>(selected->value)), selected->revision};
         }
 
         template <CpuPreparationValue T>
@@ -217,8 +219,20 @@ namespace lux::render
         [[nodiscard]] RenderResult<const void*>
         readDrawSource(extension_detail::DrawSourceAddress, cxx::basic_type_info) const noexcept;
 
-        [[nodiscard]] RenderResult<RevisionedValue<const void*>>
-        readStorageValue(extension_detail::SnapshotOperand) const noexcept;
+        template <class K> friend RenderResult<void>
+        extension_detail::prepareCpuCall(const void*, CpuCallFrame&, void*, const void*) noexcept;
+
+        [[nodiscard]] RevisionedValue<const void*> snapshot(std::size_t ordinal) const noexcept;
+
+        CpuCallFrame& arguments(std::type_identity<CpuCallFrame>) noexcept { return *this; }
+
+        template <class... T> CpuFrameInputs<T...> arguments(std::type_identity<CpuFrameInputs<T...>>) noexcept
+        {
+            return {*this, extension_detail::snapshotValues<T...>(
+                [this](std::size_t index) noexcept { return snapshot(index); }, std::index_sequence_for<T...>{}
+            )};
+        }
+
         [[nodiscard]] RenderResult<std::uint64_t> readBytes(std::uint32_t, std::span<std::byte>) const noexcept;
         [[nodiscard]] RenderResult<void> publishBytes(std::uint32_t, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<void>

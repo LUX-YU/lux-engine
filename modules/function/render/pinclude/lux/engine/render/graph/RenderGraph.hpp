@@ -92,7 +92,8 @@ namespace lux::render::detail
         extension_detail::PreparationCall call;
         std::uint32_t workspace_slot = kGraphInvalidIndex;
         std::uint32_t program_slot = kGraphInvalidIndex;
-        PreparationRange inputs, outputs, inline_blocks, streams, buffers, snapshots;
+        PreparationRange inputs, outputs, inline_blocks, streams, buffers;
+        std::uint32_t first_snapshot = 0;
     };
 
     struct CpuProgram final
@@ -134,16 +135,10 @@ namespace lux::render::detail
         std::vector<InputSlot> cpu_reads;
         std::vector<LinkedInlineBlock> inline_blocks;
         std::vector<Buffer> buffers;
-        struct SnapshotRead final
-        {
-            std::uint32_t source;
-            const cxx::basic_type_info* type;
-        };
-
         // Frame-selected sources are the leading range; program-only sources are bound for cold builds.
         std::uint32_t frame_snapshot_count = 0;
         std::vector<Snapshot> snapshots;
-        std::vector<SnapshotRead> snapshot_reads;
+        std::vector<std::uint32_t> snapshot_reads;
         struct DrawSourceRange final
         {
             std::uint32_t first = 0, count = 0;

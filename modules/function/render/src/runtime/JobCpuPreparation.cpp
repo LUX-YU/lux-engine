@@ -296,15 +296,11 @@ namespace lux::render
         return bound.storage;
     }
 
-    RenderResult<RevisionedValue<const void*>>
-    CpuCallFrame::readStorageValue(extension_detail::SnapshotOperand operand) const noexcept
+    RevisionedValue<const void*> CpuCallFrame::snapshot(std::size_t ordinal) const noexcept
     {
-        if (!linked_.snapshots.contains(operand.frame))
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, operand.frame}});
-        const auto& read = job_.graph_.cpuProgram().snapshot_reads[operand.frame];
-        if (read.type != operand.type) return cxx::unexpected(RenderError{kStorageMismatch, {operand.frame}});
-        const auto& selection = job_.storage_snapshots_[job_.snapshot_sources_[read.source]];
-        return RevisionedValue<const void*>{selection.value.get(), selection.revision};
+        const auto slot = job_.snapshot_sources_[linked_.first_snapshot + ordinal];
+        const auto& selected = job_.storage_snapshots_[slot];
+        return {selected.value.get(), selected.revision};
     }
 
     RenderResult<std::uint64_t> CpuCallFrame::readBytes(std::uint32_t slot, std::span<std::byte> bytes) const noexcept
@@ -470,7 +466,8 @@ namespace lux::render::detail
         for (auto& frame : gpu_.frames) frame.prepared_buffers.resize(plan.buffers.size());
         workspaces_ = std::move(workspaces);
         storage_snapshots_ = std::move(snapshots);
-        snapshot_sources_ = std::move(source_slots);
+        snapshot_sources_.reserve(plan.snapshot_reads.size());
+        for (auto source : plan.snapshot_reads) snapshot_sources_.push_back(source_slots[source]);
         draw_resources_ = std::move(inputs.draw_resources);
         constant_buffers_ = std::move(inputs.constant_buffers);
         effect_values_ = std::move(inputs.effect_values);

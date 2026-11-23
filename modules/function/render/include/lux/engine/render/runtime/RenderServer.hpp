@@ -76,26 +76,42 @@ namespace lux::render
 
     struct RenderServerStats final
     {
-        std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
-        std::uint64_t validation_errors = 0, validation_warnings = 0;
+        std::uint64_t ticks = 0;
+        std::uint64_t commands = 0;
+        std::uint64_t compiled_graphs = 0;
+        std::uint64_t submissions = 0;
+        std::uint64_t validation_errors = 0;
+        std::uint64_t validation_warnings = 0;
         std::uint64_t storages_created = 0;
         std::uint64_t presentations = 0; // Successful QueuePresent calls, not measured display scanout.
     };
 
     struct RenderDevelopmentStats final
     {
-        std::uint64_t input_rebuilds = 0, input_rebuild_ns = 0, job_selection_ns = 0;
-        std::uint64_t jobs_considered = 0, jobs_selected = 0, dependency_edges = 0;
-        std::uint64_t rounds_opened = 0, slot_cpu_hold_ns = 0;
-        std::uint64_t program_preparations_holding_slot = 0, program_preparation_ns = 0;
+        std::uint64_t input_rebuilds = 0;
+        std::uint64_t input_rebuild_ns = 0;
+        std::uint64_t job_selection_ns = 0;
+        std::uint64_t jobs_considered = 0;
+        std::uint64_t jobs_selected = 0;
+        std::uint64_t dependency_edges = 0;
+        std::uint64_t rounds_opened = 0;
+        std::uint64_t slot_cpu_hold_ns = 0;
+        std::uint64_t program_preparations_holding_slot = 0;
+        std::uint64_t program_preparation_ns = 0;
         // Storage and sampled ranges from dynamic raster lists in accepted batches, accumulated across rounds.
-        std::uint64_t raster_buffer_ranges = 0, raster_buffer_bytes = 0, raster_image_ranges = 0;
+        std::uint64_t raster_buffer_ranges = 0;
+        std::uint64_t raster_buffer_bytes = 0;
+        std::uint64_t raster_image_ranges = 0;
         std::uint64_t raster_image_subresources = 0;
-        std::uint64_t program_preparations = 0, discarded_preparations = 0;
+        std::uint64_t program_preparations = 0;
+        std::uint64_t discarded_preparations = 0;
         // Each growth is a new backing allocation made by a selection or topology vector.
-        std::uint64_t job_selection_calls = 0, job_selection_growths = 0, job_topology_growths = 0;
+        std::uint64_t job_selection_calls = 0;
+        std::uint64_t job_selection_growths = 0;
+        std::uint64_t job_topology_growths = 0;
         // External vertex and index ranges selected by raster streams in accepted batches.
-        std::uint64_t raster_geometry_ranges = 0, raster_geometry_bytes = 0;
+        std::uint64_t raster_geometry_ranges = 0;
+        std::uint64_t raster_geometry_bytes = 0;
     };
 
     // The application owns the rendering thread. Only stop() and stats() may race with run().
@@ -159,7 +175,9 @@ namespace lux::render
         [[nodiscard]] std::optional<RenderDevelopmentStats> developmentStats() const noexcept;
 
     private:
-        [[nodiscard]] RenderResult<void> registerBuiltins() noexcept;
+        [[nodiscard]] RenderResult<void>
+        registerBuiltins() noexcept;
+
         [[nodiscard]] RenderResult<HandlerId>
         registerHandler(runtime_detail::HandlerRecord, std::span<const CommandBinding>) noexcept;
 

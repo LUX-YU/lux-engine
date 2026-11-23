@@ -459,11 +459,7 @@ int main(int argc, char** argv)
     std::puts("UI DEVICE OWNERSHIP PASS: rejected foreign Target and Texture");
     ImGui::DestroyContext(context);
     call<SetTargetActive>(*wire, commands, {output, true});
-    call<SetEffectParameters>(*wire, commands, {effect, {2.F}});
-    CHECK(
-        call<SetEffectParameters>(*wire, commands, {effect, {std::numeric_limits<float>::infinity()}}, false)
-            .error.type == kFrameContract
-    );
+    CHECK(call<SetTonemapExposure>(*wire, commands, {effect, 2.F}, false).error.type == kCommandContract);
     stopAndRemoveJob(*wire, commands, ui_attachment);
     call<RemoveTarget>(*wire, commands, ui_target);
     stopAndRemoveJob(*wire, commands, green_writer);

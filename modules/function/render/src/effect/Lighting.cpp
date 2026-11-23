@@ -329,7 +329,7 @@ namespace lux::render
                     return published;
             }
             return context.addCpuCall<LightingPreparation>(std::move(preparation), {
-                {}, {}, std::move(writers), {}, {}, {*camera}
+                .inline_blocks = std::move(writers), .storage_inputs = {*camera}
             });
         }
     }

@@ -163,8 +163,8 @@ namespace lux::render
         std::vector<GraphPassId> inline_blocks;
         // A live preparation retains all of its GPU passes. Inline block passes are included automatically.
         std::vector<GraphPassId> passes{};
-        // Each listed buffer is published once, through its linked writer or sizer.
-        std::vector<GraphResourceId> gpu_buffers{};
+        // Each list is addressed in declaration order within this call.
+        std::vector<GraphResourceId> uploads{}, frame_sizes{};
         std::vector<GraphStorageSnapshotId> storage_inputs{};
     };
 } // namespace lux::render

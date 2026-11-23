@@ -476,7 +476,7 @@ static void registerClearNode(RenderServer& server)
             auto checked = context.addCpuCall<CheckPreparedWords>(words, {{words[1], words[0]}, {}, {}, {cleared.pass}});
             if (!checked) return checked;
             auto added = context.addCpuCall<NamedSnapshots>(words, {
-                {}, {words[1], words[0]}, {}, {}, {}, {state, other}
+                .outputs = {words[1], words[0]}, .storage_inputs = {state, other}
             });
             if (!added) return added;
         }

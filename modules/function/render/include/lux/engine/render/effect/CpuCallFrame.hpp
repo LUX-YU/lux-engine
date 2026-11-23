@@ -25,22 +25,6 @@ namespace lux::render
     concept CpuPreparationValue = std::is_trivially_copyable_v<T> && std::same_as<T, std::remove_cv_t<T>> &&
         !std::is_array_v<T>;
 
-    class PreparedBufferWriter final
-    {
-        friend class CpuCallFrame;
-        friend class InstanceLinkContext;
-        explicit constexpr PreparedBufferWriter(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
-    };
-
-    class FrameBufferSizer final
-    {
-        friend class CpuCallFrame;
-        friend class InstanceLinkContext;
-        explicit constexpr FrameBufferSizer(std::uint32_t slot) noexcept : slot_(slot) {}
-        std::uint32_t slot_;
-    };
-
     class InstanceLinkContext;
 
     struct GraphCpuDataId final
@@ -194,8 +178,8 @@ namespace lux::render
 
         // A nonzero revision identifies unchanged bytes from this writer across calls.
         [[nodiscard]] RenderResult<void>
-        writeBuffer(PreparedBufferWriter, std::span<const std::byte>, std::uint64_t revision = 0) noexcept;
-        [[nodiscard]] RenderResult<void> sizeBuffer(FrameBufferSizer, std::uint64_t bytes) noexcept;
+        writeBuffer(std::size_t output, std::span<const std::byte>, std::uint64_t revision = 0) noexcept;
+        [[nodiscard]] RenderResult<void> sizeBuffer(std::size_t output, std::uint64_t bytes) noexcept;
 
     private:
         friend class detail::JobCpuPreparation;

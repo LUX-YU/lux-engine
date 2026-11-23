@@ -17,7 +17,7 @@ namespace lux::render::detail
         {
             const EffectGraphBuild& build;
             const detail::PreparedRenderGraph& compiled;
-            std::vector<std::uint32_t> data_slots, buffer_slots, snapshot_slots;
+            std::vector<std::uint32_t> data_slots, snapshot_slots;
             std::span<const EffectInputDefinition> effect_inputs;
             std::vector<std::uint32_t> effect_slots;
             std::vector<CompiledPassSlot> pass_slots;
@@ -28,7 +28,6 @@ namespace lux::render::detail
                 std::span<const EffectInputDefinition> inputs, CpuProgram& program
             ) noexcept
                 : build(graph), compiled(native), data_slots(build.cpu_data.size(), kGraphInvalidIndex),
-                  buffer_slots(build.source.resources().size(), kGraphInvalidIndex),
                   snapshot_slots(build.snapshots.size(), kGraphInvalidIndex),
                   effect_inputs(inputs), effect_slots(inputs.size(), kGraphInvalidIndex),
                   pass_slots(graph.source.passes().size()),
@@ -74,18 +73,6 @@ namespace lux::render::detail
                         data_slots[output.index] = static_cast<std::uint32_t>(plan.cpu_values.size());
                         plan.cpu_values.push_back({definition.cpu_data[output.index].bytes});
                     }
-                    for (auto output : definition.producers[producer].declaration.gpu_buffers)
-                    {
-                        buffer_slots[output.index] = static_cast<std::uint32_t>(plan.buffers.size());
-                        plan.buffers.emplace_back();
-                    }
-                }
-                for (const auto& buffer : definition.buffers)
-                {
-                    const auto slot = buffer_slots[buffer.resource.index];
-                    if (slot != kGraphInvalidIndex)
-                        plan.buffers[slot] = {buffer.resource.index, buffer.minimum_bytes, buffer.maximum_bytes,
-                            buffer.upload, compiled.graph.resources()[buffer.resource.index].memory_used};
                 }
             }
         };
@@ -116,8 +103,6 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kRuntimeCapacity});
                 const auto first_snapshot = static_cast<std::uint32_t>(plan.snapshot_reads.size());
                 const auto first_stream = static_cast<std::uint32_t>(plan.streams.size());
-                const auto buffer_count = static_cast<std::uint32_t>(producer_.gpu_buffers.size());
-                const auto first_buffer = buffer_count ? workspace_.buffer_slots[producer_.gpu_buffers.front().index] : 0u;
                 const auto& source = workspace_.build.producers[source_index];
                 auto call = source.bind(std::move(configuration), *this);
                 if (!call) return cxx::unexpected(call.error());
@@ -137,17 +122,29 @@ namespace lux::render::detail
                     return workspace_.destinations(pass)[0].index != kGraphInvalidIndex;
                 });
                 const bool missing_constants = constants_.count != static_cast<std::size_t>(expected);
-                const bool missing_buffers = claimed_buffers_ != buffer_count;
-                if (missing_constants || missing_buffers)
+                if (missing_constants)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {source_index}});
 
                 const auto stream_count = static_cast<std::uint32_t>(plan.streams.size()) - first_stream;
+                const auto first_buffer = static_cast<std::uint32_t>(plan.buffers.size());
+                for (const auto outputs : {std::span{producer_.uploads}, std::span{producer_.frame_sizes}})
+                {
+                    for (auto id : outputs)
+                    {
+                        const auto& buffer = *workspace_.build.findBuffer(id);
+                        const bool used = workspace_.compiled.graph.resources()[id.index].memory_used;
+                        plan.buffers.push_back({
+                            id.index, buffer.minimum_bytes, buffer.maximum_bytes, buffer.upload, used
+                        });
+                    }
+                }
                 CpuCall linked{
                     .call = std::move(*call),
                     .inputs = inputs_,
                     .inline_blocks = constants_,
                     .streams = {first_stream, stream_count},
-                    .buffers = {first_buffer, buffer_count},
+                    .buffers = {first_buffer, static_cast<std::uint32_t>(plan.buffers.size()) - first_buffer},
+                    .upload_count = static_cast<std::uint32_t>(producer_.uploads.size()),
                     .first_snapshot = first_snapshot
                 };
                 if (program_source_)
@@ -373,26 +370,10 @@ namespace lux::render::detail
                 return writer;
             }
 
-            RenderResult<std::uint32_t> claimPreparedBuffer(GraphResourceId resource, bool upload) noexcept override
-            {
-                const auto declared = std::ranges::find(producer_.gpu_buffers, resource);
-                if (declared == producer_.gpu_buffers.end())
-                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, resource.index}});
-                const auto& buffer = workspace_.build.source.resources()[resource.index];
-                if (upload != (buffer.origin == EGraphOrigin::IMPORTED))
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {kGraphInvalidIndex, resource.index}});
-                const auto slot = std::exchange(workspace_.buffer_slots[resource.index], kGraphInvalidIndex);
-                if (slot == kGraphInvalidIndex)
-                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, resource.index}});
-                ++claimed_buffers_;
-                return slot;
-            }
-
             PreparationLinkWorkspace& workspace_;
             const CpuCallDependencies& producer_;
             const RasterProgramSource* program_source_ = nullptr;
             detail::PreparationRange inputs_, constants_;
-            std::uint32_t claimed_buffers_ = 0;
             std::uint32_t source_input_, selected_input_ = kGraphInvalidIndex;
             std::uint32_t producer_slot_;
         };

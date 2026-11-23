@@ -13,6 +13,7 @@
 #include <lux/engine/render/graph/compile/GraphAnalysis.hpp>
 #include <lux/engine/render/extensions/resource/StorageBinding.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
+#include <algorithm>
 #include <span>
 #include <string>
 
@@ -89,6 +90,14 @@ namespace lux::render::runtime_detail
         std::vector<Producer> producers;
         std::vector<std::uint32_t> live_order;
         std::vector<ConstantBufferDeclaration> uniforms;
+
+        // Buffer declarations follow increasing draft resource IDs; a rejected branch truncates both tables.
+        [[nodiscard]] const Buffer* findBuffer(GraphResourceId id) const noexcept
+        {
+            const auto index = [](const Buffer& buffer) noexcept { return buffer.resource.index; };
+            const auto row = std::ranges::lower_bound(buffers, id.index, {}, index);
+            return row != buffers.end() && row->resource == id ? &*row : nullptr;
+        }
     };
 
     [[nodiscard]] bool sameBlockContract(ConstantBlockContract, ConstantBlockContract, rdesc::EShaderTarget) noexcept;

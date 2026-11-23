@@ -824,16 +824,24 @@ namespace lux::render::runtime_detail
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, output.index}});
                 writer = i;
             }
-            for (auto output : declaration.gpu_buffers)
+            const auto claim = [&](std::span<const GraphResourceId> outputs, bool upload) noexcept -> RenderResult<void>
             {
-                const auto buffer = std::ranges::find(definition.buffers, output, &EffectGraphBuild::Buffer::resource);
-                if (buffer == definition.buffers.end() || buffer->node != definition.producers[i].node)
-                    return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output.index}});
-                auto& writer = buffer_writers[output.index];
-                if (writer != kGraphInvalidIndex)
-                    return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {kGraphInvalidIndex, output.index}});
-                writer = i;
-            }
+                for (auto output : outputs)
+                {
+                    const auto* buffer = definition.findBuffer(output);
+                    if (!buffer || buffer->node != definition.producers[i].node)
+                        return cxx::unexpected(detail::graphError(kGraphUnknownResource, {}, output));
+                    if (buffer->upload != upload)
+                        return cxx::unexpected(detail::graphError(kGraphInvalidDescriptor, {}, output));
+                    auto& writer = buffer_writers[output.index];
+                    if (writer != kGraphInvalidIndex)
+                        return cxx::unexpected(detail::graphError(kGraphAmbiguousProducer, {}, output));
+                    writer = i;
+                }
+                return {};
+            };
+            if (auto result = claim(declaration.uploads, true); !result) return cxx::unexpected(result.error());
+            if (auto result = claim(declaration.frame_sizes, false); !result) return cxx::unexpected(result.error());
             for (auto pass : declaration.inline_blocks)
             {
                 if (pass.index >= inline_writers.size())
@@ -847,7 +855,8 @@ namespace lux::render::runtime_detail
                 if (std::ranges::find(producer.passes, pass) == producer.passes.end())
                     producer.passes.push_back(pass);
             }
-            if (producer.passes.empty() && declaration.outputs.empty() && declaration.gpu_buffers.empty())
+            const bool has_buffers = !declaration.uploads.empty() || !declaration.frame_sizes.empty();
+            if (producer.passes.empty() && declaration.outputs.empty() && !has_buffers)
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {i}});
             for (auto pass : producer.passes)
             {

@@ -545,6 +545,19 @@ namespace
         return context.publish(color, {{color, draw->written.front()}});
     }
 
+    struct CapturePattern final
+    {
+        using Configuration = std::uint32_t;
+        using LinkedData = Configuration;
+
+        static RenderResult<void> prepare(const std::uint32_t& pattern, CpuCallFrame& frame) noexcept
+        {
+            const std::array words{pattern, pattern};
+            if (auto size = frame.sizeBuffer(0, sizeof(words)); !size) return size;
+            return frame.writeBuffer(0, std::as_bytes(std::span{words}), 1);
+        }
+    };
+
     RenderResult<void> buildCaptureRange(EffectCompileContext& context, std::string_view mode) noexcept
     {
         const std::uint64_t offset = mode == "upper" ? 8u : mode == "overlap" ? 4u : 0u;
@@ -563,12 +576,19 @@ namespace
             "capture", {ResourceName{type.name()}}, std::move(declaration)
         );
         if (!output) return lux::cxx::unexpected(output.error());
-        const auto scratch = take(context.declareResource({"pattern", GraphBufferDesc{claim.size}}));
+        const auto pattern_buffer = take(context.declarePreparedBuffer("pattern", claim.size, claim.size));
+        const auto scratch = take(context.declareFrameBuffer("selected bytes", claim.size, claim.size));
         const auto pattern = offset == 0 ? 0x5a5a5a5au : 0x6b6b6b6bu;
-        const auto fill = take(context.addTransferPass("fill", TransferWork{{FillBuffer{{{scratch, 0}}, pattern}}}));
+        auto prepared = context.addCpuCall<CapturePattern>(pattern, {
+            .uploads = {pattern_buffer.resource}, .frame_sizes = {scratch.resource}
+        });
+        if (!prepared) return prepared;
+        const auto filled = take(context.addTransferPass(
+            "select pattern", TransferWork{{CopyBuffer{{pattern_buffer}, {scratch}}}}
+        ));
         const GraphBufferRange destination{mode == "spill" ? 4u : offset, claim.size};
         const auto copy = context.addTransferPass("copy", TransferWork{{
-            CopyBuffer{{fill.written.front()}, {*output, destination}}
+            CopyBuffer{{filled.written.front()}, {*output, destination}}
         }});
         if (!copy) return lux::cxx::unexpected(copy.error());
         return context.publish(pixels, {{pixels, copy->written.front()}});

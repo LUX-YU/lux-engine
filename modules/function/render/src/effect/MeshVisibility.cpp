@@ -41,72 +41,32 @@ namespace lux::render
         template <bool ShadowPass> class PrepareMeshVisibility final
         {
         public:
-            struct ShadowConfiguration final
-            {
-                std::array<GraphResourceId, 3> uploads;
-                detail::ShadowProjectionSettings settings;
-            };
-
             struct Configuration final
             {
                 GraphPassId view;
-                std::array<GraphResourceId, 4> uploads;
-                GraphResourceId visible, commands;
                 std::array<std::uint32_t, 2> dispatch_limit;
                 std::optional<detail::MeshSurfaceStream::Configuration> surface;
-                std::optional<ShadowConfiguration> shadow;
-            };
-
-            struct ShadowInputs final
-            {
-                std::array<PreparedBufferWriter, 3> uploads;
-                detail::ShadowProjectionSettings settings;
+                std::optional<detail::ShadowProjectionSettings> shadow;
             };
 
             struct LinkedData final
             {
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
-                std::array<PreparedBufferWriter, 4> uploads;
-                FrameBufferSizer visible, commands;
                 std::array<std::uint32_t, 2> dispatch_limit;
                 std::optional<detail::MeshSurfaceStream::Inputs> surface;
-                std::optional<ShadowInputs> shadow;
+                std::optional<detail::ShadowProjectionSettings> shadow;
             };
 
             [[nodiscard]] static RenderResult<LinkedData>
             resolve(const Configuration& config, InstanceLinkContext& context) noexcept
             {
                 std::optional<InlineConstantWriter<detail::VisibilityViewConstants>> view;
-                std::optional<ShadowInputs> shadow;
-                if (config.shadow)
-                {
-                    const auto& source = *config.shadow;
-                    const auto views = context.resolvePreparedBuffer(source.uploads[0]);
-                    if (!views) return cxx::unexpected(views.error());
-                    const auto slices = context.resolvePreparedBuffer(source.uploads[1]);
-                    if (!slices) return cxx::unexpected(slices.error());
-                    const auto ranges = context.resolvePreparedBuffer(source.uploads[2]);
-                    if (!ranges) return cxx::unexpected(ranges.error());
-                    shadow = ShadowInputs{{*views, *slices, *ranges}, source.settings};
-                }
-                else
+                if constexpr (!ShadowPass)
                 {
                     const auto writer = context.resolveInlineConstants<detail::VisibilityViewConstants>(config.view);
                     if (!writer) return cxx::unexpected(writer.error());
                     view = *writer;
                 }
-                const auto groups = context.resolvePreparedBuffer(config.uploads[0]);
-                if (!groups) return cxx::unexpected(groups.error());
-                const auto candidates = context.resolvePreparedBuffer(config.uploads[1]);
-                if (!candidates) return cxx::unexpected(candidates.error());
-                const auto chunks = context.resolvePreparedBuffer(config.uploads[2]);
-                if (!chunks) return cxx::unexpected(chunks.error());
-                const auto dispatch = context.resolvePreparedBuffer(config.uploads[3]);
-                if (!dispatch) return cxx::unexpected(dispatch.error());
-                const auto visible = context.resolveFrameBuffer(config.visible);
-                if (!visible) return cxx::unexpected(visible.error());
-                const auto commands = context.resolveFrameBuffer(config.commands);
-                if (!commands) return cxx::unexpected(commands.error());
                 std::optional<detail::MeshSurfaceStream::Inputs> surface;
                 if (config.surface)
                 {
@@ -114,10 +74,7 @@ namespace lux::render
                     if (!resolved) return cxx::unexpected(resolved.error());
                     surface = *resolved;
                 }
-                return LinkedData{
-                    view, {*groups, *candidates, *chunks, *dispatch},
-                    *visible, *commands, config.dispatch_limit, surface, shadow
-                };
+                return LinkedData{view, config.dispatch_limit, surface, config.shadow};
             }
 
             struct Workspace final
@@ -134,7 +91,7 @@ namespace lux::render
             {
                 auto workspace = std::make_unique<Workspace>();
                 if (inputs.surface) workspace->surface.emplace(*inputs.surface);
-                if (inputs.shadow) workspace->shadow.emplace(inputs.shadow->settings);
+                if (inputs.shadow) workspace->shadow.emplace(*inputs.shadow);
                 return workspace;
             }
 
@@ -182,10 +139,11 @@ namespace lux::render
                         std::as_bytes(workspace.shadow->slices()),
                         workspace.shadow->mappings()
                     };
+                    constexpr auto first_shadow = std::tuple_size_v<decltype(workspace.grouping.uploads())>;
                     for (std::size_t i = 0; i < payloads.size(); ++i)
                     {
                         const auto written = frame.writeBuffer(
-                            linked.shadow->uploads[i], payloads[i], workspace.shadow->revision()
+                            first_shadow + i, payloads[i], workspace.shadow->revision()
                         );
                         if (!written) return written;
                     }
@@ -207,13 +165,13 @@ namespace lux::render
                 const auto payloads = workspace.grouping.uploads();
                 for (std::size_t i = 0; i < payloads.size(); ++i)
                 {
-                    auto written = frame.writeBuffer(linked.uploads[i], payloads[i], workspace.grouping.revision());
+                    auto written = frame.writeBuffer(i, payloads[i], workspace.grouping.revision());
                     if (!written) return written;
                 }
-                auto sized = frame.sizeBuffer(linked.visible, workspace.grouping.visibleBytes());
+                auto sized = frame.sizeBuffer(0, workspace.grouping.visibleBytes());
                 if (!sized) return sized;
                 auto commands = frame.sizeBuffer(
-                    linked.commands, workspace.grouping.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
+                    1, workspace.grouping.indirectStreamCount() * sizeof(nri::DrawIndexedDesc)
                 );
                 if (!commands) return commands;
                 if (!workspace.surface) return {};
@@ -352,8 +310,8 @@ namespace lux::render
             ResourceVersion views;
             std::vector<GraphPassId> inline_blocks;
             std::vector<GraphStorageSnapshotId> storage_inputs{*instances, *camera};
-            using ShadowConfiguration = typename Kernel::ShadowConfiguration;
-            std::optional<ShadowConfiguration> shadow;
+            std::array<GraphResourceId, 3> shadow_uploads{};
+            std::optional<detail::ShadowProjectionSettings> shadow;
             bool frustum_culling;
             if constexpr (Effect == EMeshEffect::SHADOW)
             {
@@ -382,7 +340,8 @@ namespace lux::render
                 if (!ranges) return cxx::unexpected(ranges.error());
                 views = *projected_views;
                 storage_inputs.push_back(*lights);
-                shadow = ShadowConfiguration{{views.resource, slices->resource, ranges->resource}, settings};
+                shadow_uploads = {views.resource, slices->resource, ranges->resource};
+                shadow = settings;
             }
             else
             {
@@ -430,8 +389,6 @@ namespace lux::render
             if (!passes) return cxx::unexpected(passes.error());
             typename Kernel::Configuration config{
                 inline_blocks.empty() ? GraphPassId{} : inline_blocks.front(),
-                {groups->resource, candidates->resource, chunks->resource, dispatch->resource},
-                visible->resource, commands->resource,
                 {device.compute_dispatch_limit[0], device.compute_dispatch_limit[1]}, {}, shadow
             };
             EffectResourceBundle bundle;
@@ -488,11 +445,11 @@ namespace lux::render
                 raster.program = std::move(stage);
                 if constexpr (Effect == EMeshEffect::SHADOW)
                 {
-                    const auto depth = context.declareResource({key + "shadow-depth", shadow->settings.shape.image()});
+                    const auto depth = context.declareResource({key + "shadow-depth", shadow->shape.image()});
                     if (!depth) return cxx::unexpected(depth.error());
                     raster.depth = RasterAttachment{{{*depth, 0}}};
-                    for (std::size_t i = 0; i < shadow->uploads.size(); ++i)
-                        bundle.push_back({effectPortSemantic(ShadowBundle::members[i]), {shadow->uploads[i], 0}});
+                    for (std::size_t i = 0; i < shadow_uploads.size(); ++i)
+                        bundle.push_back({effectPortSemantic(ShadowBundle::members[i]), {shadow_uploads[i], 0}});
                 }
                 else if constexpr (Effect == EMeshEffect::GBUFFER)
                 {
@@ -546,14 +503,15 @@ namespace lux::render
                 producer_passes.push_back(drawn->pass);
             }
             std::vector<GraphResourceId> prepared_buffers{
-                groups->resource, candidates->resource, chunks->resource, dispatch->resource,
-                visible->resource, commands->resource
+                groups->resource, candidates->resource, chunks->resource, dispatch->resource
             };
-            if (shadow) prepared_buffers.insert(prepared_buffers.end(), shadow->uploads.begin(), shadow->uploads.end());
+            if constexpr (Effect == EMeshEffect::SHADOW)
+                prepared_buffers.insert(prepared_buffers.end(), shadow_uploads.begin(), shadow_uploads.end());
             if (auto prepared = context.addCpuCall<Kernel, &Kernel::createWorkspace>(
                 std::move(config), {
                     .inline_blocks = std::move(inline_blocks), .passes = std::move(producer_passes),
-                    .gpu_buffers = std::move(prepared_buffers), .storage_inputs = std::move(storage_inputs)
+                    .uploads = std::move(prepared_buffers), .frame_sizes = {visible->resource, commands->resource},
+                    .storage_inputs = std::move(storage_inputs)
                 }
             ); !prepared)
                 return prepared;

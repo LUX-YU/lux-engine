@@ -235,8 +235,8 @@ The optional `Shadow::draws` port exposes the visibility groups, members, and in
 pass. The command table contains two winding streams per active view of each group.
 
 Use `declarePreparedBuffer()` for read-only graph buffers filled by CPU producers. List the resource in
-`CpuCallDependencies::gpu_buffers` and resolve its writer with `resolvePreparedBuffer()`. During preparation,
-call `writeBuffer()` with the complete payload and an optional revision. A nonzero revision identifies the same
+`CpuCallDependencies::uploads`. During preparation, pass its zero-based position in that list, the complete payload and
+an optional revision to `writeBuffer()`. A nonzero revision identifies the same
 bytes across preparations of that Job. The graph retains the producer if a live pass reads the buffer.
 Each FIF replica tracks its native allocation generation, accepted revision and size. A matching nonzero revision and
 size select the resident binding directly. New selections copy the bytes into Job-owned storage before the callback
@@ -247,8 +247,8 @@ size. A version is resident only after the full interval has been accepted. An u
 replica's content qualification.
 
 Use `declareFrameBuffer()` when graph commands produce the buffer contents and the preparation determines its size.
-List it in `CpuCallDependencies::gpu_buffers`, resolve a sizer with `resolveFrameBuffer()`, and call `sizeBuffer()`
-once during each successful preparation. Sizes are multiples of four within the declared bounds.
+List it in `CpuCallDependencies::frame_sizes` and pass its zero-based position in that list and logical size to
+`sizeBuffer()` once during each successful preparation. Sizes are multiples of four within the declared bounds.
 Declare whole-buffer accesses and use the version produced by the GPU write for subsequent reads.
 Each writable frame keeps its own growable allocation. Descriptors and indirect draw ranges are checked against
 the selected logical size.

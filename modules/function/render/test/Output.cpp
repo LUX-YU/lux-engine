@@ -1808,7 +1808,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (args.empty()) producer_source_lifetime = lifetime;
             CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
                 ProducerSourceConfig{slot, std::move(lifetime)},
-                {{}, {slot}, {}, {companion.pass}, {}, {camera}}
+                {.outputs = {slot}, .passes = {companion.pass}, .storage_inputs = {camera}}
             )));
         }
         // The unused preparation has an unlinkable configuration. Even a dead cycle has to be rejected.
@@ -3645,34 +3645,19 @@ static void preparedBuffers(bool d3d12)
     class Producer final
     {
     public:
-        struct Configuration final
-        {
-            GraphResourceId destination, scratch;
-        };
+        using Configuration = std::uint64_t;
+        using LinkedData = Configuration;
 
-        struct LinkedData final
-        {
-            PreparedBufferWriter writer;
-            FrameBufferSizer scratch;
-        };
-
-        static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
-        {
-            // Resolve the second declared slot first. A rejected second claim must preserve both grants.
-            auto scratch = link.resolveFrameBuffer(source.scratch);
-            if (!scratch) return lux::cxx::unexpected(scratch.error());
-            const auto duplicate = link.resolveFrameBuffer(source.scratch);
-            CHECK(!duplicate && duplicate.error().type == kGraphAmbiguousProducer);
-            auto writer = link.resolvePreparedBuffer(source.destination);
-            if (!writer) return lux::cxx::unexpected(writer.error());
-            return LinkedData{*writer, *scratch};
-        }
-
-        static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<ShadowLightSnapshot>& inputs) noexcept
+        static RenderResult<void>
+        prepare(const LinkedData& scratch_bytes, const CpuFrameInputs<ShadowLightSnapshot>& inputs) noexcept
         {
             auto& frame = inputs.frame;
             const auto selected = phase.load();
-            if (auto sized = frame.sizeBuffer(linked.scratch, 16); !sized) return sized;
+            const auto outside = frame.sizeBuffer(1, scratch_bytes);
+            CHECK(!outside && outside.error().type == kGraphUnknownResource);
+            if (auto sized = frame.sizeBuffer(0, scratch_bytes); !sized) return sized;
+            const auto duplicate = frame.sizeBuffer(0, scratch_bytes);
+            CHECK(!duplicate && duplicate.error().type == kFrameContract);
             if (selected == EPhase::OMIT) return {};
             const auto& lights = std::get<0>(inputs.snapshots);
             const auto& snapshot = lights.value.get();
@@ -3688,9 +3673,9 @@ static void preparedBuffers(bool d3d12)
             grown.back() = marker;
             std::array<std::uint32_t, 257> oversized{};
             if (selected == EPhase::OVERSIZED)
-                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{oversized}));
+                return frame.writeBuffer(0, std::as_bytes(std::span{oversized}));
             if (selected == EPhase::SMALL)
-                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), lights.revision);
+                return frame.writeBuffer(0, std::as_bytes(std::span{initial}), lights.revision);
             const bool replacement = selected == EPhase::REPLACEMENT || selected == EPhase::PREFIX_EXTENT;
             const auto revision = lights.revision * 2 + replacement;
             if (selected == EPhase::PREFIX_EXTENT)
@@ -3698,12 +3683,12 @@ static void preparedBuffers(bool d3d12)
                 std::array<std::uint32_t, 128> half{};
                 half.front() = 128;
                 half[1] = half.back() = 0x71717171u;
-                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{half}), revision);
+                return frame.writeBuffer(0, std::as_bytes(std::span{half}), revision);
             }
             if (selected == EPhase::SHRUNK)
-                return frame.writeBuffer(linked.writer, std::as_bytes(std::span{initial}), revision);
+                return frame.writeBuffer(0, std::as_bytes(std::span{initial}), revision);
             const auto selected_revision = selected == EPhase::UNVERSIONED ? 0 : revision;
-            auto written = frame.writeBuffer(linked.writer, std::as_bytes(std::span{grown}), selected_revision);
+            auto written = frame.writeBuffer(0, std::as_bytes(std::span{grown}), selected_revision);
             if (selected == EPhase::FAIL_AFTER_WRITE && written)
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             return written;
@@ -3749,9 +3734,13 @@ static void preparedBuffers(bool d3d12)
         if (!lights) return lux::cxx::unexpected(lights.error());
         const auto add_producer = [&]() noexcept -> RenderResult<void>
         {
-            return context.addCpuCall<Producer>({selected->resource, scratch->resource}, {
-                .gpu_buffers = {selected->resource, scratch->resource}, .storage_inputs = {*lights}
-            });
+            CpuCallDependencies uses{
+                .uploads = {selected->resource}, .frame_sizes = {scratch->resource}, .storage_inputs = {*lights}
+            };
+            if (mode == "wrong-upload") std::swap(uses.uploads, uses.frame_sizes);
+            if (mode == "wrong-size") uses.frame_sizes = {selected->resource};
+            if (mode == "repeated-size") uses.frame_sizes.push_back(scratch->resource);
+            return context.addCpuCall<Producer>(16, std::move(uses));
         };
         if (mode != "missing") CHECK(add_producer());
         if (mode == "duplicate") CHECK(add_producer());
@@ -3811,7 +3800,10 @@ static void preparedBuffers(bool d3d12)
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
     for (auto [mode, error] : {std::pair{"missing", kGraphUndefinedRead},
-                               std::pair{"duplicate", kGraphAmbiguousProducer}})
+                               std::pair{"duplicate", kGraphAmbiguousProducer},
+                               std::pair{"wrong-upload", kGraphInvalidDescriptor},
+                               std::pair{"wrong-size", kGraphInvalidDescriptor},
+                               std::pair{"repeated-size", kGraphAmbiguousProducer}})
     {
         const auto invalid = make_effect(mode);
         CHECK(call<PrepareEffect>(*client, commands, {invalid, device}, false).error.type == error);
@@ -4554,8 +4546,6 @@ static void meshRasterStream(bool d3d12)
             DrawResourceSlot<MeshResource::DrawStorage> meshes;
             RasterBufferSlot arguments;
             RasterBufferSlot arena_arguments;
-            FrameBufferSizer argument_sizer;
-            PreparedBufferWriter arena_writer;
         };
 
         static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
@@ -4564,9 +4554,7 @@ static void meshRasterStream(bool d3d12)
                 take(link.resolveDrawStream(input.pass)),
                 take(link.resolveDrawResource<MeshResource::DrawStorage>(input.pass, "meshes")),
                 take(link.resolveRasterBuffer(input.pass, input.arguments)),
-                take(link.resolveRasterBuffer(input.pass, input.arena_arguments)),
-                take(link.resolveFrameBuffer(input.arguments)),
-                take(link.resolvePreparedBuffer(input.arena_arguments))
+                take(link.resolveRasterBuffer(input.pass, input.arena_arguments))
             };
         }
 
@@ -4629,7 +4617,7 @@ static void meshRasterStream(bool d3d12)
             CHECK(mapping && snapshot.revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
-            auto sized = frame.sizeBuffer(linked.argument_sizer, bytes);
+            auto sized = frame.sizeBuffer(0, bytes);
             if (!sized) return sized;
             auto program = frame.rasterProgram(linked.stream, mode == EDraw::VERTEX_LAYOUT ? 1 : 0);
             if (!program) return lux::cxx::unexpected(program.error());
@@ -4653,13 +4641,13 @@ static void meshRasterStream(bool d3d12)
                         }
                     };
                 }
-                auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 2);
+                auto written = frame.writeBuffer(0, std::as_bytes(std::span{commands}), 2);
                 if (!written) return written;
                 return frame.setRasterStream(linked.stream, {
                     draws, {}, vertices, std::as_bytes(std::span{&constants, 1})
                 });
             }
-            auto written = frame.writeBuffer(linked.arena_writer, std::as_bytes(std::span{commands}), 1);
+            auto written = frame.writeBuffer(0, std::as_bytes(std::span{commands}), 1);
             if (!written) return written;
             const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot.value.get().instances.front().mesh;
             auto geometry = MeshResource::geometry(frame, linked.meshes, mesh);
@@ -4764,7 +4752,7 @@ static void meshRasterStream(bool d3d12)
             drawn.pass, arguments.resource, arena.resource
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
-            .passes = {drawn.pass}, .gpu_buffers = {arguments.resource, arena.resource},
+            .passes = {drawn.pass}, .uploads = {arena.resource}, .frame_sizes = {arguments.resource},
             .storage_inputs = {instances}
         }));
         const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
@@ -4976,29 +4964,20 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
     class Producer final
     {
     public:
-        struct Configuration final { GraphResourceId output; };
-        struct LinkedData final
-        {
-            PreparedBufferWriter output;
-        };
+        using Configuration = std::size_t;
+        using LinkedData = Configuration;
 
-        static RenderResult<LinkedData> resolve(const Configuration& source, InstanceLinkContext& link) noexcept
-        {
-            return LinkedData{
-                take(link.resolvePreparedBuffer(source.output))
-            };
-        }
-
-        static RenderResult<void> prepare(const LinkedData& linked, const CpuFrameInputs<MeshInstanceSnapshot>& inputs) noexcept
+        static RenderResult<void>
+        prepare(const LinkedData& maximum_instances, const CpuFrameInputs<MeshInstanceSnapshot>& inputs) noexcept
         {
             auto& frame = inputs.frame;
             const auto& selected = std::get<0>(inputs.snapshots);
             const auto& snapshot = selected.value.get();
-            CHECK(snapshot.revision == selected.revision && snapshot.instances.size() <= 1);
+            CHECK(snapshot.revision == selected.revision && snapshot.instances.size() <= maximum_instances);
             if (!snapshot.instances.empty()) CHECK(snapshot.instances.front().mesh == expected_mesh);
             observed_revision = selected.revision;
             const auto count = static_cast<std::uint32_t>(snapshot.instances.size());
-            return frame.writeBuffer(linked.output, std::as_bytes(std::span{&count, 1}), selected.revision);
+            return frame.writeBuffer(0, std::as_bytes(std::span{&count, 1}), selected.revision);
         }
     };
 
@@ -5097,8 +5076,7 @@ static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffe
         };
         work.dispatch = DispatchArguments{{1, 1, 1}};
         const auto measured = take(context.addComputePass("load storage-owned mesh fields", std::move(work)));
-        auto producer = Producer::Configuration{snapshot.resource};
-        CHECK(context.addCpuCall<Producer>(std::move(producer), {.gpu_buffers = {snapshot.resource}, .storage_inputs = {storage}}));
+        CHECK(context.addCpuCall<Producer>(1, {.uploads = {snapshot.resource}, .storage_inputs = {storage}}));
         const auto initialized = take(context.addTransferPass("initialize readback", TransferWork{{
             FillBuffer{{readback}, 0}
         }}));

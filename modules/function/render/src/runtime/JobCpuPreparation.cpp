@@ -336,19 +336,18 @@ namespace lux::render
         return written;
     }
 
-    RenderResult<void> CpuCallFrame::writeBuffer(
-        PreparedBufferWriter writer, std::span<const std::byte> bytes, std::uint64_t revision
-    ) noexcept
+    RenderResult<void>
+    CpuCallFrame::writeBuffer(std::size_t output, std::span<const std::byte> bytes, std::uint64_t revision) noexcept
     {
-        const auto slot = writer.slot_;
-        if (!linked_.buffers.contains(slot))
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
+        if (output >= linked_.upload_count)
+            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output}});
+        const auto slot = linked_.buffers.first + output;
         const auto& contract = job_.graph_.cpuProgram().buffers[slot];
         auto& selected = job_.prepared_buffer_inputs_[slot];
         const bool invalid_extent =
             bytes.size() < contract.minimum_bytes || bytes.size() > contract.maximum_bytes || bytes.size() % 4;
         const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
-        if (!contract.upload || already_written || invalid_extent)
+        if (already_written || invalid_extent)
             return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
         const auto& replica = job_.gpu_.frames[frame_slot_].prepared_buffers[slot];
         if (!contract.used) selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
@@ -367,16 +366,16 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> CpuCallFrame::sizeBuffer(FrameBufferSizer writer, std::uint64_t size) noexcept
+    RenderResult<void> CpuCallFrame::sizeBuffer(std::size_t output, std::uint64_t size) noexcept
     {
-        const auto slot = writer.slot_;
-        if (!linked_.buffers.contains(slot))
-            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, slot}});
+        if (output >= linked_.buffers.count - linked_.upload_count)
+            return cxx::unexpected(RenderError{kGraphUnknownResource, {kGraphInvalidIndex, output}});
+        const auto slot = linked_.buffers.first + linked_.upload_count + output;
         const auto& contract = job_.graph_.cpuProgram().buffers[slot];
         auto& selected = job_.prepared_buffer_inputs_[slot];
         const bool invalid_extent = size < contract.minimum_bytes || size > contract.maximum_bytes || size % 4;
         const bool already_written = selected.source != PreparedBufferInput::ESource::MISSING;
-        if (contract.upload || already_written || invalid_extent)
+        if (already_written || invalid_extent)
             return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
         selected.source = PreparedBufferInput::ESource::SIZE_ONLY;
         selected.size = size;

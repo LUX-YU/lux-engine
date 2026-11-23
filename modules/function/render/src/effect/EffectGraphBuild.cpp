@@ -660,9 +660,7 @@ namespace lux::render::runtime_detail
                 const auto resource = member.version.resource;
                 const bool is_uniform =
                     std::ranges::find(draft.uniforms, resource, &ConstantBufferDeclaration::resource) != draft.uniforms.end();
-                const bool is_prepared =
-                    std::ranges::find(draft.buffers, resource, &EffectGraphBuild::Buffer::resource) !=
-                    draft.buffers.end();
+                const bool is_prepared = draft.findBuffer(resource) != nullptr;
                 if (is_uniform || is_prepared)
                     return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 GraphExport exported{member.version, {}, {}, {}};

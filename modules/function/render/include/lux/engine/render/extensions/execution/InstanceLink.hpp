@@ -42,20 +42,6 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         resolveRasterArgument(GraphPassId, std::string_view) const noexcept = 0;
 
-        [[nodiscard]] RenderResult<PreparedBufferWriter> resolvePreparedBuffer(GraphResourceId resource) noexcept
-        {
-            auto slot = claimPreparedBuffer(resource, true);
-            if (!slot) return cxx::unexpected(slot.error());
-            return PreparedBufferWriter{*slot};
-        }
-
-        [[nodiscard]] RenderResult<FrameBufferSizer> resolveFrameBuffer(GraphResourceId resource) noexcept
-        {
-            auto slot = claimPreparedBuffer(resource, false);
-            if (!slot) return cxx::unexpected(slot.error());
-            return FrameBufferSizer{*slot};
-        }
-
         template <CpuPreparationValue T>
         [[nodiscard]] RenderResult<CpuInputSlot<T>> resolveCpuInput(GraphCpuDataId source) const noexcept
         {
@@ -108,6 +94,5 @@ namespace lux::render
         [[nodiscard]] virtual RenderResult<std::uint32_t>
         claimInlineBlock(GraphPassId, cxx::basic_type_info, std::size_t) noexcept = 0;
 
-        [[nodiscard]] virtual RenderResult<std::uint32_t> claimPreparedBuffer(GraphResourceId, bool upload) noexcept = 0;
     };
 } // namespace lux::render

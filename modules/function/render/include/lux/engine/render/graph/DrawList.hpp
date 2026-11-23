@@ -22,7 +22,7 @@ namespace lux::render
         std::span<const RasterSampledImageRead> images;
     };
 
-    // Resolved by InstanceLinkContext for one compiled variant.
+    // Final stream and operand slots for one compiled graph.
     struct DrawStreamSlot final { std::uint32_t index = kGraphInvalidIndex; };
     struct RasterProgramSlot final
     {
@@ -32,11 +32,11 @@ namespace lux::render
     struct RasterBufferSlot final
     {
         std::uint32_t index = kGraphInvalidIndex;
-        // Geometry selected during preparation carries its stream and selection revision.
+        // Graph operands index a resource access group. Selected geometry also carries a frame revision.
         std::uint32_t stream = kGraphInvalidIndex;
         std::uint64_t selection = 0;
     };
-    struct RasterImageSlot final { std::uint32_t index = kGraphInvalidIndex; };
+    struct RasterImageSlot final { std::uint32_t index = kGraphInvalidIndex, stream = kGraphInvalidIndex; };
     struct RasterSamplerSlot final
     {
         std::uint32_t stream = kGraphInvalidIndex, index = kGraphInvalidIndex;

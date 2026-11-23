@@ -16,40 +16,32 @@
 namespace lux::render::detail
 {
     RenderResult<MeshSurfaceStream::Inputs>
-    MeshSurfaceStream::resolve(const Configuration& config, InstanceLinkContext& context) noexcept
+    MeshSurfaceStream::resolve(const Configuration& config, const RasterOperands& operands) noexcept
     {
-        const auto stream = context.resolveDrawStream(config.pass);
-        if (!stream) return cxx::unexpected(stream.error());
-        const auto geometry = context.resolveDrawResource<MeshResource::DrawStorage>(
-            config.pass, GBuffer::geometry_binding
-        );
+        const auto geometry = operands.resource<MeshResource::DrawStorage>(GBuffer::geometry_binding);
         if (!geometry) return cxx::unexpected(geometry.error());
-        const auto records = context.resolveDrawResource<MaterialResource::DrawStorage>(
-            config.pass, GBuffer::materials_binding
-        );
+        const auto records = operands.resource<MaterialResource::DrawStorage>(GBuffer::materials_binding);
         if (!records) return cxx::unexpected(records.error());
         MaterialDrawSources material{*records, {}};
         if (config.texture_descriptors)
         {
-            const auto textures = context.resolveDrawResource<SampledTexture2DStorage>(
-                config.pass, GBuffer::textures_binding
-            );
+            const auto textures = operands.resource<SampledTexture2DStorage>(GBuffer::textures_binding);
             if (!textures) return cxx::unexpected(textures.error());
             material.textures = *textures;
         }
         Inputs resolved{
-            *stream, *geometry, material, {}, {}, config.paged, config.shared_members, config.front_counter_clockwise,
-            config.purpose
+            operands.stream(), *geometry, material, {}, {}, config.paged, config.shared_members,
+            config.front_counter_clockwise, config.purpose
         };
         for (std::size_t i = 0; i < config.buffers.size(); ++i)
         {
-            const auto buffer = context.resolveRasterBuffer(config.pass, config.buffers[i]);
+            const auto buffer = operands.buffer(config.buffers[i]);
             if (!buffer) return cxx::unexpected(buffer.error());
             resolved.buffers[i] = *buffer;
         }
         for (std::size_t i = 0; i < kMeshRasterInputNames.size(); ++i)
         {
-            const auto argument = context.resolveRasterArgument(config.pass, kMeshRasterInputNames[i]);
+            const auto argument = operands.argument(kMeshRasterInputNames[i]);
             if (!argument) return cxx::unexpected(argument.error());
             resolved.arguments[i] = *argument;
         }

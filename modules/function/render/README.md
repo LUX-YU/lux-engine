@@ -280,9 +280,12 @@ Cold graph failures report an `EffectDiagnostic` through `RenderErrorSink` with 
 available. The sink may retain a copy of this value after returning from the callback.
 
 For a producer-authored Raster stream, declare the program choices and read-only resource envelope on
-`RasterPassTemplate`. The producer's preparation declares ownership of that pass. During cold linking,
-`resolveDrawStream` and `resolveRasterProgram` grant slots scoped to the compiled variant. Buffer, image,
-sampler and descriptor argument lookups also happen during linking. Each live program uses its own reflected
+`RasterPassTemplate`. List the owned pass IDs in `CpuCallDependencies::draw_streams`. During cold linking the compiler supplies a
+`std::span<const RasterOperands, N>` to `resolve(config, streams)` in declaration order. A fixed extent checks
+the number of streams before entering the callback. Retain the slots returned by `stream()`, `program()`,
+`buffer()`, `image()`, `sampler()` and `argument()` in linked data. Buffer and image slots identify their stream
+and the first row of a compiler-grouped access range. The frame checks the draw's use and slice within that group.
+Each live program uses its own reflected
 layout and native program lease. Program preparation maps each argument and array element directly to its
 descriptor use. Each writable FIF counts all private draw sets before growing its pool, then resolves each supplied
 binding once and writes sets by program and draw ordinal. The producer publishes draws and borrowed argument arrays with
@@ -322,7 +325,7 @@ Slots carry the published program-set revision, so a producer must resolve them 
 Declare the Resource owners a draw stream reads in `RasterPassTemplate::draw_resources`. Each entry has a
 binding name, Resource type, concrete storage type, required device capabilities and optionality. Start and Rebind
 qualify actual owners supplied with `EJobResourceUse::DRAW_RESOURCE`. To read an installed custom storage, link
-`resolveDrawResource<Storage>(pass, name)` once and call `frame.readDrawResource(slot)` during preparation.
+`streams[i].resource<Storage>(name)` once and call `frame.readDrawResource(slot)` during preparation.
 The result borrows the storage during this synchronous call. An omitted optional binding returns a null pointer.
 Draw preparation copies values used by later recording. Each stream can access only its own declared sources.
 

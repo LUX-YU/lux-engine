@@ -45,6 +45,9 @@ namespace lux::render::detail
 
     struct CompiledRasterStream final
     {
+        [[nodiscard]] RasterOperands
+        operands(GraphPassId, DrawStreamSlot, const RasterPassTemplate&, std::uint32_t first_source) const & noexcept;
+
         struct ArgumentUses final
         {
             std::uint32_t first = 0, count = 0;
@@ -73,6 +76,7 @@ namespace lux::render::detail
             EGraphUse usage;
             bool whole_resource;
             bool dynamic_extent;
+            std::uint32_t group_count = 0;
         };
 
         struct ImageAccess final
@@ -80,6 +84,7 @@ namespace lux::render::detail
             std::uint32_t resource;
             GraphImageRange range;
             std::uint32_t fallback;
+            std::uint32_t group_count = 0;
         };
 
         struct Sampler final

@@ -814,6 +814,10 @@ namespace lux::render::runtime_detail
             const auto& declaration = definition.producers[i].declaration;
             auto& producer = liveness.producers[i];
             producer.passes = declaration.passes;
+            for (auto pass : declaration.draw_streams)
+            {
+                if (std::ranges::find(producer.passes, pass) == producer.passes.end()) producer.passes.push_back(pass);
+            }
             for (auto input : declaration.storage_inputs)
             {
                 if (input.index >= definition.snapshots.size())

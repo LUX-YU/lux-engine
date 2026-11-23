@@ -421,13 +421,12 @@ namespace sdk_programs
 
     struct ClearBackground final
     {
-        using Configuration = GraphPassId;
+        using Configuration = std::monostate;
         struct LinkedData final { DrawStreamSlot stream; };
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration&, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto stream = link.resolveDrawStream(input);
-            if (!stream) return lux::cxx::unexpected(stream.error());
-            return LinkedData{*stream};
+            return LinkedData{streams.front().stream()};
         }
 
         static RenderResult<void> buildPrograms(
@@ -449,7 +448,6 @@ namespace sdk_programs
     {
         struct Configuration final
         {
-            GraphPassId pass;
             lux::rdesc::EShaderTarget target;
             bool stale, reads_records;
         };
@@ -470,22 +468,21 @@ namespace sdk_programs
             bool probed_geometry = false;
         };
 
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto stream = link.resolveDrawStream(input.pass);
-            if (!stream) return lux::cxx::unexpected(stream.error());
-            const auto undeclared = link.resolveDrawResource<DrawMask>(input.pass, "absent");
+            const auto undeclared = streams.front().resource<DrawMask>("absent");
             CHECK(!undeclared && undeclared.error().type == kGraphUnknownResource);
-            const auto wrong_type = link.resolveDrawResource<CodeStorage>(input.pass, "clip_height");
+            const auto wrong_type = streams.front().resource<CodeStorage>("clip_height");
             CHECK(!wrong_type && wrong_type.error().type == kStorageMismatch);
-            auto mask = link.resolveDrawResource<DrawMask>(input.pass, "clip_height");
+            auto mask = streams.front().resource<DrawMask>("clip_height");
             if (!mask) return lux::cxx::unexpected(mask.error());
-            const auto geometry = link.resolveDrawResource<TriangleGeometry>(input.pass, "triangle");
+            const auto geometry = streams.front().resource<TriangleGeometry>("triangle");
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            LinkedData linked{*stream, *mask, *geometry, {}, input.target, input.stale};
+            LinkedData linked{streams.front().stream(), *mask, *geometry, {}, input.target, input.stale};
             if (input.reads_records)
             {
-                const auto records = link.resolveDrawResource<ColorPage>(input.pass, "colors");
+                const auto records = streams.front().resource<ColorPage>("colors");
                 if (!records) return lux::cxx::unexpected(records.error());
                 linked.records = *records;
             }

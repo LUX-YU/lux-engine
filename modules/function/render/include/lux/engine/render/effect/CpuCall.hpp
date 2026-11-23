@@ -1,12 +1,56 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/InstanceLink.hpp>
+#include <lux/engine/render/effect/CpuCallFrame.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <vector>
 
 namespace lux::render
 {
+    struct RasterPassTemplate;
+    namespace detail { struct CompiledRasterStream; }
+
+    // Borrows one declared stream during cold resolution. Retain only the returned slots.
+    class LUX_RENDER_PUBLIC RasterOperands final
+    {
+    public:
+        RasterOperands(const RasterOperands&) = delete;
+        RasterOperands(RasterOperands&&) noexcept = default;
+
+        [[nodiscard]] DrawStreamSlot stream() const noexcept { return pass_.compiled; }
+        [[nodiscard]] RenderResult<RasterBufferSlot> buffer(GraphResourceId) const noexcept;
+        [[nodiscard]] RenderResult<RasterImageSlot> image(GraphResourceId) const noexcept;
+        [[nodiscard]] RenderResult<RasterProgramSlot> program(std::uint32_t) const noexcept;
+        [[nodiscard]] RenderResult<RasterSamplerSlot> sampler(std::uint32_t) const noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> argument(std::string_view) const noexcept;
+
+        template <class Storage>
+        [[nodiscard]] RenderResult<DrawResourceSlot<Storage>> resource(std::string_view binding) const noexcept
+        {
+            auto address = source(binding, cxx::make_basic_type_info<Storage>());
+            if (!address) return cxx::unexpected(address.error());
+            return DrawResourceSlot<Storage>{*address};
+        }
+
+    private:
+        friend struct detail::CompiledRasterStream;
+
+        struct Pass final { GraphPassId source; DrawStreamSlot compiled; };
+
+        RasterOperands(
+            Pass pass, const RasterPassTemplate& layout,
+            const detail::CompiledRasterStream& access, std::uint32_t first_source
+        ) noexcept : pass_(pass), layout_(layout), access_(access), first_source_(first_source) {}
+
+        [[nodiscard]] RenderResult<extension_detail::DrawSourceAddress>
+        source(std::string_view, cxx::basic_type_info) const noexcept;
+
+        Pass pass_;
+        const RasterPassTemplate& layout_;
+        const detail::CompiledRasterStream& access_;
+        std::uint32_t first_source_;
+    };
+
     namespace extension_detail
     {
         using AlgorithmWorkspace = std::unique_ptr<void, void (*)(void*) noexcept>;
@@ -123,10 +167,17 @@ namespace lux::render
             const typename T::LinkedData&, const TargetDesc&
         ) noexcept;
 
+        template <class Data, class Config, std::size_t N>
+        std::span<const RasterOperands, N> rasterArguments(
+            RenderResult<Data> (*)(const Config&, std::span<const RasterOperands, N>) noexcept
+        );
+
+        template <class T> using RasterArguments = decltype(rasterArguments(&T::resolve));
+
         template <class T>
-        concept NeedsCpuBinding = requires(const typename T::Configuration& config, InstanceLinkContext& link)
+        concept NeedsCpuBinding = requires(const typename T::Configuration& config, RasterArguments<T> streams)
         {
-            { T::resolve(config, link) } noexcept -> std::same_as<RenderResult<typename T::LinkedData>>;
+            { T::resolve(config, streams) } noexcept -> std::same_as<RenderResult<typename T::LinkedData>>;
         };
     }
 
@@ -151,7 +202,7 @@ namespace lux::render
              (!HasWorkspace<T> || std::default_initializable<typename T::Workspace>)) ||
             (OwnsWorkspace<T> && std::same_as<decltype(Create), CreateWorkspace<T>> && Create != nullptr);
 
-        using BindCpuCall = RenderResult<PreparationCall> (*)(ConfigValue, InstanceLinkContext&) noexcept;
+        using BindCpuCall = RenderResult<PreparationCall> (*)(ConfigValue, std::span<const RasterOperands>) noexcept;
 
         template <class T, CreateWorkspace<T> Create>
         RenderResult<AlgorithmWorkspace> createWorkspace(const void* inputs, const TargetDesc& target) noexcept
@@ -199,7 +250,8 @@ namespace lux::render
         }
 
         template <class T, auto Create>
-        RenderResult<PreparationCall> bindCpuCall(ConfigValue configuration, InstanceLinkContext& context) noexcept
+        RenderResult<PreparationCall>
+        bindCpuCall(ConfigValue configuration, std::span<const RasterOperands> streams) noexcept
         {
             using Result = decltype(callResult(&T::prepare));
             static constexpr PreparationMethods methods{&prepareCpuCall<T>, []() constexpr -> decltype(PreparationMethods::create_workspace)
@@ -214,13 +266,21 @@ namespace lux::render
             }(), inputTypes(FrameArgument<T>{}), outputTypes(Result{})};
             if constexpr (NeedsCpuBinding<T>)
             {
-                auto linked = T::resolve(*static_cast<const typename T::Configuration*>(configuration.data()), context);
+                using Sources = RasterArguments<T>;
+                if constexpr (Sources::extent != std::dynamic_extent)
+                    if (streams.size() != Sources::extent) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                const auto& config = *static_cast<const typename T::Configuration*>(configuration.data());
+                auto linked = T::resolve(config, Sources{streams});
                 if (!linked) return cxx::unexpected(linked.error());
                 auto inputs = ConfigValue::make(std::move(*linked));
                 if (!inputs) return cxx::unexpected(inputs.error());
                 return PreparationCall{std::move(*inputs), &methods};
             }
-            else return PreparationCall{std::move(configuration), &methods};
+            else
+            {
+                if (!streams.empty()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+                return PreparationCall{std::move(configuration), &methods};
+            }
         }
     }
 
@@ -235,5 +295,7 @@ namespace lux::render
         // Each list is addressed in declaration order within this call.
         std::vector<GraphResourceId> uploads{}, frame_sizes{};
         std::vector<GraphStorageSnapshotId> storage_inputs{};
+        // Ordered, exclusive draw stream outputs. Each also retains its raster pass.
+        std::vector<GraphPassId> draw_streams{};
     };
 } // namespace lux::render

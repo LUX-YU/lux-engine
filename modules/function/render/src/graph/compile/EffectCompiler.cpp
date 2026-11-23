@@ -7,6 +7,77 @@
 #include <lux/engine/render/extensions/device/DeviceSession.hpp>
 #include <lux/engine/render/commands/Error.hpp>
 
+namespace lux::render
+{
+    RasterOperands detail::CompiledRasterStream::operands(
+        GraphPassId pass, DrawStreamSlot stream, const RasterPassTemplate& layout, std::uint32_t first_source
+    ) const & noexcept
+    {
+        return {{pass, stream}, layout, *this, first_source};
+    }
+
+    RenderResult<extension_detail::DrawSourceAddress>
+    RasterOperands::source(std::string_view name, cxx::basic_type_info type) const noexcept
+    {
+        const auto& inputs = layout_.draw_resources;
+        const auto found = std::ranges::find(inputs, name, &DrawResourceInput::binding);
+        if (found == inputs.end()) return cxx::unexpected(RenderError{kGraphUnknownResource, {pass_.source.index}});
+        const auto declared = found->source.implementation;
+        if (declared != type || declared.name() != type.name())
+            return cxx::unexpected(RenderError{kStorageMismatch, {pass_.source.index}});
+        return extension_detail::DrawSourceAddress{
+            pass_.compiled.index, first_source_ + static_cast<std::uint32_t>(found - inputs.begin())
+        };
+    }
+
+    RenderResult<RasterProgramSlot> RasterOperands::program(std::uint32_t id) const noexcept
+    {
+        const auto programs = layout_.fixedPrograms();
+        const auto use = std::ranges::find(programs, id, &RasterPassTemplate::StreamProgram::program);
+        if (use == programs.end())
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass_.source.index, id}});
+        return RasterProgramSlot{pass_.compiled.index, static_cast<std::uint32_t>(use - programs.begin())};
+    }
+
+    RenderResult<RasterBufferSlot> RasterOperands::buffer(GraphResourceId id) const noexcept
+    {
+        using Access = detail::CompiledRasterStream::BufferAccess;
+        const auto& rows = access_.buffers;
+        const auto first = std::ranges::lower_bound(rows, id.index, {}, &Access::resource);
+        if (first == rows.end() || first->resource != id.index)
+            return cxx::unexpected(RenderError{kGraphUnknownResource, {pass_.source.index, id.index}});
+        return RasterBufferSlot{static_cast<std::uint32_t>(first - rows.begin()), pass_.compiled.index};
+    }
+
+    RenderResult<RasterImageSlot> RasterOperands::image(GraphResourceId id) const noexcept
+    {
+        using Access = detail::CompiledRasterStream::ImageAccess;
+        const auto& rows = access_.images;
+        const auto first = std::ranges::lower_bound(rows, id.index, {}, &Access::resource);
+        if (first == rows.end() || first->resource != id.index)
+            return cxx::unexpected(RenderError{kGraphUnknownResource, {pass_.source.index, id.index}});
+        return RasterImageSlot{static_cast<std::uint32_t>(first - rows.begin()), pass_.compiled.index};
+    }
+
+    RenderResult<RasterSamplerSlot> RasterOperands::sampler(std::uint32_t id) const noexcept
+    {
+        const auto& samplers = layout_.stream_samplers;
+        const auto use = std::ranges::find(samplers, id);
+        if (use == samplers.end())
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass_.source.index, id}});
+        return RasterSamplerSlot{pass_.compiled.index, static_cast<std::uint32_t>(use - samplers.begin())};
+    }
+
+    RenderResult<std::uint32_t> RasterOperands::argument(std::string_view name) const noexcept
+    {
+        const auto& inputs = layout_.inputs;
+        const auto use = std::ranges::find(inputs, name, &RasterPassTemplate::Input::name);
+        if (use == inputs.end() || !use->kind)
+            return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass_.source.index}});
+        return static_cast<std::uint32_t>(use - inputs.begin());
+    }
+}
+
 namespace lux::render::detail
 {
     using namespace runtime_detail;
@@ -21,6 +92,7 @@ namespace lux::render::detail
             std::span<const EffectInputDefinition> effect_inputs;
             std::vector<CompiledPassSlot> pass_slots;
             CpuProgram& plan;
+            std::vector<RasterOperands> streams;
 
             PreparationLinkWorkspace(
                 EffectGraphBuild& graph, const detail::PreparedRenderGraph& native,
@@ -100,10 +172,10 @@ namespace lux::render::detail
 
         };
 
-        class LinkContext final : public InstanceLinkContext
+        class CpuCallLink final
         {
         public:
-            LinkContext(PreparationLinkWorkspace& workspace, const CpuCallDependencies& producer) noexcept
+            CpuCallLink(PreparationLinkWorkspace& workspace, const CpuCallDependencies& producer) noexcept
                 : workspace_(workspace), producer_(producer) {}
 
             RenderResult<void> link(std::uint32_t source_index, rdesc::EShaderTarget target) noexcept
@@ -118,7 +190,10 @@ namespace lux::render::detail
                 const auto first_snapshot = static_cast<std::uint32_t>(plan.snapshot_reads.size());
                 const auto first_stream = static_cast<std::uint32_t>(plan.streams.size());
                 auto& source = workspace_.build.producers[source_index];
-                auto call = source.bind(std::move(source.configuration), *this);
+                workspace_.streams.clear();
+                for (auto id : producer_.draw_streams)
+                    if (auto linked = linkStream(id); !linked) return linked;
+                auto call = source.bind(std::move(source.configuration), workspace_.streams);
                 if (!call) return cxx::unexpected(call.error());
                 if (auto inputs = linkInputs(call->methods->inputs, source_index); !inputs) return inputs;
                 const auto first_output = static_cast<std::uint32_t>(plan.cpu_values.size());
@@ -172,126 +247,46 @@ namespace lux::render::detail
             }
 
         private:
-            RenderResult<DrawStreamSlot> resolveDrawStream(GraphPassId pass) noexcept override
+            RenderResult<void> linkStream(GraphPassId pass) noexcept
             {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                auto& ranges = workspace_.plan.draw_resource_ranges;
-                if (ranges.empty()) ranges.resize(workspace_.compiled.graph.passes().size());
-                if (ranges[*resolved].producer != kGraphInvalidIndex)
+                const auto slot = workspace_.pass_slots[pass.index].index;
+                const auto& graph = workspace_.compiled.graph;
+                const auto* stream = slot < graph.passes().size() ? graph.programs().rasterStream(slot) : nullptr;
+                if (!stream) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
+                auto& plan = workspace_.plan;
+                if (plan.draw_resource_ranges.empty()) plan.draw_resource_ranges.resize(graph.passes().size());
+                auto& range = plan.draw_resource_ranges[slot];
+                if (range.producer != kGraphInvalidIndex)
                     return cxx::unexpected(RenderError{kGraphAmbiguousProducer, {pass.index}});
-                const auto& raster = std::get<RasterWork>(workspace_.build.source.passes()[pass.index].command);
-                const auto& programs = std::get<RasterPassTemplate>(raster.program).programs;
-                if (const auto* source = std::get_if<RasterProgramSource>(&programs))
+                const auto& work = std::get<RasterWork>(workspace_.build.source.passes()[pass.index].command);
+                const auto& layout = std::get<RasterPassTemplate>(work.program);
+                if (const auto* source = std::get_if<RasterProgramSource>(&layout.programs))
                 {
                     if (program_source_ && *program_source_ != *source)
                         return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
                     program_source_ = source;
                 }
-                ranges[*resolved].producer = static_cast<std::uint32_t>(workspace_.plan.calls.size());
-                const auto list = workspace_.compiled.graph.programs().rasterStream(*resolved)->list;
-                ranges[*resolved].list = list;
-                workspace_.plan.streams.push_back({*resolved, list});
-                return DrawStreamSlot{*resolved};
-            }
-
-            RenderResult<extension_detail::DrawSourceAddress>
-            resolveDrawSource(
-                GraphPassId pass, std::string_view binding, cxx::basic_type_info type
-            ) const noexcept override
-            {
-                const auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& ranges = workspace_.plan.draw_resource_ranges;
-                if (*resolved < ranges.size())
+                const auto first = plan.draw_resource_bindings.size();
+                if (layout.draw_resources.size() > kGraphInvalidIndex - first)
+                    return cxx::unexpected(RenderError{kRuntimeCapacity});
+                range.first = static_cast<std::uint32_t>(first);
+                range.count = static_cast<std::uint32_t>(layout.draw_resources.size());
+                range.producer = static_cast<std::uint32_t>(plan.calls.size());
+                range.list = stream->list;
+                for (const auto& input : layout.draw_resources)
                 {
-                    const auto range = ranges[*resolved];
-                    for (std::uint32_t offset = 0; offset < range.count; ++offset)
-                    {
-                        const auto source = range.first + offset;
-                        const auto slot = workspace_.plan.draw_resource_bindings[source];
-                        const auto& declared = workspace_.build.storage_imports[slot.binding];
-                        if (declared.binding != binding) continue;
-                        const auto& draw = std::get<EffectStorageImport::DrawContract>(declared.contract);
-                        if (draw.hash != type.hash() || draw.name != type.name())
-                            return cxx::unexpected(RenderError{kStorageMismatch, {pass.index, slot.binding}});
-                        return extension_detail::DrawSourceAddress{*resolved, source};
-                    }
+                    const auto& imports = workspace_.build.storage_imports;
+                    const auto it = std::ranges::lower_bound(imports, input.binding, {}, &EffectStorageImport::binding);
+                    if (it == imports.end() || it->binding != input.binding)
+                        return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index}});
+                    plan.draw_resource_bindings.push_back({
+                        static_cast<std::uint32_t>(it - imports.begin()),
+                        input.required_capabilities, input.indexed_geometry
+                    });
                 }
-                return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index}});
-            }
-
-            RenderResult<RasterProgramSlot>
-            resolveRasterProgram(GraphPassId pass, std::uint32_t source_program) const noexcept override
-            {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& raster = std::get<RasterWork>(workspace_.build.source.passes()[pass.index].command);
-                const auto programs = std::get<RasterPassTemplate>(raster.program).fixedPrograms();
-                const auto use = std::ranges::find(programs, source_program, &RasterPassTemplate::StreamProgram::program);
-                if (use == programs.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
-                return RasterProgramSlot{*resolved, static_cast<std::uint32_t>(use - programs.begin())};
-            }
-
-            RenderResult<RasterBufferSlot>
-            resolveRasterBuffer(GraphPassId pass, GraphResourceId source) const noexcept override
-            {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& buffers = workspace_.compiled.graph.programs().rasterStream(*resolved)->buffers;
-                const auto use = std::ranges::find(buffers, source.index, &detail::CompiledRasterStream::BufferAccess::resource);
-                if (use == buffers.end())
-                    return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index, source.index}});
-                return RasterBufferSlot{source.index};
-            }
-
-            RenderResult<RasterImageSlot>
-            resolveRasterImage(GraphPassId pass, GraphResourceId source) const noexcept override
-            {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& images = workspace_.compiled.graph.programs().rasterStream(*resolved)->images;
-                const auto use = std::ranges::find(images, source.index, &detail::CompiledRasterStream::ImageAccess::resource);
-                if (use == images.end())
-                    return cxx::unexpected(RenderError{kGraphUnknownResource, {pass.index, source.index}});
-                return RasterImageSlot{source.index};
-            }
-
-            RenderResult<RasterSamplerSlot>
-            resolveRasterSampler(GraphPassId pass, std::uint32_t source) const noexcept override
-            {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& raster = std::get<RasterWork>(workspace_.build.source.passes()[pass.index].command);
-                const auto& samplers = std::get<RasterPassTemplate>(raster.program).stream_samplers;
-                const auto use = std::ranges::find(samplers, source);
-                if (use == samplers.end()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
-                return RasterSamplerSlot{*resolved, static_cast<std::uint32_t>(use - samplers.begin())};
-            }
-
-            RenderResult<std::uint32_t>
-            resolveRasterArgument(GraphPassId pass, std::string_view name) const noexcept override
-            {
-                auto resolved = streamPass(pass);
-                if (!resolved) return cxx::unexpected(resolved.error());
-                const auto& raster = std::get<RasterWork>(workspace_.build.source.passes()[pass.index].command);
-                const auto& inputs = std::get<RasterPassTemplate>(raster.program).inputs;
-                const auto input = std::ranges::find(inputs, name, &RasterPassTemplate::Input::name);
-                if (input == inputs.end() || !input->kind)
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
-                return static_cast<std::uint32_t>(input - inputs.begin());
-            }
-
-            RenderResult<std::uint32_t> streamPass(GraphPassId pass) const noexcept
-            {
-                if (std::ranges::find(producer_.passes, pass) == producer_.passes.end())
-                    return cxx::unexpected(RenderError{kGraphUnknownPass, {pass.index}});
-                const auto slot = workspace_.pass_slots[pass.index].index;
-                const bool live_stream = slot < workspace_.compiled.graph.passes().size() &&
-                    workspace_.compiled.graph.programs().rasterStream(slot);
-                if (!live_stream)
-                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {pass.index}});
-                return slot;
+                plan.streams.push_back({slot, stream->list});
+                workspace_.streams.push_back(stream->operands(pass, {slot}, layout, range.first));
+                return {};
             }
 
             bool matches(const extension_detail::CpuValueType& port, GraphCpuDataId id) const noexcept
@@ -382,36 +377,8 @@ namespace lux::render::detail
         RenderResult<void> linkPreparation(PreparationLinkWorkspace workspace, rdesc::EShaderTarget target) noexcept
         {
             const auto& build = workspace.build;
-            const auto& source = build.source;
             const auto& executable = workspace.compiled.graph;
             auto& plan = workspace.plan;
-            for (std::size_t p = 0; p < source.passes().size(); ++p)
-            {
-                const auto slot = workspace.pass_slots[p].index;
-                if (slot == kGraphInvalidIndex) continue;
-                const auto* raster = std::get_if<RasterWork>(&source.passes()[p].command);
-                const auto* stage = raster ? std::get_if<RasterPassTemplate>(&raster->program) : nullptr;
-                if (!stage) continue;
-                if (stage->draw_resources.empty()) continue;
-                if (plan.draw_resource_ranges.empty()) plan.draw_resource_ranges.resize(executable.passes().size());
-                const auto first = plan.draw_resource_bindings.size();
-                if (stage->draw_resources.size() > kGraphInvalidIndex - first)
-                    return cxx::unexpected(RenderError{kRuntimeCapacity});
-                for (const auto& input : stage->draw_resources)
-                {
-                    const auto& imports = build.storage_imports;
-                    const auto it = std::ranges::lower_bound(imports, input.binding, {}, &EffectStorageImport::binding);
-                    if (it == imports.end() || it->binding != input.binding)
-                        return cxx::unexpected(RenderError{kGraphUnknownResource, {p}});
-                    plan.draw_resource_bindings.push_back({
-                        static_cast<std::uint32_t>(it - imports.begin()), input.required_capabilities,
-                        input.indexed_geometry
-                    });
-                }
-                plan.draw_resource_ranges[slot] = {
-                    static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(stage->draw_resources.size())
-                };
-            }
             for (const auto& copy : build.inline_copies)
             {
                 const auto slots = workspace.destinations(copy.pass);
@@ -426,7 +393,7 @@ namespace lux::render::detail
             for (auto index : build.live_order)
             {
                 const auto& producer = build.producers[index];
-                LinkContext context{workspace, producer.declaration};
+                CpuCallLink context{workspace, producer.declaration};
                 auto linked = context.link(index, target);
                 if (!linked) return cxx::unexpected(linked.error());
             }

@@ -24,7 +24,7 @@ namespace lux::render
     {
         friend class CpuCallFrame;
         friend class RasterRecordWriter;
-        friend class InstanceLinkContext;
+        friend class RasterOperands;
         explicit constexpr DrawResourceSlot(extension_detail::DrawSourceAddress address) noexcept : address_(address) {}
         extension_detail::DrawSourceAddress address_;
     };

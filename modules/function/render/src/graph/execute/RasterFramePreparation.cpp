@@ -14,6 +14,13 @@ namespace lux::render::detail
 {
     namespace
     {
+        template <class Access>
+        std::span<const Access> accessGroup(const std::vector<Access>& rows, std::uint32_t first) noexcept
+        {
+            if (first >= rows.size()) return {};
+            return std::span{rows}.subspan(first, rows[first].group_count);
+        }
+
         bool includes(GraphBufferRange range, const RasterBufferSlice& slice) noexcept
         {
             if (slice.offset < range.offset) return false;
@@ -137,16 +144,14 @@ namespace lux::render::detail
 
     RenderResult<ResourceInput>
     RasterFramePreparation::resolveBuffer(
-        const CompiledRasterStream& stream, const RasterBufferSlice& slice, EGraphUse usage
+        std::uint32_t pass, const CompiledRasterStream& stream, const RasterBufferSlice& slice, EGraphUse usage
     ) const noexcept
     {
-        if (!slice.size || slice.buffer.selection || slice.buffer.stream != kGraphInvalidIndex)
+        if (!slice.size || slice.buffer.selection || slice.buffer.stream != pass)
             return cxx::unexpected(RenderError{kGraphInvalidRange});
         const bool whole = slice.size == RasterBufferSlice::whole;
         if (whole && slice.offset != 0) return cxx::unexpected(RenderError{kGraphInvalidRange});
-        const auto ranges = std::ranges::equal_range(
-            stream.buffers, slice.buffer.index, {}, &CompiledRasterStream::BufferAccess::resource
-        );
+        const auto ranges = accessGroup(stream.buffers, slice.buffer.index);
         const auto allowed = std::ranges::any_of(ranges, [&](const auto& access) noexcept
         {
             const bool allowed_range = whole ? access.whole_resource :
@@ -154,17 +159,18 @@ namespace lux::render::detail
             return access.usage == usage && allowed_range;
         });
         if (!allowed) return cxx::unexpected(RenderError{kGraphInvalidRange, {slice.buffer.index}});
-        auto input = frame_.bindings[slice.buffer.index].input();
+        const auto resource = ranges.front().resource;
+        auto input = frame_.bindings[resource].input();
         const auto size = whole ? input.size : slice.size;
         const bool in_bounds = size && slice.offset <= input.size && size <= input.size - slice.offset;
         const bool overflow = slice.offset > UINT64_MAX - input.offset;
         if (!input.buffer || !in_bounds || overflow)
-            return cxx::unexpected(RenderError{kDeviceArgument, {slice.buffer.index}});
+            return cxx::unexpected(RenderError{kDeviceArgument, {resource}});
         input.offset += slice.offset;
         input.size = size;
-        const auto native_size = frame_.bindings[slice.buffer.index].buffer_description->size;
+        const auto native_size = frame_.bindings[resource].buffer_description->size;
         if (input.offset > native_size || input.size > native_size - input.offset)
-            return cxx::unexpected(RenderError{kDeviceArgument, {slice.buffer.index}});
+            return cxx::unexpected(RenderError{kDeviceArgument, {resource}});
         return input;
     }
 
@@ -206,9 +212,8 @@ namespace lux::render::detail
                 }
                 return includes(envelope, range);
             };
-            const auto ranges = std::ranges::equal_range(
-                stream.images, source->image.index, {}, &CompiledRasterStream::ImageAccess::resource
-            );
+            if (source->image.stream != p) return cxx::unexpected(RenderError{kGraphInvalidRange, {p, entry.argument}});
+            const auto ranges = accessGroup(stream.images, source->image.index);
             const auto allowed = std::ranges::find_if(ranges, includesSelection);
             if (allowed == ranges.end())
                 return cxx::unexpected(RenderError{kGraphInvalidRange, {p, entry.argument}});
@@ -240,7 +245,7 @@ namespace lux::render::detail
 
         const auto* slice = std::get_if<RasterBufferSlice>(&entry.source);
         if (!slice) return cxx::unexpected(RenderError{kFrameContract, {p, entry.argument}});
-        auto source = resolveBuffer(stream, *slice, stream.argument_uses[entry.argument]);
+        auto source = resolveBuffer(p, stream, *slice, stream.argument_uses[entry.argument]);
         if (!source) return cxx::unexpected(source.error());
         const auto minimum = std::max(field.block_size, 4u);
         const auto stride = field.block_size ? field.block_size : 4u;
@@ -350,7 +355,7 @@ namespace lux::render::detail
                 {
                     if (buffer_base && abi.rate == EVertexRate::VERTEX)
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p, abi.binding}});
-                    return resolveBuffer(stream, vertex->source, EGraphUse::VERTEX);
+                    return resolveBuffer(p, stream, vertex->source, EGraphUse::VERTEX);
                 }
                 auto selected = geometrySlice(vertex->source, EGraphUse::VERTEX);
                 if (!selected) return cxx::unexpected(selected.error());
@@ -409,7 +414,7 @@ namespace lux::render::detail
                 {
                     if (selected_vertices || buffer_base)
                         return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});
-                    return resolveBuffer(stream, *index_slice, EGraphUse::INDEX);
+                    return resolveBuffer(p, stream, *index_slice, EGraphUse::INDEX);
                 }
                 auto selected = geometrySlice(*index_slice, EGraphUse::INDEX);
                 if (!selected) return cxx::unexpected(selected.error());
@@ -459,7 +464,7 @@ namespace lux::render::detail
             const bool unsupported_count = indirect->count_buffer && !limits.features.drawIndirectCount;
             if (unsupported_multi_draw || unsupported_count)
                 return cxx::unexpected(RenderError{kDeviceUnsupported, {p, maximum}});
-            auto arguments = resolveBuffer(stream, indirect->arguments, EGraphUse::INDIRECT);
+            auto arguments = resolveBuffer(p, stream, indirect->arguments, EGraphUse::INDIRECT);
             if (!arguments) return cxx::unexpected(arguments.error());
             const auto bytes = packet.index ? sizeof(nri::DrawIndexedDesc) : sizeof(nri::DrawDesc);
             const auto stride = indirect->stride ? indirect->stride : static_cast<std::uint32_t>(bytes);
@@ -473,7 +478,7 @@ namespace lux::render::detail
             command.mergeable = buffer_base;
             if (indirect->count_buffer)
             {
-                auto count = resolveBuffer(stream, *indirect->count_buffer, EGraphUse::INDIRECT);
+                auto count = resolveBuffer(p, stream, *indirect->count_buffer, EGraphUse::INDIRECT);
                 if (!count) return cxx::unexpected(count.error());
                 if (count->offset % 4 || count->size < sizeof(std::uint32_t))
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {p}});

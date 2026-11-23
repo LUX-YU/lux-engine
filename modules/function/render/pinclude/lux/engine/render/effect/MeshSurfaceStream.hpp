@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/extensions/execution/InstanceLink.hpp>
+#include <lux/engine/render/effect/CpuCall.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/resources/instance/Data.hpp>
 #include <lux/engine/render/resources/material/Resource.hpp>
@@ -49,7 +49,6 @@ namespace lux::render::detail
     public:
         struct Configuration final
         {
-            GraphPassId pass;
             std::array<GraphResourceId, 5> buffers;
             bool paged, shared_members, front_counter_clockwise, texture_descriptors;
             rdesc::EMaterialPurpose purpose;
@@ -87,7 +86,7 @@ namespace lux::render::detail
             const DrawMapping& mapping;
         };
 
-        [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, InstanceLinkContext&) noexcept;
+        [[nodiscard]] static RenderResult<Inputs> resolve(const Configuration&, const RasterOperands&) noexcept;
         explicit MeshSurfaceStream(const Inputs& inputs) noexcept : inputs_(inputs) {}
         MeshSurfaceStream(const Inputs&&) = delete;
         [[nodiscard]] static RenderResult<std::unique_ptr<DrawMapping>>

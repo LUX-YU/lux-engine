@@ -56,12 +56,14 @@ namespace lux::render
             };
 
             [[nodiscard]] static RenderResult<LinkedData>
-            resolve(const Configuration& config, InstanceLinkContext& context) noexcept
+            resolve(const Configuration& config, std::span<const RasterOperands> streams) noexcept
             {
+                if (streams.size() != static_cast<std::size_t>(config.surface.has_value()))
+                    return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
                 std::optional<detail::MeshSurfaceStream::Inputs> surface;
                 if (config.surface)
                 {
-                    auto resolved = detail::MeshSurfaceStream::resolve(*config.surface, context);
+                    auto resolved = detail::MeshSurfaceStream::resolve(*config.surface, streams.front());
                     if (!resolved) return cxx::unexpected(resolved.error());
                     surface = *resolved;
                 }
@@ -385,7 +387,7 @@ namespace lux::render
                 {device.compute_dispatch_limit[0], device.compute_dispatch_limit[1]}, {}, shadow
             };
             EffectResourceBundle bundle;
-            std::vector<GraphPassId> producer_passes;
+            std::vector<GraphPassId> draw_streams;
             constexpr auto output = Effect == EMeshEffect::VISIBILITY ? MeshVisibility::draws :
                 Effect == EMeshEffect::GBUFFER ? GBuffer::surface :
                 Effect == EMeshEffect::FORWARD ? MeshRaster::color :
@@ -489,11 +491,10 @@ namespace lux::render
                     ? rdesc::EMaterialPurpose::SHADOW
                     : Effect == EMeshEffect::FORWARD ? rdesc::EMaterialPurpose::FORWARD : rdesc::EMaterialPurpose::GBUFFER;
                 config.surface = detail::MeshSurfaceStream::Configuration{
-                    drawn->pass,
                     {transforms->resource, properties->resource, alive->resource, visible->resource, commands->resource},
                     paged, device.indirect_first_instance, CounterClockwise, device.texture_descriptors, purpose
                 };
-                producer_passes.push_back(drawn->pass);
+                draw_streams.push_back(drawn->pass);
             }
             std::vector<GraphResourceId> prepared_buffers{
                 groups->resource, candidates->resource, chunks->resource, dispatch->resource
@@ -502,9 +503,9 @@ namespace lux::render
                 prepared_buffers.insert(prepared_buffers.end(), shadow_uploads.begin(), shadow_uploads.end());
             if (auto prepared = context.addCpuCall<Kernel, &Kernel::createWorkspace>(
                 std::move(config), {
-                    .inline_blocks = std::move(inline_blocks), .passes = std::move(producer_passes),
+                    .inline_blocks = std::move(inline_blocks),
                     .uploads = std::move(prepared_buffers), .frame_sizes = {visible->resource, commands->resource},
-                    .storage_inputs = std::move(storage_inputs)
+                    .storage_inputs = std::move(storage_inputs), .draw_streams = std::move(draw_streams)
                 }
             ); !prepared)
                 return prepared;

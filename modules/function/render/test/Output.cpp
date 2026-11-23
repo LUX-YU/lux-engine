@@ -1569,7 +1569,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         using Configuration = ProducerSourceConfig;
         using LinkedData = std::size_t;
 
-        static RenderResult<LinkedData> resolve(const Configuration& config, InstanceLinkContext&) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& config, std::span<const RasterOperands, 0>) noexcept
         {
             ++source_links;
             if (!config.lifetime) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -1612,7 +1613,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         using Configuration = std::monostate;
         using LinkedData = Configuration;
 
-        static RenderResult<LinkedData> resolve(const Configuration&, InstanceLinkContext&) noexcept
+        static RenderResult<LinkedData> resolve(const Configuration&, std::span<const RasterOperands, 0>) noexcept
         {
             ++sink_links;
             if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
@@ -1836,6 +1837,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     enum class ETestStreamMode : std::uint8_t
     {
         VALID, BAD_INDEX, BAD_CONSTANTS, BAD_BINDING, BAD_IMAGE, BAD_SAMPLER, DUPLICATE_ELEMENT,
+        FOREIGN_BUFFER, FOREIGN_IMAGE, PARTIAL_IMAGE_GROUP,
         DUPLICATE_LAYER, MISSING_LAYER, UNCOVERED_DRAW, EMPTY, SWAP_TILES, MANY_DRAWS,
         BAD_INDIRECT_STRIDE, SHORT_INDIRECT_ARGS, BAD_COUNT, WRONG_INDIRECT_USE, NO_COUNT, OLD_PROGRAM_SLOT
     };
@@ -1924,7 +1926,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     public:
         struct Configuration final
         {
-            GraphPassId pass;
             rdesc::EShaderTarget target;
             GraphResourceId indices, uniform, image, arguments, count;
             std::uint32_t sampler, comparison_sampler;
@@ -1940,27 +1941,27 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             std::uint32_t tint_argument, tiles_argument, sampler_argument;
         };
 
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto stream = link.resolveDrawStream(input.pass);
-            auto index = link.resolveRasterBuffer(input.pass, input.indices);
-            auto uniform = link.resolveRasterBuffer(input.pass, input.uniform);
-            auto arguments = link.resolveRasterBuffer(input.pass, input.arguments);
-            auto count = link.resolveRasterBuffer(input.pass, input.count);
-            auto image = link.resolveRasterImage(input.pass, input.image);
-            auto sampler = link.resolveRasterSampler(input.pass, input.sampler);
-            auto comparison = link.resolveRasterSampler(input.pass, input.comparison_sampler);
-            auto tint_argument = link.resolveRasterArgument(input.pass, "tint");
-            auto tiles_argument = link.resolveRasterArgument(input.pass, "tiles");
-            auto sampler_argument = link.resolveRasterArgument(input.pass, "sampler_state");
+            auto index = streams.front().buffer(input.indices);
+            auto uniform = streams.front().buffer(input.uniform);
+            auto arguments = streams.front().buffer(input.arguments);
+            auto count = streams.front().buffer(input.count);
+            auto image = streams.front().image(input.image);
+            auto sampler = streams.front().sampler(input.sampler);
+            auto comparison = streams.front().sampler(input.comparison_sampler);
+            auto tint_argument = streams.front().argument("tint");
+            auto tiles_argument = streams.front().argument("tiles");
+            auto sampler_argument = streams.front().argument("sampler_state");
             const bool missing_buffer = !index || !uniform || !arguments || !count;
             const bool missing_texture_binding = !image || !sampler || !comparison;
             const bool missing_argument = !tint_argument || !tiles_argument || !sampler_argument;
-            if (!stream || missing_buffer || missing_texture_binding || missing_argument)
+            if (missing_buffer || missing_texture_binding || missing_argument)
                 return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return LinkedData{
-                *stream, input.target, *index, *uniform, *arguments, *count, *image, *sampler, *comparison,
-                *tint_argument, *tiles_argument, *sampler_argument
+                streams.front().stream(), input.target, *index, *uniform, *arguments, *count, *image,
+                *sampler, *comparison, *tint_argument, *tiles_argument, *sampler_argument
             };
         }
 
@@ -2053,13 +2054,18 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             const auto second_range = swap_tiles ? first_tile : second_tile;
             const auto sampler = mode == ETestStreamMode::BAD_SAMPLER ? linked.comparison_sampler :
                 linked.sampler;
+            auto tile = linked.image;
+            if (mode == ETestStreamMode::FOREIGN_IMAGE) ++tile.stream;
+            if (mode == ETestStreamMode::PARTIAL_IMAGE_GROUP) ++tile.index;
+            auto uniform = linked.uniform;
+            if (mode == ETestStreamMode::FOREIGN_BUFFER) ++uniform.stream;
             // Physical descriptor order is compiler-owned. Publish in a different order.
             const std::array bindings{
-                RasterStreamBinding{linked.tiles_argument, RasterImageSlice{linked.image, second_range},
+                RasterStreamBinding{linked.tiles_argument, RasterImageSlice{tile, second_range},
                     mode == ETestStreamMode::DUPLICATE_ELEMENT ? 0u : 1u},
                 RasterStreamBinding{linked.sampler_argument, sampler},
                 RasterStreamBinding{linked.tint_argument,
-                    RasterBufferSlice{linked.uniform, 0, mode == ETestStreamMode::BAD_BINDING ? 257u : 256u}},
+                    RasterBufferSlice{uniform, 0, mode == ETestStreamMode::BAD_BINDING ? 257u : 256u}},
                 RasterStreamBinding{linked.tiles_argument, RasterImageSlice{linked.image, first_range}, 0}
             };
             const auto offset = mode == ETestStreamMode::BAD_INDEX ? 1u : 0u;
@@ -2262,10 +2268,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             }}}
         ));
         CHECK(context.addCpuCall<TestRasterProducer>({
-            drawn.pass, context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
+            context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
             comparison_sampler
         }, {
-            .passes = {drawn.pass}, .storage_inputs = {*programs}
+            .storage_inputs = {*programs}, .draw_streams = {drawn.pass}
         }));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
@@ -2280,7 +2286,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     public:
         struct Configuration final
         {
-            GraphPassId pass;
             std::uint32_t program;
             bool preserve;
         };
@@ -2292,13 +2297,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             bool preserve;
         };
 
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto stream = link.resolveDrawStream(input.pass);
-            if (!stream) return lux::cxx::unexpected(stream.error());
-            auto program = link.resolveRasterProgram(input.pass, input.program);
+            auto program = streams.front().program(input.program);
             if (!program) return lux::cxx::unexpected(program.error());
-            return LinkedData{*stream, *program, input.preserve};
+            return LinkedData{streams.front().stream(), *program, input.preserve};
         }
 
         static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
@@ -2368,8 +2372,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             const auto pass = take(context.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
                 std::move(work)));
             CHECK(context.addCpuCall<RuntimeLayerProducer>(
-                RuntimeLayerProducer::Configuration{pass.pass, graphics, preserve},
-                {.passes = {pass.pass}}
+                RuntimeLayerProducer::Configuration{graphics, preserve},
+                {.draw_streams = {pass.pass}}
             ));
             return std::array{pass.written[0], pass.written[1]};
         };
@@ -3197,8 +3201,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
     stream_mode = ETestStreamMode::DUPLICATE_ELEMENT;
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
-    for (const auto mode : {ETestStreamMode::DUPLICATE_LAYER, ETestStreamMode::MISSING_LAYER,
-                            ETestStreamMode::UNCOVERED_DRAW})
+    for (const auto mode : {ETestStreamMode::FOREIGN_BUFFER, ETestStreamMode::FOREIGN_IMAGE,
+                            ETestStreamMode::PARTIAL_IMAGE_GROUP, ETestStreamMode::DUPLICATE_LAYER,
+                            ETestStreamMode::MISSING_LAYER, ETestStreamMode::UNCOVERED_DRAW})
     {
         stream_mode = mode;
         CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kGraphInvalidRange);
@@ -3949,7 +3954,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     class Producer final
     {
     public:
-        struct Configuration final { GraphPassId pass; rdesc::EShaderTarget target; bool materials, declares_texture; };
+        struct Configuration final { rdesc::EShaderTarget target; bool materials, declares_texture; };
         struct LinkedData final
         {
             DrawStreamSlot stream;
@@ -3958,22 +3963,19 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             std::optional<DrawResourceSlot<TextureResource::DrawStorage>> textures;
         };
 
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& context) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto stream = context.resolveDrawStream(input.pass);
-            if (!stream) return lux::cxx::unexpected(stream.error());
-            LinkedData linked{*stream, input.target, {}, {}};
+            LinkedData linked{streams.front().stream(), input.target, {}, {}};
             if (input.declares_texture)
             {
-                const auto slot = context.resolveDrawResource<TextureResource::DrawStorage>(input.pass, "textures");
+                const auto slot = streams.front().resource<TextureResource::DrawStorage>("textures");
                 if (!slot) return lux::cxx::unexpected(slot.error());
                 linked.textures = *slot;
             }
             if (input.materials)
             {
-                const auto records = context.resolveDrawResource<MaterialResource::DrawStorage>(
-                    input.pass, "materials"
-                );
+                const auto records = streams.front().resource<MaterialResource::DrawStorage>("materials");
                 if (!records) return lux::cxx::unexpected(records.error());
                 linked.materials = MaterialDrawSources{*records, linked.textures};
             }
@@ -4138,10 +4140,10 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("sample a shared texture", std::move(raster)));
         auto producer = Producer::Configuration{
-            drawn.pass, context.shaderTarget(), material, mode != "undeclared"
+            context.shaderTarget(), material, mode != "undeclared"
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
-            .passes = {drawn.pass}
+            .draw_streams = {drawn.pass}
         }));
         const auto captured = take(context.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
@@ -4540,7 +4542,6 @@ static void meshRasterStream(bool d3d12)
     public:
         struct Configuration final
         {
-            GraphPassId pass;
             GraphResourceId arguments;
             GraphResourceId arena_arguments;
         };
@@ -4553,13 +4554,14 @@ static void meshRasterStream(bool d3d12)
             RasterBufferSlot arena_arguments;
         };
 
-        static RenderResult<LinkedData> resolve(const Configuration& input, InstanceLinkContext& link) noexcept
+        static RenderResult<LinkedData>
+        resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
             return LinkedData{
-                take(link.resolveDrawStream(input.pass)),
-                take(link.resolveDrawResource<MeshResource::DrawStorage>(input.pass, "meshes")),
-                take(link.resolveRasterBuffer(input.pass, input.arguments)),
-                take(link.resolveRasterBuffer(input.pass, input.arena_arguments))
+                streams.front().stream(),
+                take(streams.front().resource<MeshResource::DrawStorage>("meshes")),
+                take(streams.front().buffer(input.arguments)),
+                take(streams.front().buffer(input.arena_arguments))
             };
         }
 
@@ -4754,11 +4756,11 @@ static void meshRasterStream(bool d3d12)
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("draw uploaded mesh", std::move(raster)));
         auto producer = Producer::Configuration{
-            drawn.pass, arguments.resource, arena.resource
+            arguments.resource, arena.resource
         };
         CHECK(context.addCpuCall<Producer>(std::move(producer), {
-            .passes = {drawn.pass}, .uploads = {arena.resource}, .frame_sizes = {arguments.resource},
-            .storage_inputs = {instances}
+            .uploads = {arena.resource}, .frame_sizes = {arguments.resource},
+            .storage_inputs = {instances}, .draw_streams = {drawn.pass}
         }));
         const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}

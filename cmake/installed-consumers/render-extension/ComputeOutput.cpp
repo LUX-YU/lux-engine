@@ -526,7 +526,7 @@ namespace
         background.program = std::move(background_stage);
         background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         const auto base = take(context.addRasterPass("clear background", std::move(background)));
-        auto clear = context.addCpuCall<ClearBackground>(base.pass, {.passes = {base.pass}});
+        auto clear = context.addCpuCall<ClearBackground>({}, {.draw_streams = {base.pass}});
         if (!clear) return clear;
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
@@ -575,11 +575,12 @@ namespace
         auto draw = context.addRasterPass("two programs", std::move(raster));
         if (!draw) return lux::cxx::unexpected(draw.error());
         auto configuration = ProgramDraws::Configuration{
-            draw->pass, context.shaderTarget(), mode == "stale-code", reads_records
+            context.shaderTarget(), mode == "stale-code", reads_records
         };
-        auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), {
-            .passes = {draw->pass}, .storage_inputs = {camera}
-        });
+        CpuCallDependencies uses{.storage_inputs = {camera}, .draw_streams = {draw->pass}};
+        if (mode == "duplicate-stream") uses.draw_streams.push_back(draw->pass);
+        if (mode == "missing-stream") uses.passes = std::exchange(uses.draw_streams, {});
+        auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), std::move(uses));
         if (!added) return added;
         return context.publish(color, {{color, draw->written.front()}});
     }
@@ -766,7 +767,8 @@ namespace
                 const bool valid = arguments.empty() || arguments == "stale-code" || arguments == "no-build" ||
                     arguments == "wrong-inputs" || arguments == "missing-map" || arguments == "duplicate-program-input" ||
                     arguments == "unknown-program-input" || arguments == "wrong-program-input" ||
-                    arguments == "short-program-input";
+                    arguments == "short-program-input" || arguments == "duplicate-stream" ||
+                    arguments == "missing-stream";
                 if (valid) return {};
                 return lux::cxx::unexpected(RenderError{kInvalidConfig});
             }
@@ -906,7 +908,9 @@ int main(int argc, char** argv)
             std::pair{"no-build", kGraphInvalidDescriptor}, std::pair{"wrong-inputs", kGraphInvalidDescriptor},
             std::pair{"missing-map", kGraphInvalidDescriptor}, std::pair{"duplicate-program-input", kGraphAmbiguousProducer},
             std::pair{"unknown-program-input", kGraphUnknownResource}, std::pair{"wrong-program-input", kStorageMismatch},
-            std::pair{"short-program-input", kGraphInvalidDescriptor}
+            std::pair{"short-program-input", kGraphInvalidDescriptor},
+            std::pair{"missing-stream", kGraphInvalidDescriptor},
+            std::pair{"duplicate-stream", kGraphAmbiguousProducer}
         })
         {
             const auto effect = call<CreateEffect>(*client, commands, capture_request(mode)).effect;

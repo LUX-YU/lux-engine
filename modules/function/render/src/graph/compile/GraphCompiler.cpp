@@ -25,6 +25,19 @@ namespace lux::render::detail
 {
     namespace
     {
+        // Only the first access for a resource is a legal operand; following rows complete its envelope.
+        template <class Access> void groupRasterAccesses(std::vector<Access>& rows) noexcept
+        {
+            std::ranges::stable_sort(rows, {}, &Access::resource);
+            for (std::size_t first = 0; first < rows.size();)
+            {
+                auto end = first + 1;
+                while (end < rows.size() && rows[end].resource == rows[first].resource) ++end;
+                rows[first].group_count = static_cast<std::uint32_t>(end - first);
+                first = end;
+            }
+        }
+
         RenderResult<void>
         validateRasterScope(const RasterScope& scope, const GraphDefinition& graph, const nri::DeviceDesc& limits) noexcept
         {
@@ -974,6 +987,8 @@ namespace lux::render::detail
                 auto& stream = native.streams_[pass.binding_slot];
                 stream = std::make_unique<CompiledRasterStream>();
                 stream->list = std::get<RasterListCommands>(plan.rasterCommands(pass)->draw).data_index;
+                if (description->resources.size() >= kGraphInvalidIndex)
+                    co_return cxx::unexpected(RenderError{kRuntimeCapacity});
                 for (const auto& resource : description->resources)
                 {
                     if (const auto* range = std::get_if<GraphBufferRange>(&resource.range))
@@ -991,8 +1006,8 @@ namespace lux::render::detail
                     const auto fallback = resource.fallback ? resource.fallback->resource.index : kGraphInvalidIndex;
                     stream->images.push_back({id, std::get<GraphImageRange>(resource.range), fallback});
                 }
-                std::ranges::stable_sort(stream->buffers, {}, &CompiledRasterStream::BufferAccess::resource);
-                std::ranges::stable_sort(stream->images, {}, &CompiledRasterStream::ImageAccess::resource);
+                groupRasterAccesses(stream->buffers);
+                groupRasterAccesses(stream->images);
                 for (const auto sampler : description->stream_samplers)
                 {
                     const auto& authored = graph.samplers()[sampler];

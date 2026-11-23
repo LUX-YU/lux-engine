@@ -367,7 +367,7 @@ struct WorkspaceProbe
     using Configuration = ClearPreparation::Configuration;
     using LinkedData = ClearPreparation::LinkedData;
     using Workspace = W;
-    static RenderResult<LinkedData> resolve(const Configuration&, InstanceLinkContext&) noexcept;
+    static RenderResult<LinkedData> resolve(const Configuration&, std::span<const RasterOperands, 0>) noexcept;
     static RenderResult<void> prepare(const LinkedData&, CpuCallFrame&, Workspace&) noexcept;
 };
 

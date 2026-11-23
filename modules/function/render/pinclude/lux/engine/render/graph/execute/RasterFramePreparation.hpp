@@ -26,7 +26,7 @@ namespace lux::render::detail
 
     private:
         [[nodiscard]] RenderResult<ResourceInput>
-        resolveBuffer(const CompiledRasterStream&, const RasterBufferSlice&, EGraphUse) const noexcept;
+        resolveBuffer(std::uint32_t, const CompiledRasterStream&, const RasterBufferSlice&, EGraphUse) const noexcept;
         [[nodiscard]] RenderResult<RasterDescriptorInput> resolveDescriptor(
             std::uint32_t pass, const CompiledRasterStream&, const RasterStreamBinding&, const RasterDescriptorField&
         ) const noexcept;

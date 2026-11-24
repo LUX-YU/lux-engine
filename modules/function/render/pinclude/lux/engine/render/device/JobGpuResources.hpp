@@ -1,6 +1,8 @@
 #pragma once
 
 #include <lux/engine/render/device/SubmissionFrontiers.hpp>
+#include <lux/engine/render/resource/StorageBinding.hpp>
+#include <lux/engine/render/device/DescriptorTable.hpp>
 #include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/visibility.h>
 #include <NRI.h>
@@ -10,27 +12,33 @@
 #include <vector>
 
 namespace lux::render { struct TargetDesc; }
+namespace lux::render::compiled { class RenderGraph; }
+
+namespace lux::render { class ResourceSet; }
 
 namespace lux::render::detail
 {
     class DeviceSession;
+    struct FrameResources;
+    struct HistoryState;
+    struct InstalledGraphBindings;
+    struct TargetFrame;
     struct SubmissionBatch;
     struct HistoryPlan;
     struct CompiledResource;
     struct CompiledRasterStream;
-    struct DynamicRasterPrograms;
+    struct CompiledRasterProgram;
+    struct RasterDescriptorLayout;
     struct RasterProgramSelection;
-    struct PreparedBufferCopy;
+    // The device round keeps selected bytes alive through staging retries and partial submissions.
+    struct PreparedBufferInput final
+    {
+        std::vector<std::byte> bytes;
+        std::uint64_t revision = 0, size = 0;
+    };
+
     struct PhysicalFrameContract;
     struct PhysicalFrameChanges;
-
-    struct RasterBindingKey final
-    {
-        std::uint32_t pass, program;
-        std::uint64_t generation;
-
-        bool operator==(const RasterBindingKey&) const noexcept = default;
-    };
 
     struct RasterDescriptorInput final
     {
@@ -40,7 +48,38 @@ namespace lux::render::detail
         nri::Descriptor* sampler = nullptr;
         nri::Format format = nri::Format::UNKNOWN;
         GraphImageRange range;
+        DescriptorTable::Slot target_view{};
         bool operator==(const RasterDescriptorInput&) const noexcept = default;
+    };
+
+    struct PreparedBufferReplica final
+    {
+        nri::Buffer* buffer = nullptr;
+        std::uint64_t capacity = 0, generation = 0;
+        struct Contents final
+        {
+            std::uint64_t revision = 0, size = 0, prefix = 0;
+        };
+
+        Contents accepted;
+
+        [[nodiscard]] bool contains(std::uint64_t revision, std::uint64_t size) const noexcept
+        {
+            return buffer && revision && accepted.revision == revision && accepted.size == size && accepted.prefix == size;
+        }
+    };
+
+    // The device round owns the bytes and holds this FIF allocation until every staged range has settled.
+    struct PreparedBufferUpload final
+    {
+        PreparedBufferReplica& destination;
+        SubmissionFrontiers& allocation_uses;
+        std::span<const std::byte> bytes;
+        std::uint64_t revision, generation;
+        std::size_t begin = 0, end = 0;
+        ReplicaCopyRange ranges{};
+
+        void settle(SubmissionPoint, RenderError) noexcept;
     };
 
     struct JobFrameResources final
@@ -53,8 +92,9 @@ namespace lux::render::detail
         struct RasterBinding final
         {
             nri::DescriptorSet* set = nullptr;
-            RasterBindingKey program;
-            std::uint32_t list = 0, ordinal = 0;
+            // A program replacement releases all of its descriptor rows before retiring the old layout.
+            const RasterDescriptorLayout* layout = nullptr;
+            std::uint32_t pass = 0, program = 0, list = 0, ordinal = 0;
             std::vector<nri::Descriptor*> views;
             std::vector<RasterDescriptorInput> inputs;
         };
@@ -65,23 +105,6 @@ namespace lux::render::detail
             GraphImageRange range;
             bool depth;
             nri::Descriptor* view;
-        };
-
-        struct PreparedBufferReplica final
-        {
-            nri::Buffer* buffer = nullptr;
-            std::uint64_t capacity = 0, generation = 0;
-            struct Contents final
-            {
-                std::uint64_t revision = 0, size = 0, prefix = 0;
-            };
-
-            Contents accepted;
-
-            [[nodiscard]] bool contains(std::uint64_t revision, std::uint64_t size) const noexcept
-            {
-                return buffer && revision && accepted.revision == revision && accepted.size == size && accepted.prefix == size;
-            }
         };
 
         struct MemoryAllocation final
@@ -98,7 +121,17 @@ namespace lux::render::detail
             void release(const nri::CoreInterface&) const noexcept;
         };
 
+        // One owned image and its single-layer attachment views per compiled runtime-layer slot.
+        struct LayeredImage final
+        {
+            GraphResourceId resource;
+            nri::Texture* texture;
+            std::vector<nri::Descriptor*> views;
+            std::uint32_t requested_layers = 0;
+        };
+
         std::vector<NativeBatch> batches;
+        std::vector<LayeredImage> layered_images;
         std::vector<RasterAttachmentView> raster_attachment_views;
         std::vector<RasterBinding> raster_bindings;
         std::vector<std::vector<nri::Descriptor*>> private_views;
@@ -112,7 +145,6 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<PhysicalFrameChanges>
         preparePhysical(DeviceSession&, const PhysicalFrameContract&) noexcept;
         [[nodiscard]] RenderResult<void> createBatches(DeviceSession&, std::span<const SubmissionBatch>) noexcept;
-        void collectRasterViews(nri::Buffer*, nri::Texture*, std::vector<nri::Descriptor*>&) noexcept;
         void release(const nri::CoreInterface&) noexcept;
     };
 
@@ -151,13 +183,17 @@ namespace lux::render::detail
         JobGpuResources(const JobGpuResources&) = delete;
         JobGpuResources& operator=(const JobGpuResources&) = delete;
 
-        [[nodiscard]] const DynamicRasterPrograms* dynamicRasterPrograms(std::uint32_t list) const noexcept;
-        [[nodiscard]] RenderResult<RasterProgramSelection>
-        selectRasterPrograms(std::uint32_t pass, const CompiledRasterStream&) const noexcept;
-        void adoptRasterPrograms(std::uint32_t list, std::unique_ptr<DynamicRasterPrograms>) noexcept;
+        [[nodiscard]] RenderResult<void>
+        installFrame(InstalledGraphBindings&, std::uint32_t slot, std::span<const HistoryState>, const TargetFrame*) noexcept;
+        void releaseOutputViews(InstalledGraphBindings&) noexcept;
 
-        void settlePreparedBuffer(std::uint32_t slot, const PreparedBufferCopy&, SubmissionPoint, RenderError) noexcept;
+        [[nodiscard]] RenderResult<RasterProgramSelection> programSlots(const CompiledRasterStream&) const noexcept;
+        [[nodiscard]] RenderResult<void> bindProgramSlots(
+            const compiled::RenderGraph&, const CompiledRasterStream&, std::span<FrameResources>,
+            std::span<const std::shared_ptr<const CompiledRasterProgram>>
+        ) noexcept;
 
+        std::unique_ptr<ResourceSet> private_resources;
         DeviceSession& session;
         const std::uint64_t generation;
         SubmissionFrontiers accepted;
@@ -165,7 +201,12 @@ namespace lux::render::detail
         std::vector<JobHistoryResources> histories;
 
     private:
-        std::vector<std::unique_ptr<DynamicRasterPrograms>> raster_programs_;
-        void releaseRasterPrograms(const DynamicRasterPrograms&) noexcept;
+        struct BoundProgramSlots final
+        {
+            std::vector<std::shared_ptr<const CompiledRasterProgram>> slots;
+            std::uint64_t revision = 0;
+        };
+        std::vector<BoundProgramSlots> program_slots_;
+        void releaseProgramUses(const BoundProgramSlots&) noexcept;
     };
 }

@@ -47,8 +47,4 @@ namespace lux::render::detail
     LUX_RENDER_PUBLIC void recordUpload(const nri::CoreInterface&, nri::CommandBuffer&, const UploadRegion&) noexcept;
     LUX_RENDER_PUBLIC void recordReadback(const nri::CoreInterface&, nri::CommandBuffer&, const ReadbackRegion&) noexcept;
 
-    // Professional buffer growth preserves source contents. Destinations are already COPY_DESTINATION;
-    // final access transitions still belong to the preparation/consumer, not this recording helper.
-    LUX_RENDER_PUBLIC void
-    recordPreservingCopies(const nri::CoreInterface&, nri::CommandBuffer&, std::span<const BufferCopyRegion>) noexcept;
 } // namespace lux::render::detail

@@ -49,7 +49,7 @@ namespace lux::render::detail
         }
 
         bool hasEntryDependency(
-            const AliasResourceUse& use, const BarrierBatch& before, std::span<const AliasUsePoint> earlier
+            const AliasResourceUse& use, const RecordingProgram& recording, std::span<const AliasUsePoint> earlier
         ) noexcept
         {
             const auto ordered = [&](const auto& transition)
@@ -66,13 +66,14 @@ namespace lux::render::detail
                 });
             };
             const auto* image = std::get_if<GraphImageRange>(&use.point.range);
-            if (!image) return std::ranges::any_of(before.buffers, ordered);
+            const auto& pass = recording.passes[use.point.first_pass];
+            if (!image) return std::ranges::any_of(recording.bufferBarriers(pass), ordered);
 
-            return coversImageCells(*image, before.images, ordered);
+            return coversImageCells(*image, recording.imageBarriers(pass), ordered);
         }
     } // namespace
 
-    void GraphCompiler::Workspace::publishAliasFrontiers(compiled::RenderGraph& plan) const noexcept
+    void RenderGraphCompiler::Workspace::publishAliasFrontiers(compiled::RenderGraph& plan) const noexcept
     {
         auto& physical = plan.physical_resources_;
         const auto& recording = plan.recording_;
@@ -98,8 +99,7 @@ namespace lux::render::detail
                 continue;
             }
             auto point = use.point;
-            const auto& pass = recording.passes[point.first_pass];
-            point.needs_entry = !hasEntryDependency(use, pass.before, frontier);
+            point.needs_entry = !hasEntryDependency(use, recording, frontier);
             frontier.push_back(point);
         }
 
@@ -138,7 +138,7 @@ namespace lux::render::detail
                     !device.limits.features.enhancedBarriers;
                 const bool covers_layout = !image || (!legacy_texture && std::ranges::all_of(selected, [&](const auto& point)
                 {
-                    return !point.needs_entry || coversLayoutEntry(id, point, recording.passes[point.first_pass].before.images);
+                    return !point.needs_entry || coversLayoutEntry(id, point, recording.imageBarriers(recording.passes[point.first_pass]));
                 }));
                 for (const auto& wait : plan.submissions_[entry.submission].dependencies)
                 {

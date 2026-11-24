@@ -14,13 +14,7 @@ namespace lux::render
     {
         TargetId target;
         std::string binding{}; // Named input of an EffectGraph.
-    };
-
-    enum class EJobResourceUse : std::uint8_t
-    {
-        GPU_BINDING,
-        CPU_SNAPSHOT,
-        DRAW_RESOURCE
+        EProductRead read = EProductRead::UNSPECIFIED;
     };
 
     struct JobResourceInput final
@@ -28,7 +22,6 @@ namespace lux::render
         std::string binding;
         ResourceInstanceId resource;
         std::uint32_t projection = 0; // Index in the Resource's graph binding contract.
-        EJobResourceUse use = EJobResourceUse::GPU_BINDING;
         std::optional<FinalBufferVersion> publication;
     };
 

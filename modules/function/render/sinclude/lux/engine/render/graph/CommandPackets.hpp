@@ -16,7 +16,7 @@ namespace lux::render::detail
     struct ImageDispatchExtent final
     {
         std::uint32_t image, mip;
-        std::array<std::uint32_t, 2> group_size;
+        std::array<std::uint32_t, 3> group_size;
     };
 
     struct BufferLocation final
@@ -87,6 +87,7 @@ namespace lux::render::detail
     {
         std::uint32_t first, count, first_clear;
         std::uint32_t clear_view_count = 0;
+        bool preserves_bindings = true;
     };
 
     // Instructions preserve author order. Each operand indexes its opcode's dense typed column.

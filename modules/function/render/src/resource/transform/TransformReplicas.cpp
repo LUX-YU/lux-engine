@@ -32,8 +32,7 @@ namespace lux::render::detail
     {
         if (bytes > session_.description().memory.storageBufferMaxRange)
             return cxx::unexpected(RenderError{kStorageCapacity});
-        const auto usage = nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
-        const nri::BufferDesc desc{bytes, 4, usage};
+        const nri::BufferDesc desc{bytes, 4, nri::BufferUsageBits::SHADER_RESOURCE};
         nri::Buffer* buffer = nullptr;
         const auto result = session_.nriCore().CreatePlacedBuffer(session_.device(), NriDeviceHeap, desc, buffer);
         if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
@@ -54,7 +53,7 @@ namespace lux::render::detail
                 if (!candidate) return cxx::unexpected(candidate.error());
                 destroy(std::exchange(replica.candidate, *candidate));
                 replica.addresses.resize(addresses);
-                replica.table_dirty = true;
+                replica.table_cursor = 0;
             }
             while (replica.pages.size() < pages)
             {
@@ -63,7 +62,7 @@ namespace lux::render::detail
                 const auto index = replica.pages.size();
                 replica.addresses[index] = session_.nriCore().GetBufferDeviceAddress(**page);
                 replica.pages.push_back(*page);
-                replica.table_dirty = true;
+                replica.table_cursor = std::min(replica.table_cursor, index * sizeof(std::uint64_t));
                 const auto first = index * kPageSlots;
                 replica.dirty.grow(records_.matrices().size());
                 replica.dirty.markRange(first, std::min<std::size_t>(kPageSlots, records_.matrices().size() - first));
@@ -90,15 +89,20 @@ namespace lux::render::detail
     {
         if (frame >= frame_count_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& replica = replicas_[frame];
+        const bool resident = replica.binding && !replica.candidate && replica.dirty.empty() &&
+            replica.table_cursor == replica.addresses.size() * sizeof(std::uint64_t) &&
+            replica.addressed.size() == replica.pages.size();
+        if (resident) return true;
         if (auto ready = ensureReplica(replica); !ready) return cxx::unexpected(ready.error());
         auto* binding = replica.candidate ? replica.candidate : replica.binding;
-        if (replica.table_dirty)
+        const auto addresses = std::as_bytes(std::span{replica.addresses});
+        if (replica.table_cursor < addresses.size())
         {
-            const auto bytes = std::as_bytes(std::span(replica.addresses));
-            auto copied = uploader.stageBuffer({binding, 0, bytes}, sizeof(std::uint64_t));
+            const auto pending = addresses.subspan(replica.table_cursor);
+            auto copied = uploader.stageBufferPrefix({binding, replica.table_cursor, pending}, sizeof(std::uint64_t));
             if (!copied) return cxx::unexpected(copied.error());
-            if (*copied != bytes.size()) return cxx::unexpected(RenderError{kDeviceCapacity});
-            replica.table_staged = true;
+            replica.table_staged = *copied;
+            if (*copied < pending.size()) return false;
         }
         const auto word_limit = (uploader.windowByteLimit() / sizeof(TransformMatrix) + 63) / 64 +
             uploader.windowRegionLimit();
@@ -111,19 +115,19 @@ namespace lux::render::detail
                 auto* target = paged_ ? replica.pages[first / kPageSlots] : binding;
                 const auto bytes = std::as_bytes(records_.matrices().subspan(first, count));
                 const auto offset = std::uint64_t{local} * sizeof(TransformMatrix);
-                auto copied = uploader.stageBuffer({target, offset, bytes}, sizeof(TransformMatrix));
+                auto copied = uploader.stageBufferPrefix({target, offset, bytes}, sizeof(TransformMatrix));
                 if (!copied)
                 {
                     status = cxx::unexpected(copied.error());
                     return false;
                 }
-                if (*copied != bytes.size()) std::terminate();
-                replica.dirty.detachRange(replica.staged, first, count);
-                return true;
+                const auto staged = static_cast<std::uint32_t>(*copied / sizeof(TransformMatrix));
+                replica.dirty.detachRange(replica.staged, first, staged);
+                return staged == count;
             }
         );
         if (!status) return cxx::unexpected(status.error());
-        if (!complete || !replica.dirty.empty()) return cxx::unexpected(RenderError{kDeviceCapacity});
+        if (!complete || !replica.dirty.empty()) return false;
         // Dynamic draw preparation resolves the current descriptors before recording.
         return !replica.candidate && replica.addressed.size() == replica.pages.size();
     }
@@ -148,9 +152,10 @@ namespace lux::render::detail
         const bool result = !settlement.error.type;
         auto& replica = replicas_[frame];
         replica.dirty.finishSelection(replica.staged, bool(result));
-        if (std::exchange(replica.table_staged, false) && result)
-            replica.table_dirty = false;
+        const auto staged = std::exchange(replica.table_staged, 0u);
         if (!result) return;
+        replica.table_cursor += staged;
+        if (!replica.dirty.empty() || replica.table_cursor < replica.addresses.size() * sizeof(std::uint64_t)) return;
         bool changed = replica.candidate != nullptr;
         if (replica.candidate)
             destroy(std::exchange(replica.binding, std::exchange(replica.candidate, nullptr)));
@@ -162,8 +167,7 @@ namespace lux::render::detail
         }
         if (changed)
         {
-            const auto projection = paged_ ? ETransformGraphProjection::PAGE_ADDRESSES
-                                           : ETransformGraphProjection::RECORDS;
+            const auto projection = transformGraphProjection(paged_);
             if (!resources_.publishGraphInput(records_.owner(), static_cast<std::uint32_t>(projection), frame, binding(frame)))
                 std::terminate();
         }

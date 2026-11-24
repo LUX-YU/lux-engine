@@ -176,11 +176,11 @@ namespace
             barrier_(commands, barriers);
         }
 
-        static RenderResult<StorageGraphImport> describe(const void*, std::uint32_t projection) noexcept
+        static RenderResult<ResourceProjection> describe(const void*, std::uint32_t projection) noexcept
         {
             if (projection >= 2) return lux::cxx::unexpected(RenderError{kStorageContract});
             const auto use = projection ? EGraphUse::TRANSFER_SOURCE : EGraphUse::SAMPLED;
-            return StorageGraphImport{GraphImageDesc{extent, extent}, {GraphImageRange{}}, use, use, false, true};
+            return ResourceProjection{GraphImageDesc{extent, extent}, {GraphImageRange{}}, use, use, false, true};
         }
 
         static RenderResult<void> resolve(
@@ -302,17 +302,15 @@ namespace
         bool preparing_ = false;
     };
 
-    EffectNodeDefinition readerDefinition()
-    {
-        return {
-            .identity = {lux::graph::nodeTypeId(reader_name), std::string{reader_name}, 1},
-            .ports = {
-                {ColorCapture::color, "color", {std::string{ToneMapping::display_type}, 1},
+    inline constexpr EffectPortDefinition kReaderCapabilityPorts[]{
+                {ColorCapture::color, "color", {kDisplayColorType, 1},
                     lux::graph::EPinDirection::OUTPUT},
                 {ColorCapture::pixels, "pixels", {"test.graph.pixels", 1}, lux::graph::EPinDirection::OUTPUT}
-            }
-        };
-    }
+            };
+
+    inline constexpr EffectCapability kReaderCapability{
+        .id = lux::graph::nodeTypeId(reader_name), .canonical_name = reader_name, .ports = kReaderCapabilityPorts
+    };
 
     RenderResult<void> buildReader(EffectCompileContext& context, std::string_view arguments) noexcept
     {
@@ -320,8 +318,8 @@ namespace
         const auto use = sample ? EGraphUse::SAMPLED : EGraphUse::TRANSFER_SOURCE;
         const GraphImageDesc image{extent, extent};
         const auto imported = take(context.importResource(
-            "source", {ResourceName{ImagePairDescriptor::descriptor.type.name()}, true},
-            {"", image, EGraphOrigin::IMPORTED, {GraphImageRange{}}, use}, sample ? 0u : 1u
+            "source", ImagePairDescriptor::descriptor.type,
+            {image, {GraphImageRange{}}, use, use, false, true}, sample ? 0u : 1u
         ));
         const auto color = take(context.declareResource({"target color", image}));
         const auto clear = take(context.addTransferPass(
@@ -344,7 +342,7 @@ namespace
             )).written.front();
         }
         const auto capture = take(context.importFinalBuffer(
-            ColorCapture::name, {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
+            ColorCapture::name, GraphCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION}
         ));
@@ -364,7 +362,7 @@ namespace
         effect.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*effect.graph};
         const auto reader = take(edit.addNode(
-            readerDefinition(), {std::string{reader_name}, 1}, sample ? "sample" : "copy"
+            kReaderCapability, {std::string{reader_name}, 1}, sample ? "sample" : "copy"
         ));
         const auto output = edit.pinId(reader, ColorCapture::color);
         CHECK(edit.setOutput("color", output, true));
@@ -400,10 +398,10 @@ int main(int argc, char** argv)
     auto server = take(RenderServer::create(config, **execution));
     take(server->registerResource<ImageStore>(ImageStore::commandBindings()));
     take(server->registerResource<GraphCaptureBuffer>());
-    const auto capability = readerDefinition();
+    const auto capability = kReaderCapability;
     CHECK(server->registerEffectCapability(capability));
     EffectImplementation impl;
-    impl.capability = capability.identity.id;
+    impl.capability = capability.id;
     impl.identity = {std::string{reader_name}, 1};
     impl.supported_outputs = {ColorCapture::color, ColorCapture::pixels};
     impl.initialize = [](EffectInitializationContext&, std::string_view selection) noexcept -> RenderResult<void>

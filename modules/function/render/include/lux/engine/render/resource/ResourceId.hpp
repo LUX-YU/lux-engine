@@ -10,6 +10,21 @@ namespace lux::render
     struct ResourceTypeTag;
     using ResourceTypeId = cxx::SlotKey<ResourceTypeTag>;
 
+    struct ServerInstanceId final
+    {
+        std::uint64_t value = 0;
+
+        bool operator==(const ServerInstanceId&) const noexcept = default;
+    };
+
+    // An IPC payload may outlive the connection that created it. Instance generations are local to one Server.
+    struct ResourceAddress final
+    {
+        ServerInstanceId server;
+        ResourceInstanceId instance;
+        bool operator==(const ResourceAddress&) const noexcept = default;
+    };
+
     namespace extension_detail
     {
         struct ResourceIdentity;

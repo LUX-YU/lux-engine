@@ -1,7 +1,13 @@
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
-#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/runtime/commands/ViewCommands.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
 #include "GraphFill.hpp"
+#include "ParticleColor.hpp"
+#include "ViewTint.hpp"
+#include "SdkSampleTarget.hpp"
+#include "ParticleStorage.hpp"
+#include "DebugDrawResource.hpp"
 #include "TypedGraphFill.hpp"
 #include "BufferProductFixture.hpp"
 #include "RasterProgramFixture.hpp"
@@ -15,6 +21,7 @@
 #include <lux/engine/render/resource/view/Resource.hpp>
 #include <cstring>
 #include <future>
+#include <exec/create.hpp>
 
 struct OutputConstants final
 {
@@ -92,6 +99,9 @@ namespace
         static inline std::size_t created = 0;
         static inline std::atomic_uint accepted{}, rejected{};
         static constexpr std::uint64_t preparation_revision = 1;
+        static inline std::uint64_t captured_upload_bytes{};
+        const ResourceUploader& uploads;
+        const std::uint64_t initial_upload_bytes;
         CaptureBuffer buffer;
         CapturedPixels& result;
         std::uint32_t capacity;
@@ -100,8 +110,14 @@ namespace
         ResourceInstanceId identity;
 
         ComputeCapture(ResourceCreateContext& context, CapturedPixels& pixels, ResourceInstanceId id) noexcept
-            : buffer(context), result(pixels), capacity(capture_bytes + (&pixels == &results[1] ? 16384u : 0u)), identity(id)
+            : uploads(*context.uploads), initial_upload_bytes(uploads.statistics().copied_bytes), buffer(context), result(pixels),
+              capacity(capture_bytes + (&pixels == &results[1] ? 16384u : 0u)), identity(id)
         {
+        }
+
+        ~ComputeCapture() noexcept
+        {
+            captured_upload_bytes = uploads.statistics().copied_bytes - initial_upload_bytes;
         }
 
         static ResourceRegistration factory() noexcept
@@ -118,11 +134,11 @@ namespace
                 },
                 .preparationRevision = [](const void*) noexcept { return &preparation_revision; },
                 .describeGraphImport = [](const void* owner, std::uint32_t projection) noexcept
-                    -> RenderResult<StorageGraphImport>
+                    -> RenderResult<ResourceProjection>
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
                     const auto capacity = static_cast<const ComputeCapture*>(owner)->capacity;
-                    return StorageGraphImport::bufferOutput(capacity, EGraphUse::TRANSFER_DESTINATION);
+                    return ResourceProjection::bufferOutput(capacity, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* storage,
@@ -159,6 +175,21 @@ namespace
         {
             CHECK(created < results.size());
             return std::make_unique<ComputeCapture>(context, results[created++], id);
+        }
+    };
+
+    struct ParkRequests final
+    {
+        static constexpr std::string_view name = "test.sdk.park_requests";
+        using Request = EmptyRequest;
+        using Response = AckResponse;
+        static inline std::atomic_bool parked{}, entered{};
+
+        static void wait(const Request&, Response& reply) noexcept
+        {
+            entered.store(true);
+            parked.wait(true);
+            reply = {};
         }
     };
 
@@ -204,10 +235,10 @@ namespace
     struct MutableReplica final
     {
         static inline std::atomic_bool omit_upper_range{};
-        static inline std::atomic_bool park_setter{}, setter_entered{};
         using Descriptor = MutableReplicaDescriptor;
         static inline std::atomic_uint accepted_copies{}, accepted_no_copy{}, rejected{};
         DeviceSession& device;
+        ResourceUploader& uploads;
         nri::Buffer* buffer = nullptr;
         std::uint64_t revision = 1, epoch = 0;
         std::uint32_t value = 0, selected = 0;
@@ -223,7 +254,7 @@ namespace
         static inline std::atomic_size_t notified{}, resolutions{};
 
         MutableReplica(ResourceCreateContext& context, ResourceInstanceId id) noexcept
-            : device(context.device), registry(context.resources), identity(id) {}
+            : device(context.device), uploads(*context.uploads), registry(context.resources), identity(id) {}
 
         ~MutableReplica() noexcept
         {
@@ -244,16 +275,9 @@ namespace
         }
 
         static exec::task<AckResponse>
-        initialize(MutableReplica& storage, ReplicaMutation& mutation, InitializeReplica::Request&& request) noexcept
+        initialize(MutableReplica& storage, InitializeReplica::Request&& request) noexcept
         {
             if (storage.buffer && request.probe != InitializeReplica::EProbe::REPLACE) co_return AckResponse{RenderError{kStorageContract}};
-            const auto premature = co_await mutation.writeBuffers({});
-            CHECK(!premature && premature.error().type == kFrameContract);
-            const auto selected = co_await mutation.select();
-            if (!selected) co_return AckResponse{selected.error()};
-            CHECK(selected->slot == 0 && selected->epoch);
-            const auto repeated = co_await mutation.select();
-            CHECK(repeated && repeated->slot == selected->slot && repeated->epoch == selected->epoch);
             if (request.probe == InitializeReplica::EProbe::CANCEL)
             {
                 co_await stdexec::starts_on(storage.device.nativeScheduler(), stdexec::just() | stdexec::then([]() noexcept
@@ -268,6 +292,14 @@ namespace
             nri::Buffer* candidate = nullptr;
             const auto created = core.CreatePlacedBuffer(storage.device.device(), NriDeviceHeap, desc, candidate);
             if (created != nri::Result::SUCCESS) co_return AckResponse{RenderError{kDeviceFailure}};
+            lux::cxx::scope_exit release_candidate([&]() noexcept
+            {
+                storage.device.deferRelease([destroy = core.DestroyBuffer, candidate]() noexcept
+                {
+                    destroy(candidate);
+                    ++retired_candidates;
+                });
+            });
             const std::array words{0u, request.marker};
             const BufferWrite write{candidate, 0, std::as_bytes(std::span(words))};
             auto& hooks = const_cast<nri::CoreInterface&>(core);
@@ -280,17 +312,11 @@ namespace
                     return nri::Result::FAILURE;
                 };
             }
-            const auto result = co_await mutation.writeBuffers({&write, 1});
+            auto accepted = storage.device.makeFrontiers();
+            auto result = co_await storage.uploads.writeBuffers({&write, 1}, {}, &accepted);
             if (request.probe == InitializeReplica::EProbe::UNKNOWN) hooks.QueueSubmit = submit;
-            if (!result)
-            {
-                storage.device.deferRelease([destroy = core.DestroyBuffer, candidate]() noexcept
-                {
-                    destroy(candidate);
-                    ++retired_candidates;
-                });
-                co_return AckResponse{result.error()};
-            }
+            if (result) result = co_await storage.device.waitFrontiers(std::move(accepted));
+            if (!result) co_return AckResponse{result.error()};
             const ResourceInput input{candidate, 0, replica_bytes};
             const auto untouched = storage.registry.publishGraphInput(storage.identity, 1, 0, input);
             CHECK(untouched && *untouched == 0);
@@ -305,6 +331,7 @@ namespace
             CHECK(changed && *changed == *cleared);
             notified = *changed;
             auto* previous = std::exchange(storage.buffer, candidate);
+            release_candidate.release();
             if (previous)
             {
                 storage.device.deferRelease([destroy = core.DestroyBuffer, previous]() noexcept { destroy(previous); });
@@ -315,11 +342,6 @@ namespace
 
         static void set(MutableReplica& resource, const SetReplicaValue::Request& request, AckResponse& reply) noexcept
         {
-            if (park_setter.load())
-            {
-                setter_entered.store(true);
-                park_setter.wait(true);
-            }
             resource.value = request.value;
             resource.fail_after_staging = request.fail_after_staging;
             ++resource.revision;
@@ -378,10 +400,10 @@ namespace
                 .preparationRevision = [](const void* owner) noexcept
                 { return &static_cast<const MutableReplica*>(owner)->revision; },
                 .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
-                    -> RenderResult<StorageGraphImport>
+                    -> RenderResult<ResourceProjection>
                 {
                     if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    StorageGraphImport schema{
+                    ResourceProjection schema{
                         GraphBufferDesc{replica_bytes}, {GraphBufferRange{0, 4}},
                         EGraphUse::TRANSFER_SOURCE
                     };
@@ -416,36 +438,22 @@ namespace
         CHECK(unchanged && *unchanged == 1);
     }
 
-    struct NonExclusiveReplicaCommand final
-    {
-        static constexpr std::string_view name = "test.sdk.nonexclusive_replica";
-        using Request = InitializeReplica::Request;
-        using Data = Request;
-        using Response = AckResponse;
-        [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    static_assert(CommandMethodFor<InitializeReplica, &MutableReplica::initialize>);
+
+    inline constexpr EffectPortDefinition kComputeCapabilityPorts[]{{color, "color", {"test.sdk.compute_rgba8", 1}, graph::EPinDirection::OUTPUT}};
+
+    inline constexpr EffectCapability kComputeCapability{
+        .id = graph::nodeTypeId(compute_node), .canonical_name = compute_node, .ports = kComputeCapabilityPorts
     };
 
-    static_assert(CommandMethodFor<InitializeReplica, &MutableReplica::initialize>);
-    static_assert(!CommandMethodFor<NonExclusiveReplicaCommand, &MutableReplica::initialize>);
-
-    EffectNodeDefinition computeDefinition() noexcept
-    {
-        return {
-            .identity = {graph::nodeTypeId(compute_node), std::string{compute_node}, 1},
-            .ports = {{color, "color", {"test.sdk.compute_rgba8", 1}, graph::EPinDirection::OUTPUT}}
-        };
-    }
-
-    EffectNodeDefinition captureDefinition() noexcept
-    {
-        return {
-            .identity = {graph::nodeTypeId(capture_node), std::string{capture_node}, 1},
-            .ports = {
+    inline constexpr EffectPortDefinition kCaptureCapabilityPorts[]{
                 {color, "color", {"test.sdk.compute_rgba8", 1}, graph::EPinDirection::INPUT, 1, true},
                 {pixels, "pixels", {"test.sdk.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
-            }
-        };
-    }
+            };
+
+    inline constexpr EffectCapability kCaptureCapability{
+        .id = graph::nodeTypeId(capture_node), .canonical_name = capture_node, .ports = kCaptureCapabilityPorts
+    };
 
     struct ComputeRed final
     {
@@ -472,6 +480,140 @@ namespace
             return {};
         }
     };
+
+    struct WriteParticles final
+    {
+        static constexpr std::string_view name = "example.particles.update";
+        struct Request final
+        {
+            ResourceInstanceId resource;
+            std::span<const sdk_particles::ParticleUpdate> rows;
+        };
+        using Data = sdk_particles::ParticleUpdate;
+        using Response = AckResponse;
+        static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+    };
+
+    void writeParticles(
+        sdk_particles::ParticleStorage& owner, const WriteParticles::Request& request, AckResponse& reply
+    ) noexcept
+    {
+        const auto result = owner.update(request.rows);
+        reply.error = result ? RenderError{} : result.error();
+    }
+
+    struct HoldDebugGeometry final
+    {
+        static constexpr std::string_view name = "example.debug_geometry.hold";
+        static constexpr bool requires_idle_resource = true;
+        using Request = ResourceInstanceId;
+        using Data = ResourceInstanceId;
+        using Response = AckResponse;
+        static ResourceInstanceId resourceId(Request id) noexcept { return id; }
+    };
+
+    struct ReleaseDebugGeometry final
+    {
+        static constexpr std::string_view name = "example.debug_geometry.release";
+        using Request = EmptyRequest;
+        using Response = AckResponse;
+
+        static inline std::atomic_bool entered{};
+        static inline void* pending{};
+        static inline void (*complete)(void*) noexcept{};
+
+        static exec::task<AckResponse> hold(sdk_debug::DebugDrawResource& resource, ResourceInstanceId&&) noexcept
+        {
+            resource.held = true;
+            const auto reply = co_await exec::create<stdexec::set_value_t(AckResponse)>([](auto& operation) noexcept
+            {
+                using Operation = std::remove_reference_t<decltype(operation)>;
+                pending = &operation;
+                complete = [](void* address) noexcept
+                {
+                    stdexec::set_value(std::move(static_cast<Operation*>(address)->receiver), AckResponse{});
+                };
+                entered.store(true);
+            });
+            resource.held = false;
+            co_return reply;
+        }
+
+        static void release(const EmptyRequest&, AckResponse& reply) noexcept
+        {
+            CHECK(pending);
+            complete(std::exchange(pending, nullptr));
+            reply = {};
+        }
+    };
+
+    RenderResult<void> buildDebugGeometry(EffectCompileContext& context, std::string_view) noexcept
+    {
+        using Resource = sdk_debug::DebugDrawResource;
+        const auto geometry = take(context.importProjection("geometry", "draw_bytes", Resource::projection()));
+        const auto view = take(context.importProjection("scene_view", "view_row", ViewParameterResource::projection()));
+        GraphImageDesc image{width, height};
+        image.extent.source = EImageExtentSource::TARGET;
+        const auto output = take(context.declareResource({"debug color", image}));
+        RasterPassTemplate list;
+        list.purpose = "debug geometry";
+        list.draw_list = "geometry";
+        list.inputs = {
+            {"scene_view", rdesc::EDescriptorType::STORAGE_BUFFER, EGraphUse::STORAGE_READ, 2},
+            {.name = "source_color", .kind = rdesc::EDescriptorType::SAMPLED_IMAGE, .usage = EGraphUse::SAMPLED,
+             .stages = 2, .target_format = rdesc::ETextureFormat::RGBA8_UNORM}
+        };
+        list.resources = {
+            {.version = geometry, .usage = EGraphUse::VERTEX}, {.version = geometry, .usage = EGraphUse::INDEX},
+            {.version = view, .usage = EGraphUse::STORAGE_READ}
+        };
+        const auto vertex = kSdkFullscreen.load(context.shaderTarget());
+        std::vector<RasterPassTemplate::StreamProgram> programs;
+        const auto target = context.shaderTarget();
+        for (auto shader : {kViewTint.load(target), kSdkGreen.load(target), kSdkSampleTarget.load(target)})
+        {
+            sdk_programs::attachVertexShader(shader, vertex);
+            auto& program = programs.emplace_back();
+            program.program = take(context.addProgram(GraphProgram{std::move(shader)}));
+            program.graphics.vertex_bindings = {{0, sizeof(sdk_debug::Vertex)}};
+            program.graphics.vertex_attributes = {{
+                vertex.interface.vertex_inputs.front().location, 0, 0, rdesc::ETextureFormat::RG32_SFLOAT
+            }};
+        }
+        list.programs = std::move(programs);
+        RasterWork work;
+        work.colors = {{{{output, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}}};
+        work.program = std::move(list);
+        work.viewport = RasterViewport{0, 0, 1, .5f};
+        const auto upper = take(context.addRasterPass("overlay upper half", work));
+        work.viewport = RasterViewport{0, .5f, 1, .5f};
+        work.colors.front().access.version = upper.written.front();
+        work.colors.front().load = EAttachmentLoad::LOAD;
+        const auto lower = take(context.addRasterPass("overlay lower half", std::move(work)));
+        return context.publish(color, {{color, lower.written.front()}});
+    }
+
+    RenderResult<void> buildParticleColor(EffectCompileContext& context, std::string_view) noexcept
+    {
+        using Resource = sdk_particles::ParticleResource;
+        const auto particles = take(context.importProjection("foreground", "particles", Resource::projection()));
+        const auto trail = take(context.importProjection("trail", "trail_rows", Resource::projection()));
+        GraphImageDesc image{width, height};
+        image.extent.source = EImageExtentSource::TARGET;
+        const auto generated = take(context.declareResource({"particle colors", image}));
+        const auto output = take(context.declareResource({"particle output", image}));
+        ComputeWork work;
+        work.interface.program = take(context.addProgram(GraphProgram{kParticleColor.load(context.shaderTarget())}));
+        work.interface.resources = {
+            {"particles", {particles}}, {"trail", {trail}}, {"generated", {{generated, 0}, {}, EGraphAccess::WRITE}}
+        };
+        work.dispatch = ImageDispatchArguments{generated};
+        const auto computed = take(context.addComputePass("read particle rows", std::move(work)));
+        const auto copied = take(context.addTransferPass(
+            "copy particle pixels", TransferWork{{CopyImage{{computed.written.front()}, {{output, 0}}}}}
+        ));
+        return context.publish(color, {{color, copied.written.front()}});
+    }
 
     RenderResult<void> buildCompute(EffectCompileContext& context, std::string_view mode) noexcept
     {
@@ -510,28 +652,10 @@ namespace
         return context.publish(color, {{color, copied.written.front()}});
     }
 
-    RenderResult<void> buildResidentRaster(EffectCompileContext& context, std::string_view mode) noexcept
+    RenderResult<void> buildResidentRaster(EffectCompileContext& context, std::string_view) noexcept
     {
         using namespace sdk_programs;
         auto image = take(context.declareResource({"raster output", GraphImageDesc{width, height}}));
-        RasterPassTemplate background_stage;
-        background_stage.purpose = "independent clear";
-        const auto settings = take(context.importStorageSnapshot<std::uint32_t>(
-            "background", {ResourceName{BackgroundSettings::descriptor.type.name()}}
-        ));
-        background_stage.programs = RasterProgramSource{
-            RasterProgramBuilder::make<ClearBackground, &ClearBackground::buildPrograms>(), {settings}
-        };
-        RasterWork background;
-        background.program = std::move(background_stage);
-        background.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
-        const auto base = take(context.addRasterPass("clear background", std::move(background)));
-        auto clear = context.addCpuCall<ClearBackground>({}, {.draw_streams = {base.pass}});
-        if (!clear) return clear;
-        if (mode == "background-only") return context.publish(color, {{color, base.written.front()}});
-        const auto type = ResourceName{CodeStorage::descriptor.type.name()};
-        const auto code = take(context.importStorageSnapshot<CodeSnapshot>("shader_code", {type}));
-        const auto alias = take(context.importStorageSnapshot<CodeSnapshot>("shader_alias", {type}));
         RasterPassTemplate stage;
         stage.purpose = "installed programs";
         DrawResourceType mask{ResourceName{DrawMask::descriptor.type.name()}, lux::cxx::make_basic_type_info<DrawMask>()};
@@ -539,11 +663,10 @@ namespace
         stage.draw_resources.push_back({
             .binding = "triangle",
             .source = {
-                ResourceName{TriangleGeometry::descriptor.type.name()}, lux::cxx::make_basic_type_info<TriangleGeometry>()
+                ResourceName{TriangleBatch::descriptor.type.name()}, lux::cxx::make_basic_type_info<TriangleBatch>()
             },
             .indexed_geometry = true
         });
-        stage.inputs = {{"vertices", {}, EGraphUse::VERTEX}, {"indices", {}, EGraphUse::INDEX}};
         const bool reads_records = context.device().texture_descriptors && context.device().record_table;
         if (reads_records)
         {
@@ -552,55 +675,32 @@ namespace
                 {ResourceName{ColorPage::descriptor.type.name()}, lux::cxx::make_basic_type_info<ColorPage>()},
                 ColorPage::capability
             });
-            stage.inputs.push_back({
-                .name = "colorPages", .kind = rdesc::EDescriptorType::STORAGE_BUFFER,
-                .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
-            });
+            stage.inputs = ProgramDraws::arguments(true);
+            stage.programs = RasterPassTemplate::ReadyPrograms{};
         }
-        auto program_builder = RasterProgramBuilder::make<ProgramDraws, &ProgramDraws::buildPrograms>();
-        if (mode == "no-build") program_builder = {};
-        if (mode == "wrong-inputs")
-            program_builder = RasterProgramBuilder::make<WrongProgramInputs, &WrongProgramInputs::build>();
-        if (mode == "missing-map")
-            program_builder = RasterProgramBuilder::make<MissingDrawMapping, &MissingDrawMapping::build>();
+        else
+        {
+            auto description = ProgramDraws::describe(context.shaderTarget(), false);
+            stage.inputs = std::move(description.arguments);
+            std::vector<std::uint32_t> ids;
+            for (auto& shader : description.shaders)
+                ids.push_back(take(context.addProgram(GraphProgram{std::move(shader)})));
+            for (auto& program : description.programs) program.program = ids[program.program];
+            stage.programs = std::move(description.programs);
+        }
         const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
-            ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
+            ViewParameterResource::snapshot_binding, kViewParameterResourceName,
             ESnapshotScope::JOB_LOCAL
         ));
-        RasterProgramSource source{program_builder, {code, alias}};
-        if (mode == "duplicate-program-input") source.snapshots.back() = code;
-        if (mode == "unknown-program-input") source.snapshots.back() = GraphStorageSnapshotId{};
-        if (mode == "wrong-program-input") source.snapshots.back() = camera;
-        if (mode == "short-program-input") source.snapshots.pop_back();
-        stage.programs = std::move(source);
         RasterWork raster;
         raster.program = std::move(stage);
-        raster.colors.push_back({{base.written.front()}, EAttachmentLoad::LOAD});
+        raster.colors.push_back({{{image, 0}}, EAttachmentLoad::CLEAR, EAttachmentStore::STORE, {0, 0, 1, 1}});
         auto draw = context.addRasterPass("two programs", std::move(raster));
         if (!draw) return lux::cxx::unexpected(draw.error());
-        auto configuration = ProgramDraws::Configuration{
-            context.shaderTarget(), mode == "stale-code", reads_records
-        };
-        CpuCallDependencies uses{.storage_inputs = {camera}, .draw_streams = {draw->pass}};
-        if (mode == "duplicate-stream") uses.draw_streams.push_back(draw->pass);
-        if (mode == "missing-stream") uses.passes = std::exchange(uses.draw_streams, {});
-        auto added = context.addCpuCall<ProgramDraws>(std::move(configuration), std::move(uses));
+        auto added = context.addCpuCall<ProgramDraws>(reads_records, {.storage_inputs = {camera}, .draw_streams = {draw->pass}});
         if (!added) return added;
         return context.publish(color, {{color, draw->written.front()}});
     }
-
-    struct CapturePattern final
-    {
-        using Configuration = std::uint32_t;
-        using LinkedData = Configuration;
-
-        static RenderResult<void> prepare(const std::uint32_t& pattern, CpuCallFrame& frame) noexcept
-        {
-            const std::array words{pattern, pattern};
-            if (auto size = frame.sizeBuffer(0, sizeof(words)); !size) return size;
-            return frame.writeBuffer(0, std::as_bytes(std::span{words}), 1);
-        }
-    };
 
     RenderResult<void> buildCaptureRange(EffectCompileContext& context, std::string_view mode) noexcept
     {
@@ -617,18 +717,13 @@ namespace
         const auto type = shared ? MutableReplicaDescriptor::descriptor.type :
             ComputeCaptureDescriptor::descriptor.type;
         const auto output = context.importFinalBuffer(
-            "capture", {ResourceName{type.name()}}, std::move(declaration)
+            "capture", type, std::move(declaration)
         );
         if (!output) return lux::cxx::unexpected(output.error());
-        const auto pattern_buffer = take(context.declarePreparedBuffer("pattern", claim.size, claim.size));
-        const auto scratch = take(context.declareFrameBuffer("selected bytes", claim.size, claim.size));
+        const auto scratch = take(context.declareResource({"pattern", GraphBufferDesc{claim.size}}));
         const auto pattern = offset == 0 ? 0x5a5a5a5au : 0x6b6b6b6bu;
-        auto prepared = context.addCpuCall<CapturePattern>(pattern, {
-            .uploads = {pattern_buffer.resource}, .frame_sizes = {scratch.resource}
-        });
-        if (!prepared) return prepared;
         const auto filled = take(context.addTransferPass(
-            "select pattern", TransferWork{{CopyBuffer{{pattern_buffer}, {scratch}}}}
+            "fill pattern", TransferWork{{FillBuffer{{{scratch, 0}}, pattern}}}
         ));
         const GraphBufferRange destination{mode == "spill" ? 4u : offset, claim.size};
         const auto copy = context.addTransferPass("copy", TransferWork{{
@@ -644,7 +739,7 @@ namespace
         {
             const GraphBufferRange range{mode == "publish-low" ? 0u : 8u, 8};
             const auto dest = take(context.importFinalBuffer(
-                "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
+                "product", ProductDescriptor::descriptor.type,
                 {
                     "", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {},
                     EGraphUse::TRANSFER_SOURCE, range
@@ -665,12 +760,12 @@ namespace
         {
             const GraphBufferRange bytes{0, mode == "consume-word" ? 4u : 8u};
             const auto source = context.importResource(
-                "version", {ResourceName{ProductDescriptor::descriptor.type.name()}},
-                {"", GraphBufferDesc{bytes.size}, EGraphOrigin::IMPORTED, {bytes}, EGraphUse::TRANSFER_SOURCE}
+                "version", ProductDescriptor::descriptor.type,
+                {GraphBufferDesc{bytes.size}, {bytes}, EGraphUse::TRANSFER_SOURCE}
             );
             if (!source) return lux::cxx::unexpected(source.error());
             const auto dest = take(context.importFinalBuffer(
-                "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
+                "capture", ComputeCaptureDescriptor::descriptor.type,
                 {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, bytes}
             ));
             const auto copy = take(context.addTransferPass(
@@ -684,7 +779,7 @@ namespace
         CHECK(input.size() == 1 && input.front().size() == 1 && input.front().front().member == color);
         const GraphBufferRange claim{0, raster_only ? readback_bytes : capture_bytes};
         const auto output = take(context.importFinalBuffer(
-            "capture", {ResourceName{ComputeCaptureDescriptor::descriptor.type.name()}},
+            "capture", ComputeCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION, claim}
         ));
         const ImageCopyRegion region{0, 0, width, height};
@@ -693,10 +788,9 @@ namespace
         }}));
         if (raster_only) return context.publish(pixels, {{pixels, copied.written.front()}});
         const auto mutable_input = take(context.importResource(
-            "a_mutable", {ResourceName{MutableReplicaDescriptor::descriptor.type.name()}},
+            "a_mutable", MutableReplicaDescriptor::descriptor.type,
             {
-                "", GraphBufferDesc{replica_bytes}, EGraphOrigin::IMPORTED,
-                {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE
+                GraphBufferDesc{replica_bytes}, {GraphBufferRange{0, replica_bytes}}, EGraphUse::TRANSFER_SOURCE
             }
         ));
         const auto complete = take(context.addTransferPass("copy mutable replica", TransferWork{{
@@ -707,22 +801,20 @@ namespace
 
     constexpr std::string_view fault_node = "test.sdk.partial_output";
 
-    EffectNodeDefinition faultDefinition() noexcept
-    {
-        return {
-            .identity = {graph::nodeTypeId(fault_node), std::string{fault_node}, 1},
-            .ports = {
+    inline constexpr EffectPortDefinition kFaultCapabilityPorts[]{
                 {color, "color", {"test.sdk.compute_rgba8", 1}, graph::EPinDirection::OUTPUT},
                 {pixels, "pixels", {"test.sdk.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
-            }
-        };
-    }
+            };
+
+    inline constexpr EffectCapability kFaultCapability{
+        .id = graph::nodeTypeId(fault_node), .canonical_name = fault_node, .ports = kFaultCapabilityPorts
+    };
 
     RenderResult<void> buildPartialOutput(EffectCompileContext& context, std::string_view) noexcept
     {
         constexpr GraphBufferRange range{8, 8};
         const auto dest = take(context.importFinalBuffer(
-            "product", {ResourceName{ProductDescriptor::descriptor.type.name()}},
+            "product", ProductDescriptor::descriptor.type,
             {"", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, range}
         ));
         const auto write = take(context.addTransferPass(
@@ -749,12 +841,12 @@ namespace
     }
 
     template <EffectImplementation::Build Build>
-    void registerNode(RenderServer& server, const EffectNodeDefinition& capability, graph::PinSemanticId output)
+    void registerNode(RenderServer& server, const EffectCapability& capability, graph::PinSemanticId output)
     {
         CHECK(server.registerEffectCapability(capability));
         EffectImplementation implementation;
-        implementation.identity = {capability.identity.canonical_name, capability.identity.version};
-        implementation.capability = capability.identity.id;
+        implementation.identity = {std::string{capability.canonical_name}, capability.version};
+        implementation.capability = capability.id;
         implementation.supported_outputs = {output};
         if constexpr (Build == buildPartialOutput) implementation.supported_outputs.push_back(color);
         implementation.initialize = [](EffectInitializationContext& context, std::string_view arguments) noexcept
@@ -765,17 +857,6 @@ namespace
                 if (!arguments.empty() && arguments != "computed")
                     return lux::cxx::unexpected(RenderError{kInvalidConfig});
                 return context.initializeState<OutputState>();
-            }
-            if constexpr (Build == buildResidentRaster)
-            {
-                const bool valid = arguments.empty() || arguments == "background-only" || arguments == "stale-code" ||
-                    arguments == "no-build" ||
-                    arguments == "wrong-inputs" || arguments == "missing-map" || arguments == "duplicate-program-input" ||
-                    arguments == "unknown-program-input" || arguments == "wrong-program-input" ||
-                    arguments == "short-program-input" || arguments == "duplicate-stream" ||
-                    arguments == "missing-stream";
-                if (valid) return {};
-                return lux::cxx::unexpected(RenderError{kInvalidConfig});
             }
             const bool known = arguments.empty() || arguments == "lower" || arguments == "upper" ||
                 arguments == "overlap" || arguments == "spill" || arguments == "unauthorized" ||
@@ -797,13 +878,25 @@ int main(int argc, char** argv)
     RenderServerConfig config{"lux.render.sdk.compute_output", nativeValidationEnabled()};
     const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
     const bool records = mode == "resident-records";
-    const bool resident_programs = records || mode == "resident-programs";
+    const bool resident_programs = records || mode == "cold-programs";
     const bool receipts = mode == "receipts";
     const bool product_fault = mode == "receipt-partial" || mode == "receipt-unknown";
-    config.frames_in_flight = receipts ? 2 : 1;
+    const bool particles = mode == "particles";
+    const bool target_list = mode == "target-list";
+    const bool debug_draw = target_list || mode == "debug-draw";
+    if (particles || debug_draw)
+    {
+        config.diagnostics.report = [](void*, const RenderDiagnostic& diagnostic) noexcept
+        {
+            if (diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
+                std::fprintf(stderr, "Resource SDK: %.*s\n", int(diagnostic.message.size()), diagnostic.message.data());
+        };
+    }
+    config.frames_in_flight = receipts || particles || debug_draw ? 2 : 1;
     config.uploads.emplace();
     DeviceOptions options;
-    options.multiple_queues = receipts || product_fault;
+    options.texture_descriptors = target_list;
+    options.multiple_queues = receipts || product_fault || target_list;
     if (product_fault) options.graph_queue_costs = {100, 100, 100};
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, **execution));
@@ -812,47 +905,107 @@ int main(int argc, char** argv)
         options.cached_unused_programs = 0;
         options.texture_descriptors = records;
         if (records) take(server->registerResource<sdk_programs::ColorPage>());
-        take(server->registerResource<sdk_programs::CodeStorage>(sdk_programs::CodeStorage::commandBindings()));
-        take(server->registerResource<sdk_programs::BackgroundSettings>(sdk_programs::BackgroundSettings::commandBindings()));
         take(server->registerResource<sdk_programs::DrawMask>());
-        take(server->registerResource<sdk_programs::TriangleGeometry>());
-        const std::array commands{
-            CommandBinding::declare<sdk_programs::ReleaseCode, &sdk_programs::CodeStorage::release>()
+        const std::array order_command{
+            CommandBinding::declare<sdk_programs::SetDrawOrder, &sdk_programs::TriangleBatch::setOrder>(),
+            CommandBinding::declare<sdk_programs::PrepareRecordPrograms, &sdk_programs::TriangleBatch::preparePrograms>()
         };
-        CHECK(server->registerCommands(commands));
-        registerNode<buildResidentRaster>(*server, computeDefinition(), color);
+        take(server->registerResource<sdk_programs::TriangleBatch>(order_command));
+        registerNode<buildResidentRaster>(*server, kComputeCapability, color);
     }
-    else registerNode<buildCompute>(*server, computeDefinition(), color);
-    registerNode<buildCapture>(*server, captureDefinition(), pixels);
+    else if (debug_draw)
+    {
+        using Resource = sdk_debug::DebugDrawResource;
+        const std::array holds{CommandBinding::declare<HoldDebugGeometry, &ReleaseDebugGeometry::hold>()};
+        const std::array releases{CommandBinding::declare<ReleaseDebugGeometry, &ReleaseDebugGeometry::release>()};
+        take(server->registerResource<Resource>(holds));
+        CHECK(server->registerCommands(releases));
+        auto capability = kComputeCapability;
+        const ResourceRequirement resources[]{
+            {"geometry", Resource::descriptor.type, EResourceDomain::JOB, EResourceContentLifetime::PER_RUN},
+            {"scene_view", ViewParameterResource::descriptor.type, EResourceDomain::VIEW}
+        };
+        capability.resources = resources;
+        registerNode<buildDebugGeometry>(*server, capability, color);
+    }
+    else if (particles)
+    {
+        const std::array updates{CommandBinding::declare<WriteParticles, &writeParticles>()};
+        take(server->registerResource<sdk_particles::ParticleStorage>(updates));
+        auto capability = kComputeCapability;
+        std::string type_name{sdk_particles::ParticleResource::descriptor.type.name()};
+        const ResourceNameView type{type_name};
+        std::string foreground = "foreground";
+        const ResourceRequirement resources[]{{foreground, type, EResourceDomain::VIEW}, {"trail", type, EResourceDomain::VIEW}};
+        capability.resources = resources;
+        registerNode<buildParticleColor>(*server, capability, color);
+        foreground.clear();
+        type_name.clear();
+    }
+    else registerNode<buildCompute>(*server, kComputeCapability, color);
+    registerNode<buildCapture>(*server, kCaptureCapability, pixels);
     take(server->registerResource<ComputeCapture>());
     take(server->registerResource<MutableReplica>(MutableReplica::commandBindings()));
     if (!resident_programs) take(server->registerResource<ProductBuffer>());
-    if (product_fault) registerNode<buildPartialOutput>(*server, faultDefinition(), pixels);
+    if (product_fault) registerNode<buildPartialOutput>(*server, kFaultCapability, pixels);
+    const std::array park_commands{CommandBinding::declare<ParkRequests, &ParkRequests::wait>()};
+    CHECK(server->registerCommands(park_commands));
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
     RenderResult<void> ran;
     std::thread worker([&] { ran = server->run(); });
     const auto commands = queryCommands(*client);
-    const auto session = call<CreateDeviceSession>(*client, commands, options).device;
+    const auto request_pair = [&](RenderJobId a, RenderJobId b)
+    {
+        auto park = ipc::IpcCore::instance().createRequester(config.channel_name);
+        auto other = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(park && other);
+        ParkRequests::entered = false;
+        ParkRequests::parked = true;
+        const auto parked = sendSceneRequest<ParkRequests>(*park, commands, {});
+        const auto deadline = Clock::now() + 10s;
+        while (!ParkRequests::entered.load())
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        const auto first = sendSceneRequest<RequestRenderJob>(*client, commands, {a});
+        const auto second = sendSceneRequest<RequestRenderJob>(*other, commands, {b});
+        ParkRequests::parked = false;
+        ParkRequests::parked.notify_all();
+        receiveSceneReply<ParkRequests>(*park, parked);
+        return std::pair{receiveSceneReply<RequestRenderJob>(*client, first, false),
+                         receiveSceneReply<RequestRenderJob>(*other, second, false)};
+    };
     const auto scene = call<CreateScene>(*client, commands, {}).scene;
     const auto view = call<CreateView>(*client, commands, {scene}).view;
+    const auto set_viewport = [&](ViewId id, unsigned inset)
+    {
+        ViewGpuParameters parameters;
+        const auto left = static_cast<float>(inset) / width;
+        parameters.viewport = {left, 0, 1 - left, 1};
+        call<UpdateView>(*client, commands, {{scene, id}, parameters});
+    };
+    if (resident_programs) set_viewport(view, 1);
+    const auto session = call<CreateDeviceSession>(*client, commands, options).device;
     const auto format = rdesc::ETextureFormat::RGBA8_UNORM;
-    const auto target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
+    const TargetDesc output_desc{.width = width, .height = height, .format = format, .sampled = target_list};
+    const auto target = call<CreateTarget>(*client, commands, {session, output_desc}).target;
     const auto readback = call<GetOrCreateResource>(
         *client, commands, {session, ViewScope{scene, view}, ComputeCaptureDescriptor::descriptor.type}
     ).resource_id;
     const auto capture_request = [&](std::string mode)
     {
         CreateEffectRequest effect;
+        effect.output = output_desc.outputContract();
         effect.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*effect.graph};
         std::string source_mode;
         if (!resident_programs && mode == "computed") source_mode = std::exchange(mode, {});
-        if (resident_programs && mode != "raster-pixels") source_mode = std::exchange(mode, "raster-pixels");
         const auto compute = take(edit.addNode(
-            computeDefinition(), {std::string{compute_node}, 1}, std::move(source_mode)
+            kComputeCapability, {std::string{compute_node}, 1}, std::move(source_mode)
         ));
-        const auto capture = take(edit.addNode(captureDefinition(), {std::string{capture_node}, 1}, std::move(mode)));
+        const auto capture = take(edit.addNode(kCaptureCapability, {std::string{capture_node}, 1}, std::move(mode)));
         const auto color_pin = edit.pinId(compute, color);
         CHECK(edit.connect(color_pin, edit.pinId(capture, color)));
         CHECK(edit.setOutput("color", color_pin, true));
@@ -864,34 +1017,326 @@ int main(int argc, char** argv)
     {
         return createPreparedEffect(*client, commands, session, capture_request(std::move(mode)));
     };
+    if (debug_draw)
+    {
+        using namespace sdk_debug;
+        using Resource = DebugDrawResource;
+        const auto effect = create_capture("raster-pixels");
+        const auto peer_target = call<CreateTarget>(*client, commands, {session, output_desc}).target;
+        const auto peer_capture = call<GetOrCreateResource>(*client, commands, {
+            session, ViewScope{scene, view}, ComputeCaptureDescriptor::descriptor.type, "peer"
+        }).resource_id;
+        JobBinding binding;
+        binding.resources = {{"capture", readback}};
+        const auto first = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        binding.resources.front().resource = peer_capture;
+        const auto peer = startRenderJob(*client, commands, session, scene, view, peer_target, effect, binding);
+        ViewGpuParameters tint;
+        tint.background = {1, 0, 0, 1};
+        call<UpdateView>(*client, commands, {{scene, view}, tint});
+        const auto other_view = call<CreateView>(*client, commands, {scene}).view;
+        tint.background = {1, 1, 0, 1};
+        call<UpdateView>(*client, commands, {{scene, other_view}, tint});
+        const auto other_target = call<CreateTarget>(*client, commands, {session, output_desc}).target;
+        binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
+            session, ViewScope{scene, other_view}, ComputeCaptureDescriptor::descriptor.type
+        }).resource_id;
+        const auto overlay = startRenderJob(*client, commands, session, scene, other_view, other_target, effect, binding);
+        const auto geometry = [&](RenderJobId job)
+        {
+            return call<QueryResource>(*client, commands, {session, job, Resource::descriptor.type, "geometry"}).address();
+        };
+        const auto a = geometry(first);
+        const auto b = geometry(peer);
+        const auto c = geometry(overlay);
+        CHECK(a != b && b != c && a != c && Resource::allocated_buffers == 6);
+        std::array packets{
+            take(FrameData::create<std::tuple<Resource>>({a})), take(FrameData::create<std::tuple<Resource>>({b})),
+            take(FrameData::create<std::tuple<Resource>>({c}))
+        };
+        const auto update = [&](ResourceAddress address, std::span<const Vertex> points,
+                                std::span<const Index> indices, std::span<const Draw> commands_in)
+        {
+            auto& packet = packets[address == a ? 0 : address == b ? 1 : 2];
+            packet.reset();
+            for (auto point : points) CHECK(packet.addData<Resource>(point));
+            for (auto index : indices) CHECK(packet.addData<Resource>(index));
+            for (auto draw : commands_in) CHECK(packet.addData<Resource>(draw));
+            CHECK(packet.seal());
+            const auto error = call<UpdateFrameData>(*client, commands, {&packet}, false).error;
+            packet.release();
+            return error;
+        };
+        constexpr std::array full{Vertex{-1,-1}, Vertex{3,-1}, Vertex{-1,3}};
+        constexpr std::array half{Vertex{-1,-1}, Vertex{0,-1}, Vertex{0,1}, Vertex{-1,1}};
+        constexpr std::array triangle{Index{0}, Index{1}, Index{2}};
+        constexpr std::array quad{Index{0}, Index{1}, Index{2}, Index{0}, Index{2}, Index{3}};
+        const std::array full_list{
+            Draw{0, 3, 0, {-12, -4, width, height}},
+            Draw{0, 3, 1, {int(width / 2), 0, width + 2, height}},
+            Draw{0, 3, 0, {width + 1, 0, width + 3, height}}
+        };
+        const std::array half_list{Draw{0, 6, 0, {0, 2, width, height}}};
+        if (target_list)
+        {
+            const std::array solid{Draw{0, 3, 0, {0, 0, width, height}}};
+            CHECK(!update(b, full, triangle, solid).type);
+            renderFrame(*client, commands, peer);
+            CHECK(!update(c, full, triangle, solid).type);
+            renderFrame(*client, commands, overlay);
+
+            const auto sample = [](TargetId id, EProductRead mode, int left)
+            {
+                return Draw{0, 3, 2, {left, 0, width, height}, {id, mode}};
+            };
+            const std::array latest{
+                sample(peer_target, EProductRead::LATEST_PUBLISHED, 0),
+                sample(other_target, EProductRead::LATEST_PUBLISHED, width / 2)
+            };
+            const std::array current{
+                sample(other_target, EProductRead::CURRENT_RUN, 0),
+                sample(other_target, EProductRead::LATEST_PUBLISHED, 3 * width / 4),
+                sample(peer_target, EProductRead::LATEST_PUBLISHED, width - 4)
+            };
+            CHECK(!update(a, full, triangle, current).type);
+            CHECK(call<RequestRenderJob>(*client, commands, {first}, false).error.type == kRuntimeState);
+            const std::array cycle{sample(target, EProductRead::CURRENT_RUN, 0)};
+            CHECK(!update(c, full, triangle, cycle).type);
+            const auto cyclic = request_pair(first, overlay);
+            CHECK(cyclic.first.error.type == kJobCycle && cyclic.second.error.type == kJobCycle);
+
+            CHECK(!update(a, full, triangle, latest).type);
+            const auto mixed = call<RequestRenderJob>(*client, commands, {first});
+            CHECK(!update(a, full, triangle, current).type);
+            CHECK(!update(c, half, quad, half_list).type);
+            call<GetOrCreateResource>(*client, commands, {session, ViewScope{scene, view}, ProductDescriptor::descriptor.type});
+            auto& gate = *ProductBuffer::live;
+            const bool delayed = gate.canDelayRead();
+            ProductBuffer::gate_next_reader = delayed;
+            const auto [read, wrote] = request_pair(first, overlay);
+            CHECK(!read.error.type && !wrote.error.type && read.frame_index == wrote.frame_index);
+            CHECK(mixed.slot_index != read.slot_index);
+            stopAndRemoveJob(*client, commands, peer);
+            stopAndRemoveJob(*client, commands, overlay);
+            // The peer contributed only a previously published image to the last pair.
+            // Retire its Target with the consumer's GPU read still pending on devices with a separate signal queue.
+            call<RemoveTarget>(*client, commands, peer_target);
+            if (delayed)
+            {
+                CHECK(gate.device.nriCore().GetFenceValue(*gate.gate) == 0);
+                gate.releaseRead();
+            }
+            call<RemoveTarget>(*client, commands, other_target);
+            CHECK(!update(a, full, triangle, current).type);
+            CHECK(call<RequestRenderJob>(*client, commands, {first}, false).error.type == kRuntimeIdentity);
+            stopAndRemoveJob(*client, commands, first);
+            call<RemoveView>(*client, commands, {scene, other_view});
+            call<RemoveView>(*client, commands, {scene, view});
+            server->stop();
+            worker.join();
+            CHECK(ran && server->stats().validation_errors == 0);
+            server.reset();
+            const auto& result = ComputeCapture::results[0];
+            CHECK(result.ready && result.frames.size() == 2);
+            for (auto slot : {mixed.slot_index, read.slot_index})
+                for (std::uint32_t y = 0; y < height; ++y)
+                    for (std::uint32_t x = 0; x < width; ++x)
+                    {
+                        const bool left = x < width / 2;
+                        const bool previous = slot == mixed.slot_index;
+                        const bool peer_strip = !previous && x >= width - 4;
+                        const bool yellow = previous ? !left : !peer_strip && ((left && y >= 2) || x >= 3 * width / 4);
+                        const bool blue = !previous && !yellow && !peer_strip;
+                        const std::array<std::uint8_t, 4> pixel{
+                            std::uint8_t(blue ? 0 : 255), std::uint8_t(yellow ? 255 : 0),
+                            std::uint8_t(blue ? 255 : 0), 255
+                        };
+                        CHECK(std::memcmp(result.frames[slot].data() + y * result.pitch + x * 4, pixel.data(), 4) == 0);
+                    }
+            std::printf("TARGET DRAW LIST PASS: current and published pixels, stale/cycle rejected, delayed reader=%u\n",
+                unsigned(delayed));
+            return 0;
+        }
+        CHECK(!update(a, full, triangle, full_list).type);
+        CHECK(!update(b, half, quad, half_list).type);
+        CHECK(!update(c, half, quad, half_list).type);
+        CHECK(update(b, half, std::span{quad}.first(2), half_list).type == kFrameContract);
+        const auto check_runs = [&](RenderJobId job)
+        {
+            const auto draw = call<RequestRenderJob>(*client, commands, {job}).slot_index;
+            const auto empty = call<RequestRenderJob>(*client, commands, {job}).slot_index;
+            CHECK(draw != empty);
+            return draw;
+        };
+        std::array draws{check_runs(first), check_runs(peer), check_runs(overlay)};
+        // Reuse both slots and change only the clip edge. The retained CB for the first slot must be invalidated.
+        auto narrower = full_list;
+        narrower[1].clip.left = 3 * width / 4;
+        CHECK(!update(a, full, triangle, narrower).type);
+        CHECK(check_runs(first) == draws[0]);
+        CHECK(Resource::allocated_buffers == 6);
+
+        // Address vertices and indices beyond the former 256/768 limits on the same live Job.
+        std::vector<Vertex> large_points(1024);
+        std::ranges::copy(full, large_points.end() - full.size());
+        std::vector<Index> large_indices(900);
+        for (std::uint32_t i = 0; i < 3; ++i) large_indices[897 + i] = Index{1021 + i};
+        for (auto& draw : narrower) draw.first = 897;
+        Resource::reject_next_publication = true;
+        CHECK(!update(a, large_points, large_indices, narrower).type);
+        const auto rejected = call<RequestRenderJob>(*client, commands, {first}, false);
+        CHECK(rejected.error.type == kGraphInvalidRange && Resource::discarded_candidates == 1);
+        renderFrame(*client, commands, first);
+        CHECK(Resource::allocated_buffers == 7);
+        CHECK(!update(a, full, triangle, full_list).type);
+        check_runs(first);
+        CHECK(Resource::allocated_buffers == 7);
+        for (int upload = 0; upload < 2; ++upload)
+        {
+            CHECK(!update(a, large_points, large_indices, narrower).type);
+            draws[0] = check_runs(first);
+            CHECK(Resource::allocated_buffers == 8);
+        }
+        auto holding = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(holding);
+        auto held = std::async(std::launch::async, [&] { return call<HoldDebugGeometry>(*holding, commands, a.instance); });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!ReleaseDebugGeometry::entered && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+        CHECK(ReleaseDebugGeometry::entered);
+        CHECK(!update(b, half, quad, half_list).type);
+        // An empty PER_RUN batch replaces pending geometry. Busy on the second address must preserve the first.
+        auto clear_both = take(FrameData::create<std::tuple<Resource, Resource>>({b, a}));
+        CHECK(clear_both.seal());
+        CHECK(call<UpdateFrameData>(*client, commands, {&clear_both}, false).error.type == kDeviceBusy);
+        clear_both.release();
+        draws[1] = check_runs(peer);
+        binding.resources.front().resource = readback;
+        call<RebindRenderJobEffect>(*client, commands, {session, first, effect, target, binding});
+        CHECK(geometry(first) != a && update(a, full, triangle, full_list).type == kStorageIdentity);
+        stopAndRemoveJob(*client, commands, first);
+        stopAndRemoveJob(*client, commands, peer);
+        stopAndRemoveJob(*client, commands, overlay);
+        call<RemoveView>(*client, commands, {scene, other_view});
+        CHECK(call<RemoveView>(*client, commands, {scene, view}, false).error.type == kDeviceBusy);
+        call<ReleaseDebugGeometry>(*client, commands, {});
+        CHECK(!held.get().error.type && update(a, full, triangle, full_list).type == kStorageIdentity);
+        call<RemoveView>(*client, commands, {scene, view});
+        server->stop();
+        worker.join();
+        CHECK(ran && server->stats().validation_errors == 0);
+        server.reset();
+        for (std::size_t job = 0; job < draws.size(); ++job)
+        {
+            const auto& result = ComputeCapture::results[job];
+            CHECK(result.ready && result.frames.size() == 2);
+            for (std::size_t slot = 0; slot < result.frames.size(); ++slot)
+                for (std::uint32_t y = 0; y < height; ++y)
+                    for (std::uint32_t x = 0; x < width; ++x)
+                    {
+                        const bool covered = slot == draws[job] && (job == 0 || (x < width / 2 && y >= 2));
+                        const bool green = covered && job == 0 && x >= 3 * width / 4;
+                        const std::array<std::uint8_t, 4> rgba{
+                            std::uint8_t(covered && !green ? 255 : 0), std::uint8_t(green || (covered && job == 2) ? 255 : 0),
+                            std::uint8_t(covered ? 0 : 255), 255
+                        };
+                        CHECK(std::memcmp(result.frames[slot].data() + y * result.pitch + x * 4, rgba.data(), 4) == 0);
+                    }
+        }
+        std::puts("RESOURCE DRAW LIST PASS: two programs, scissor and empty runs; failed growth rolled back, one FIF grew and reused its backing");
+        return 0;
+    }
+    if (particles)
+    {
+        using namespace sdk_particles;
+        const auto effect = create_capture("raster-pixels");
+        const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
+        const ResourceRequest foreground{session, ViewScope{scene, view}, ParticleResource::descriptor.type, "foreground"};
+        const ResourceRequest trail_input{session, ViewScope{scene, view}, ParticleResource::descriptor.type, "trail"};
+        const auto before_start = server->stats().storages_created;
+        CHECK(call<StartRenderJob>(*client, commands, {session, job, target}, false).error.type == kStorageIdentity);
+        CHECK(server->stats().storages_created == before_start + 2);
+        for (const auto& key : {foreground, trail_input})
+            CHECK(call<QueryResource>(*client, commands, key, false).error.type == kStorageIdentity);
+        JobBinding binding;
+        binding.resources = {{"capture", readback}};
+        call<StartRenderJob>(*client, commands, {session, job, target, std::move(binding)});
+        CHECK(server->stats().storages_created == before_start + 4);
+        const auto foreground_address = call<QueryResource>(*client, commands, foreground).address();
+        const auto storage = foreground_address.instance;
+        const auto trail = call<QueryResource>(*client, commands, trail_input).address();
+        CHECK(storage != trail.instance && call<GetOrCreateResource>(*client, commands, foreground).resource_id == storage);
+        constexpr std::array initial{
+            ParticleUpdate{0, {{0, 0, 0, 1}, {1, 0, 0, 1}}},
+            ParticleUpdate{1, {{0, 0, 0, 1}, {0, 1, 0, 1}}}
+        };
+        call<WriteParticles>(*client, commands, {trail.instance, std::span{initial}.last(1)});
+        auto both = take(FrameData::create<std::tuple<ParticleResource, ParticleResource>>({foreground_address, trail}));
+        const auto first_column = take(both.resolveColumn<ParticleResource, ParticleUpdate>(0));
+        const auto second_column = take(both.resolveColumn<ParticleResource, ParticleUpdate>(1));
+        take(both.appendData(first_column, 1)).front() = initial[0];
+        auto invalid = take(both.appendData(second_column, 2));
+        invalid[0] = {1, {{0, 0, 0, 1}, {0, 0, 1, 1}}};
+        invalid[1] = {ParticleResource::row_count, {}};
+        CHECK(both.seal());
+        CHECK(call<UpdateFrameData>(*client, commands, {&both}, false).error.type == kStorageIdentity);
+        both.release();
+        // Readback must show the first batch's red and the second owner's pre-existing green.
+        auto packet = take(FrameData::create<std::tuple<ParticleResource>>({trail}));
+        renderFrame(*client, commands, job);
+        const auto previous = call<RequestRenderJob>(*client, commands, {job});
+        packet.reset();
+        CHECK(packet.addData<ParticleResource>(ParticleUpdate{1, {{0, 0, 0, 1}, {0, 0, 1, 1}}}));
+        CHECK(packet.seal());
+        call<UpdateFrameData>(*client, commands, {&packet});
+        packet.release();
+        const auto current = call<RequestRenderJob>(*client, commands, {job});
+        CHECK(previous.slot_index != current.slot_index);
+
+        stopAndRemoveJob(*client, commands, job);
+        call<RemoveView>(*client, commands, {scene, view});
+        CHECK(call<WriteParticles>(*client, commands, {storage, initial}, false).error.type);
+        server->stop();
+        worker.join();
+        CHECK(ran && server->stats().validation_errors == 0);
+        server.reset();
+
+        const auto& result = ComputeCapture::results.front();
+        CHECK(result.ready && result.frames.size() == 2);
+        // Two instances each initialize both rows in both FIF replicas, followed by one changed row.
+        CHECK(ComputeCapture::captured_upload_bytes == 9 * sizeof(ParticleGpu));
+        for (const auto slot : {previous.slot_index, current.slot_index})
+        {
+            const auto& frame = result.frames[slot];
+            for (std::uint32_t y = 0; y < height; ++y)
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const bool left = x < width / 2;
+                    const std::array<std::uint8_t, 4> expected{
+                        std::uint8_t(left ? 255 : 0),
+                        std::uint8_t(!left && slot == previous.slot_index ? 255 : 0),
+                        std::uint8_t(!left && slot == current.slot_index ? 255 : 0), 255
+                    };
+                    CHECK(std::memcmp(frame.data() + y * result.pitch + x * 4, expected.data(), 4) == 0);
+                }
+        }
+        std::puts("PARTICLE STORAGE PASS: failed Start rolled back both named instances; independent GPU rows and both FIF replicas matched");
+        return 0;
+    }
     if (resident_programs)
     {
-        const auto code = call<GetOrCreateResource>(*client, commands, {
-            session, DeviceScope{}, sdk_programs::CodeStorage::descriptor.type
-        }).resource_id;
-        const auto camera_for = [&](ViewId owner, unsigned inset)
-        {
-            const auto camera = call<GetOrCreateResource>(*client, commands, {
-                session, ViewScope{scene, owner}, kViewParameterResourceName
-            }).resource_id;
-            ViewGpuParameters parameters;
-            const auto left = static_cast<float>(inset) / width;
-            parameters.viewport = {left, 0, 1 - left, 1};
-            call<ViewParameterCommands::Update>(*client, commands, {camera, std::span{&parameters, 1}});
-            return camera;
-        };
         const auto triangle = call<GetOrCreateResource>(*client, commands, {
-            session, DeviceScope{}, sdk_programs::TriangleGeometry::descriptor.type
+            session, DeviceScope{}, sdk_programs::TriangleBatch::descriptor.type
         }).resource_id;
-        const auto background = call<GetOrCreateResource>(*client, commands, {
-            session, DeviceScope{}, sdk_programs::BackgroundSettings::descriptor.type
-        }).resource_id;
-        const auto camera_resource = camera_for(view, 1);
+        const auto view_resource = [&](ViewId id)
+        {
+            return call<GetOrCreateResource>(*client, commands, {
+                session, ViewScope{scene, id}, kViewParameterResourceName
+            }).resource_id;
+        };
+        const auto camera_resource = view_resource(view);
         JobBinding binding;
         binding.resources = {
-            {"capture", readback}, {"background", background, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {"shader_code", code, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {"shader_alias", code, 0, EJobResourceUse::CPU_SNAPSHOT},
+            {"capture", readback},
             {"triangle", triangle, 0, EJobResourceUse::DRAW_RESOURCE},
             {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT}
         };
@@ -909,156 +1354,32 @@ int main(int argc, char** argv)
             CHECK(!page.error.type);
             binding.resources.push_back({"colors", page.resource_id, 0, EJobResourceUse::DRAW_RESOURCE});
         }
-        for (const auto& [mode, error] : std::array{
-            std::pair{"no-build", kGraphInvalidDescriptor}, std::pair{"wrong-inputs", kGraphInvalidDescriptor},
-            std::pair{"missing-map", kGraphInvalidDescriptor}, std::pair{"duplicate-program-input", kGraphAmbiguousProducer},
-            std::pair{"unknown-program-input", kGraphUnknownResource}, std::pair{"wrong-program-input", kStorageMismatch},
-            std::pair{"short-program-input", kGraphInvalidDescriptor},
-            std::pair{"missing-stream", kGraphInvalidDescriptor},
-            std::pair{"duplicate-stream", kGraphAmbiguousProducer}
-        })
-        {
-            const auto effect = call<CreateEffect>(*client, commands, capture_request(mode)).effect;
-            const auto rejected = call<PrepareEffect>(*client, commands, {effect, session}, false);
-            CHECK(rejected.error.type == error);
-            call<RemoveEffect>(*client, commands, {effect});
-        }
-        std::puts("SDK COLD LINK: builder, mapping and snapshot declaration errors rejected at Prepare");
-        using Store = sdk_programs::CodeStorage;
-        using Gate = sdk_programs::EDriverGate;
-        auto frames = ipc::IpcCore::instance().createRequester(config.channel_name);
-        auto mutations = ipc::IpcCore::instance().createRequester(config.channel_name);
-        CHECK(frames && mutations);
-        const auto wait = [](auto predicate)
-        {
-            const auto deadline = Clock::now() + 10s;
-            while (!predicate())
-            {
-                CHECK(Clock::now() < deadline);
-                std::this_thread::yield();
-            }
+        using Probe = sdk_programs::NativeRasterProbe;
+        const auto effect = call<CreateEffect>(*client, commands, capture_request("raster-pixels")).effect;
+        CHECK(call<ListEffectJobs>(*client, commands, {effect}).jobs.empty());
+        const auto prepare_programs = [&]() {
+            if (records) return call<sdk_programs::PrepareRecordPrograms>(*client, commands, {triangle}, false).error;
+            return call<PrepareEffect>(*client, commands, {effect, session}, false).error;
         };
-        const auto invalid = create_capture("stale-code");
-        const auto stale = startRenderJob(*client, commands, session, scene, view, target, invalid, binding);
-        CHECK(call<RequestRenderJob>(*client, commands, {stale}, false).error.type == kStorageIdentity);
-        const auto failed_builds = Store::builds.load();
-        CHECK(call<QueryExecutionProgress>(*client, commands, stale).last_run_error.type == kStorageIdentity);
-        auto locked = std::async(std::launch::async, [&]
-        {
-            return call<sdk_programs::HoldCode>(*mutations, commands, code);
-        });
-        wait([] { return Store::held.load(); });
-        CHECK(!call<QueryExecutionProgress>(*client, commands, stale).last_run_error.type);
-        auto retry = std::async(std::launch::async, [&]
-        {
-            return call<RequestRenderJob>(*frames, commands, {stale}, false);
-        });
-        CHECK(retry.wait_for(20ms) == std::future_status::timeout);
-        call<sdk_programs::ReleaseCode>(*client, commands, {});
-        CHECK(!locked.get().error.type && retry.get().error.type == kStorageIdentity);
-        CHECK(Store::builds == failed_builds);
-        stopAndRemoveJob(*client, commands, stale);
-        const auto effect = create_capture("raster-pixels");
-        const auto start = [&]
-        {
-            return startRenderJob(*client, commands, session, scene, view, target, effect, binding);
-        };
-        const auto partial = start();
-        Store::watch_next = true;
-        Store::fail_after_prefix = true;
-        const auto failure = call<RequestRenderJob>(*client, commands, {partial}, false);
-        Store::fail_after_prefix = false;
-        CHECK(failure.error.type == kDeviceFailure && Store::created == 1);
-        wait([] { return Store::candidate_destroys.load() == 1; });
-        CHECK(call<RequestRenderJob>(*client, commands, {partial}, false).error == failure.error);
-        stopAndRemoveJob(*client, commands, partial);
-
-        const auto clear_only = create_capture("background-only");
-        const auto stopped = start();
-        Store::watch_next = true;
-        Store::gate = Gate::ARMED;
-        auto cancelled = std::async(std::launch::async, [&]
-        {
-            return call<RequestRenderJob>(*frames, commands, {stopped}, false);
-        });
-        wait([] { return Store::gate == Gate::HELD; });
-        auto exclusive = std::async(std::launch::async, [&]
-        {
-            return call<sdk_programs::HoldCode>(*mutations, commands, code);
-        });
-        wait([] { return Store::held.load(); });
-        Store::gate = Gate::OPEN;
-        Store::gate.notify_all();
-        wait([] { return Store::created.load() == 3; });
-        stopAndRemoveJob(*client, commands, stopped);
-        CHECK(cancelled.get().error.type == kJobStopped);
-        JobBinding clear_binding;
-        clear_binding.resources = {{"capture", readback}, {"background", background, 0, EJobResourceUse::CPU_SNAPSHOT}};
-        const auto independent = startRenderJob(*client, commands, session, scene, view, target, clear_only, clear_binding);
-        const auto before_clear = Store::clear_builds.load();
-        auto progressed = std::async(std::launch::async, [&]
-        {
-            return call<RequestRenderJob>(*frames, commands, {independent});
-        });
-        const bool ready_while_exclusive = progressed.wait_for(5s) == std::future_status::ready;
-        if (ready_while_exclusive) wait([] { return Store::candidate_destroys.load() == 2; });
-        call<sdk_programs::ReleaseCode>(*client, commands, {});
-        CHECK(!exclusive.get().error.type && !progressed.get().error.type && ready_while_exclusive);
-        CHECK(Store::clear_builds == before_clear + 1 && Store::candidate_destroys == 2);
-        stopAndRemoveJob(*client, commands, independent);
-        call<RemoveEffect>(*client, commands, {clear_only});
-        std::puts("CANDIDATE RETIREMENT: failed native prefix retired; stopped draw released device while source exclusive");
-        const auto previous_creations = Store::created.load();
-        const auto job = start();
-        Store::gate = Gate::ARMED;
-        auto requested = std::async(std::launch::async, [&]
-        {
-            return call<RequestRenderJob>(*frames, commands, {job});
-        });
-        wait([] { return Store::gate == Gate::HELD; });
-        const auto held_draw_builds = Store::builds.load();
-        const auto held_clear_builds = Store::clear_builds.load();
-        call<sdk_programs::SetBackground>(*client, commands, {background, 1});
-        auto holding = std::async(std::launch::async, [&]
-        {
-            return call<sdk_programs::HoldCode>(*mutations, commands, code);
-        });
-        wait([] { return Store::held.load(); });
-        const auto busy_layout = call<QueryRenderJobInputLayout>(*client, commands, job).layout;
-        auto busy_packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(busy_layout));
-        CHECK(busy_packet.addData<Store>(sdk_programs::DrawOrder{1}));
-        CHECK(call<UpdateFrameData>(*client, commands, {job, &busy_packet}, false).error.type == kFrameContract);
-        CHECK(busy_packet.seal());
-        CHECK(call<UpdateFrameData>(*client, commands, {job, &busy_packet}, false).error.type == kDeviceBusy);
-        busy_packet.release();
-        Store::gate = Gate::OPEN;
-        Store::gate.notify_all();
-        wait([&] { return Store::created.load() == previous_creations + 2; });
-        CHECK(requested.wait_for(20ms) == std::future_status::timeout);
-        call<sdk_programs::ReleaseCode>(*client, commands, {});
-        CHECK(!holding.get().error.type && !requested.get().error.type);
-        CHECK(Store::builds == held_draw_builds && Store::clear_builds == held_clear_builds + 1);
-        call<sdk_programs::SetBackground>(*client, commands, {background, 2});
-        CHECK(call<RequestRenderJob>(*client, commands, {job}, false).error.type == kGraphInvalidDescriptor);
-        const auto failed_backgrounds = Store::clear_builds.load();
-        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {1}});
-        CHECK(call<RequestRenderJob>(*client, commands, {job}, false).error.type == kGraphInvalidDescriptor);
-        CHECK(Store::clear_builds == failed_backgrounds && Store::builds == held_draw_builds + 1);
-        call<sdk_programs::SetBackground>(*client, commands, {background, 0});
-        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
-        renderFrame(*client, commands, job);
-        CHECK(Store::clear_builds == failed_backgrounds + 1 && Store::builds == held_draw_builds + 2);
-        std::puts("SDK INDEPENDENT BUILDS: held draw candidate adopted; failed background cached across draw update; both recovered");
-        stopAndRemoveJob(*client, commands, job);
-        const auto restarted = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
-        renderFrame(*client, commands, restarted);
-        CHECK(Store::created.load() == previous_creations + 2);
+        if (records) call<PrepareEffect>(*client, commands, {effect, session});
+        Probe::watch_next = true;
+        Probe::fail_after_prefix = true;
+        CHECK(prepare_programs().type == kDeviceFailure);
+        Probe::fail_after_prefix = false;
+        CHECK(Probe::created == 1);
+        Probe::waitForRetirement(1);
+        Probe::watch_next = true;
+        CHECK(!prepare_programs().type);
+        CHECK(Probe::created == 4 && call<ListEffectJobs>(*client, commands, {effect}).jobs.empty());
+        const auto primary = startRenderJob(*client, commands, session, scene, view, target, effect, binding);
+        renderFrame(*client, commands, primary);
+        CHECK(Probe::created == 4);
         const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
         const auto peer_target = call<CreateTarget>(*client, commands, {session, {width, height, format}}).target;
         auto broken = binding;
-        broken.resources.push_back({"clip_height", code, 0, EJobResourceUse::DRAW_RESOURCE});
+        broken.resources.push_back({"clip_height", triangle, 0, EJobResourceUse::DRAW_RESOURCE});
         const auto mismatched = call<RebindRenderJobEffect>(
-            *client, commands, {session, restarted, effect, target, broken}, false
+            *client, commands, {session, primary, effect, target, broken}, false
         );
         CHECK(mismatched.error.type == kStorageMismatch);
         auto peer_binding = binding;
@@ -1066,7 +1387,8 @@ int main(int argc, char** argv)
             peer_binding.resources, ViewParameterResource::snapshot_binding, &JobResourceInput::binding
         );
         CHECK(peer_camera != peer_binding.resources.end());
-        peer_camera->resource = camera_for(peer_view, 2);
+        set_viewport(peer_view, 2);
+        peer_camera->resource = view_resource(peer_view);
         peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
             session, ViewScope{scene, peer_view}, ComputeCaptureDescriptor::descriptor.type
         }).resource_id;
@@ -1074,55 +1396,47 @@ int main(int argc, char** argv)
             session, DeviceScope{}, sdk_programs::DrawMask::descriptor.type
         }).resource_id;
         peer_binding.resources.push_back({"clip_height", mask, 0, EJobResourceUse::DRAW_RESOURCE});
-        const auto links_before = Store::source_links.load();
         const auto peer = startRenderJob(
             *client, commands, session, scene, peer_view, peer_target, effect, peer_binding
         );
         renderFrame(*client, commands, peer);
-        CHECK(Store::source_links == links_before + 1);
-        const auto before_rebind = Store::builds.load();
-        call<RebindRenderJobEffect>(*client, commands, {session, restarted, effect, target, binding});
-        renderFrame(*client, commands, restarted);
-        CHECK(Store::source_links == links_before + 2 && Store::builds == before_rebind + 1);
-
-        const auto stable_builds = Store::builds.load();
-        const auto stable_clear_builds = Store::clear_builds.load();
-        const auto stable_links = Store::source_links.load();
-        const auto stable_captures = Store::captures.load();
-        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
+        call<RebindRenderJobEffect>(*client, commands, {session, primary, effect, target, binding});
+        renderFrame(*client, commands, primary);
+        call<sdk_programs::SetDrawOrder>(*client, commands, {triangle, {0}});
         ViewGpuParameters unrelated;
         unrelated.viewport = {1.0f / width, 0, 1.0f - 1.0f / width, 1};
         unrelated.background[0] = 0.5f;
-        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&unrelated, 1}});
+        call<UpdateView>(*client, commands, {{scene, view}, unrelated});
         for (unsigned i = 0; i < 8; ++i)
         {
-            call<QueryExecutionProgress>(*client, commands, restarted);
+            call<QueryExecutionProgress>(*client, commands, primary);
             call<QueryExecutionProgress>(*client, commands, peer);
-            renderFrame(*client, commands, restarted);
+            renderFrame(*client, commands, primary);
             renderFrame(*client, commands, peer);
         }
-        CHECK(Store::captures == stable_captures && Store::builds == stable_builds);
-        CHECK(Store::source_links == stable_links && Store::created == previous_creations + 2);
+        CHECK(Probe::created == 4);
 
-        const auto schema = call<QueryRenderJobInputLayout>(*client, commands, restarted).layout;
-        auto packet = take(FrameData::create<std::tuple<Store, ViewParameterResource>>(schema));
-        CHECK(packet.addData<Store>(sdk_programs::DrawOrder{1}));
+        auto packet = framePacket<sdk_programs::TriangleBatch, ViewParameterResource>(*client, commands, session, primary);
+        CHECK(packet.addData<sdk_programs::TriangleBatch>(sdk_programs::DrawOrder{1}));
         auto invalid_view = unrelated;
         invalid_view.direction_far[3] = 0;
         CHECK(packet.addData<ViewParameterResource>(invalid_view));
         CHECK(packet.seal());
-        CHECK(call<UpdateFrameData>(*client, commands, {restarted, &packet}, false).error.type == kFrameContract);
+        CHECK(call<UpdateFrameData>(*client, commands, {&packet}, false).error.type == kFrameContract);
         packet.release();
-        renderFrame(*client, commands, restarted);
+        renderFrame(*client, commands, primary);
         renderFrame(*client, commands, peer);
-        CHECK(Store::builds == stable_builds + 2 && Store::created == previous_creations + 2);
+        CHECK(Probe::created == 4);
         stopAndRemoveJob(*client, commands, peer);
         call<RemoveView>(*client, commands, {scene, peer_view});
-        call<sdk_programs::SetDrawOrder>(*client, commands, {code, {0}});
-        renderFrame(*client, commands, restarted);
-        CHECK(Store::builds == stable_builds + 3 && Store::source_links == stable_links);
-        CHECK(Store::clear_builds == stable_clear_builds && Store::created == previous_creations + 2);
-        stopAndRemoveJob(*client, commands, restarted);
+        call<sdk_programs::SetDrawOrder>(*client, commands, {triangle, {0}});
+        renderFrame(*client, commands, primary);
+        CHECK(Probe::created == 4);
+        stopAndRemoveJob(*client, commands, primary);
+        CHECK(Probe::candidate_destroys == 1);
+        call<RemoveEffect>(*client, commands, {effect});
+        if (records) call<sdk_programs::PrepareRecordPrograms>(*client, commands, {triangle, true});
+        Probe::waitForRetirement(2);
         call<RemoveView>(*client, commands, {scene, view});
         server->stop();
         worker.join();
@@ -1141,11 +1455,11 @@ int main(int argc, char** argv)
                     const auto pixel = y * row_pitch + x * 4;
                     const std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
                     const std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
-                    // The peer draws its full-width foreground after the green half.
+                    // The peer draws the same full-width shader with destination-preserving blending.
                     const std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
                     const std::array yellow{std::byte{255}, std::byte{255}, std::byte{0}, std::byte{255}};
                     const auto& base = records ? yellow : red;
-                    const auto& foreground = (i == 1 || x < width / 2) ? base : green;
+                    const auto& foreground = x < width / 2 ? (i == 1 ? blue : base) : green;
                     const bool clipped = x < (i == 1 ? 2u : 1u) || (i == 1 && y >= height / 2);
                     const auto& expected = clipped ? blue : foreground;
                     if (std::memcmp(bytes.data() + pixel, expected.data(), expected.size()) != 0)
@@ -1161,10 +1475,7 @@ int main(int argc, char** argv)
         if (records) std::puts("SDK RECORDS: yellow at byte 16, aligned and unaligned invalid ranges rejected, 4096 RGBA pixels");
         std::puts("SDK INDEXED GEOMETRY: 16-bit native indices, nonzero buffer offsets, copied vertex layout");
         std::puts("DRAW RESOURCE: optional SDK mask clips half the peer image; invalid type and foreign name rejected");
-        std::puts("SDK RESOURCE PROGRAMS: stale item rejected, exclusive source delayed adoption, two adopted PSOs retained");
-        std::puts("PROGRAM INPUTS: 16 stable frames and progress queries, zero program-input captures, relinks or builds; "
-                  "partial FrameData rebuilt both readers, after Stop only one, "
-                  "zero independent clear rebuilds, 4096 RGBA pixels");
+        std::puts("SDK COLD RASTER PASS: zero Jobs, failed native prefix retired, three pipelines from two shader programs prepared, zero draw recompiles");
         return 0;
     }
     if (receipts || product_fault)
@@ -1202,7 +1513,7 @@ int main(int argc, char** argv)
             CreateEffectRequest request;
             request.graph = std::make_unique<EffectGraph>();
             EffectGraphEdit edit{*request.graph};
-            const auto node = take(edit.addNode(faultDefinition(), {std::string{fault_node}, 1}));
+            const auto node = take(edit.addNode(kFaultCapability, {std::string{fault_node}, 1}));
             CHECK(edit.setOutput("color", edit.pinId(node, color), true));
             CHECK(edit.setOutput("pixels", edit.pinId(node, pixels)));
             CHECK(edit.commit());
@@ -1260,9 +1571,6 @@ int main(int argc, char** argv)
                 unknown ? "UNKNOWN retired" : "stale rejected, recovered=11");
             return 0;
         }
-        CHECK(call<SetRenderJobDependencies>(
-            *client, commands, {writer, {reader}, {}}, false
-        ).error.type == kJobCycle);
         call<RebindRenderJobEffect>(
             *client, commands, {session, writer, create_capture("publish-11"), target, writer_binding}
         );
@@ -1338,7 +1646,7 @@ int main(int argc, char** argv)
         CHECK(!ran && ran.error().type == kOutcomeUnknown && server->stats().validation_errors == 0);
         server.reset();
         CHECK(MutableReplica::retired_candidates == 1);
-        std::puts("REPLICA COMMAND PASS: UNKNOWN stopped device admission and retired the candidate");
+        std::puts("RESOURCE UPLOAD PASS: UNKNOWN stopped device admission and retired the candidate");
         return 0;
     }
     auto other = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -1472,29 +1780,8 @@ int main(int argc, char** argv)
     ).error.type == kStorageMismatch);
     call<RemoveRenderJob>(*client, commands, {unauthorized});
     call<StartRenderJob>(*client, commands, {session, upper, peer_target, range_binding});
-    auto park = ipc::IpcCore::instance().createRequester(config.channel_name);
-    CHECK(park);
-    const auto request_pair = [&](RenderJobId a, RenderJobId b)
-    {
-        MutableReplica::setter_entered = false;
-        MutableReplica::park_setter = true;
-        const auto parked = sendSceneRequest<SetReplicaValue>(*park, commands, {mutable_resource, expected_replica});
-        const auto deadline = Clock::now() + 10s;
-        while (!MutableReplica::setter_entered.load())
-        {
-            CHECK(Clock::now() < deadline);
-            std::this_thread::yield();
-        }
-        const auto first = sendSceneRequest<RequestRenderJob>(*client, commands, {a});
-        const auto second = sendSceneRequest<RequestRenderJob>(*other, commands, {b});
-        MutableReplica::park_setter = false;
-        MutableReplica::park_setter.notify_all();
-        receiveSceneReply<SetReplicaValue>(*park, parked);
-        return std::pair{receiveSceneReply<RequestRenderJob>(*client, first),
-                         receiveSceneReply<RequestRenderJob>(*other, second)};
-    };
     const auto [a, b] = request_pair(upper, lower);
-    CHECK(a.frame_index == b.frame_index && a.slot_index == b.slot_index);
+    CHECK(!a.error.type && !b.error.type && a.frame_index == b.frame_index && a.slot_index == b.slot_index);
     stopAndRemoveJob(*client, commands, upper);
     stopAndRemoveJob(*client, commands, lower);
     const auto product = call<GetOrCreateResource>(
@@ -1507,7 +1794,7 @@ int main(int argc, char** argv)
     call<StartRenderJob>(*client, commands, {session, changing_low, target, product_binding});
     call<StartRenderJob>(*client, commands, {session, changing_high, peer_target, product_binding});
     const auto [c, d] = request_pair(changing_low, changing_high);
-    CHECK(c.frame_index != d.frame_index && c.slot_index == d.slot_index);
+    CHECK(!c.error.type && !d.error.type && c.frame_index != d.frame_index && c.slot_index == d.slot_index);
     stopAndRemoveJob(*client, commands, changing_high);
     stopAndRemoveJob(*client, commands, changing_low);
     std::printf("DISJOINT BUFFER BOUNDARY: compatible=%llu,%llu transitioning=%llu,%llu slot=%u\n",

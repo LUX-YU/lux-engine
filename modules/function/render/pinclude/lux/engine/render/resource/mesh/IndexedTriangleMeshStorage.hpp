@@ -44,6 +44,7 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] const MeshDescription* find(MeshId) const noexcept;
+        [[nodiscard]] std::uint64_t releaseRevision() const noexcept { return release_revision_; }
 
         [[nodiscard]] RenderResult<IndexedGeometryInput> geometry(MeshId) const noexcept;
         [[nodiscard]] RenderResult<MeshArenaSection> arenaSection(MeshId, std::uint32_t submesh) const noexcept;
@@ -60,6 +61,7 @@ namespace lux::render::detail
         ResourceUploader& uploads_;
 
         ResourceInstanceId id_;
+        std::uint64_t release_revision_ = 0;
         cxx::StableSlotMap<Entry, MeshTag> entries_;
         BufferArena vertices_, indices_, sections_;
     };

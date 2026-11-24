@@ -1,8 +1,7 @@
-#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
-#include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
-#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/runtime/commands/Error.hpp>
@@ -21,100 +20,95 @@ namespace lux::render::detail
         return {};
     }
 
-    const RasterDescriptorLayout& RasterFramePreparation::rasterBindings(RasterBindingKey key) const noexcept
-    {
-        const auto* stream = graph_.programs().rasterStream(key.pass);
-        const auto selected = gpu_.selectRasterPrograms(key.pass, *stream);
-        if (!selected || key.generation != selected->revision || key.program >= selected->programs.size())
-            std::terminate();
-        return selected->programs[key.program].bindings;
-    }
-
-    RenderResult<void> RasterFramePreparation::prepareDescriptorCapacity(bool resize_pool) noexcept
+    RenderResult<void> FrameResources::prepareDescriptorCapacity(
+        JobGpuResources& gpu, std::span<const RasterDrawInput> draws, bool resize_pool
+    ) noexcept
     {
         nri::DescriptorPoolDesc additional{};
-        for (const auto p : graph_.recordingDependencies().producer_passes)
+        for (const auto& stream : recordingGraph().programs().rasterStreams())
         {
-            const auto* stream = graph_.programs().rasterStream(p);
-            if (!stream) continue;
-            auto selected = gpu_.selectRasterPrograms(p, *stream);
+            const auto p = stream.pass;
+            if (stream.resource_list && !passEnabled(recordingGraph().passes()[p])) continue;
+            const auto& input = draws[stream.list];
+            auto& resident = raster_draws[stream.list];
+            // A successfully published revision already owns every descriptor row for this draw layout.
+            if (input.command_revision && resident.command_revision == input.command_revision) continue;
+            resident.command_revision = 0;
+            auto selected = gpu.programSlots(stream);
             if (!selected) return cxx::unexpected(selected.error());
-            const auto programs = selected->programs;
-            const auto revision = selected->revision;
-            const auto& input = draws_[stream->list];
-            auto& rows = frame_.stream_descriptor_rows[stream->list];
-            rows.programs.resize(programs.size());
-            rows.writes.clear();
-            if (input.draws.size() > UINT32_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
-            rows.input_count = 0;
-            for (auto& program : rows.programs) program.used = 0;
-            for (std::size_t d = 0; d < input.draws.size(); ++d)
+            const auto& programs = *selected;
+            // Resource-authored lists use pass-local ordinals in the publication selected for this Run.
+            const auto revision = stream.resource_list ? 0 : selected->revision;
+            auto& rows = stream_descriptor_rows[stream.list];
+            rows.resize(programs.size());
+            if (!input.data.fitsSlotRanges()) return cxx::unexpected(RenderError{kDeviceCapacity, {p}});
+            for (auto& program : rows) program.used = 0;
+            for (const auto& draw : input.data.draws)
             {
-                const auto id = input.draws[d].program;
-                const bool invalid = id.stream != p || id.index >= programs.size() || id.revision != revision;
+                const auto id = draw.program;
+                const bool invalid = !stream.acceptsStream(id.stream) ||
+                    id.index >= programs.size() || id.revision != revision;
                 if (invalid) return cxx::unexpected(RenderError{kFrameContract, {p}});
                 const auto& bindings = programs[id.index].bindings;
-                const auto& draw = input.draws[d];
-                const bool valid_ranges = draw.constants.fits(input.constants.size()) &&
-                    draw.vertices.fits(input.vertices.size()) &&
-                    draw.bindings.fits(input.bindings.size());
+                const bool valid_ranges = draw.constants.fits(input.data.constants.size()) &&
+                    draw.vertices.fits(input.data.vertices.size()) &&
+                    draw.bindings.fits(input.data.bindings.size());
                 const bool valid_constants = draw.constants.count == bindings.parameter_bytes &&
                     draw.constants.first % 4 == 0;
                 const auto count = draw.bindings.count;
                 const bool valid_abi = valid_constants && count == bindings.fields.size();
                 if (!valid_ranges || !valid_abi) return cxx::unexpected(RenderError{kFrameContract, {p}});
-                if (count > frame_.stream_binding_inputs.max_size() - rows.input_count)
+                if (count > stream_binding_inputs.max_size())
                     return cxx::unexpected(RenderError{kDeviceCapacity});
-                const auto first_input = rows.input_count;
-                rows.input_count += count;
-                if (bindings.fields.empty()) continue;
-                auto& by_program = rows.programs[id.index];
-                const auto ordinal = by_program.used++;
+                auto& by_program = rows[id.index];
+                if (!by_program.select(draw.bindings.first) || bindings.fields.empty()) continue;
+                const auto ordinal = by_program.used - 1;
                 if (ordinal == by_program.records.size())
                 {
-                    if (frame_.native.raster_bindings.size() >= kGraphInvalidIndex)
+                    if (native.raster_bindings.size() >= kGraphInvalidIndex)
                         return cxx::unexpected(RenderError{kDeviceCapacity});
-                    by_program.records.push_back(static_cast<std::uint32_t>(frame_.native.raster_bindings.size()));
-                    auto& record = frame_.native.raster_bindings.emplace_back();
-                    record.program = {p, id.index, revision};
-                    record.list = stream->list;
+                    by_program.records.push_back(static_cast<std::uint32_t>(native.raster_bindings.size()));
+                    auto& record = native.raster_bindings.emplace_back();
+                    record.layout = &bindings;
+                    record.pass = p;
+                    record.program = id.index;
+                    record.list = stream.list;
                     record.ordinal = ordinal;
                     record.views.resize(bindings.fields.size());
                     record.inputs.resize(bindings.fields.size());
                 }
                 const auto index = by_program.records[ordinal];
-                rows.writes.push_back({first_input, static_cast<std::uint32_t>(d), id.index, index});
-                if (!frame_.native.raster_bindings[index].set)
+                if (!native.raster_bindings[index].set)
                 {
                     if (auto counted = bindings.reserveSet(additional); !counted) return counted;
                 }
             }
         }
-        if (resize_pool) return growDescriptorPool();
+        if (resize_pool) return growDescriptorPool(gpu);
         if (!additional.descriptorSetMaxNum) return {};
-        const bool fits = frame_.native.descriptor_pool &&
+        const bool fits = native.descriptor_pool &&
             std::ranges::all_of(kDescriptorPoolCounts, [&](auto field) noexcept
         {
-            return additional.*field <= frame_.descriptor_capacity.*field - frame_.descriptor_reserved.*field;
+            return additional.*field <= descriptor_capacity.*field - descriptor_reserved.*field;
         });
-        return fits ? RenderResult<void>{} : growDescriptorPool();
+        return fits ? RenderResult<void>{} : growDescriptorPool(gpu);
     }
 
-    RenderResult<nri::DescriptorSet*> RasterFramePreparation::descriptorSet(
-        const RasterDescriptorLayout& bindings, std::uint32_t index,
-        std::span<const RasterDescriptorInput> inputs
+    RenderResult<void> FrameResources::updateDrawSet(
+        DeviceSession& session, std::uint32_t index, std::span<const RasterDescriptorInput> inputs
     ) noexcept
     {
-        auto& record = frame_.native.raster_bindings[index];
-        const auto& core = session_.nriCore();
+        auto& record = this->native.raster_bindings[index];
+        const auto& bindings = *record.layout;
+        const auto& core = session.nriCore();
         if (!record.set)
         {
             // Failed native allocation can consume pool quota. The next preflight counts that reservation.
-            if (auto counted = bindings.reserveSet(frame_.descriptor_reserved); !counted)
+            if (auto counted = bindings.reserveSet(descriptor_reserved); !counted)
                 return cxx::unexpected(counted.error());
             nri::DescriptorSet* created = nullptr;
             const auto status = core.AllocateDescriptorSets(
-                *frame_.native.descriptor_pool, *bindings.native.layout, bindings.native.private_set, &created, 1, 0
+                *this->native.descriptor_pool, *bindings.native.layout, bindings.native.private_set, &created, 1, 0
             );
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             record.set = created;
@@ -122,7 +116,7 @@ namespace lux::render::detail
         bool changed = false;
         cxx::scope_exit invalidate([&]() noexcept
         {
-            if (changed) frame_.invalidatePass(graph_, record.program.pass);
+            if (changed) invalidatePass(recordingGraph(), record.pass);
         });
         for (std::size_t i = 0; i < bindings.fields.size(); ++i)
         {
@@ -130,50 +124,44 @@ namespace lux::render::detail
             const auto& source = inputs[i];
             if (record.inputs[i] == source) continue;
 
-            nri::Descriptor* descriptor = source.sampler;
+            const bool uses_target = !source.target_view.isNull();
+            auto* descriptor = uses_target ? session.descriptors().textureView(source.target_view) : source.sampler;
             auto status = nri::Result::SUCCESS;
             if (source.image)
             {
                 const auto& range = source.range;
-                const auto type = use.view.image_arrayed
-                    ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE;
-                nri::TextureViewDesc view{
-                    source.image, type, source.format,
-                    static_cast<nri::Dim_t>(range.first_mip), static_cast<nri::Dim_t>(range.mip_count),
-                    static_cast<nri::Dim_t>(range.first_layer), static_cast<nri::Dim_t>(range.layer_count)
-                };
-                view.planes = range.aspects == 1 ? nri::PlaneBits::COLOR :
-                    range.aspects == 2 ? nri::PlaneBits::DEPTH : nri::PlaneBits::STENCIL;
+                const auto view = graphImageView(source.image, use.view.image_type, source.format, range);
                 status = core.CreateTextureView(view, descriptor);
             }
             else if (source.buffer)
             {
                 const auto view = use.view.bufferView(source.buffer, source.offset, source.size);
-                status = createGraphBufferView(session_, view, descriptor);
+                status = createGraphBufferView(session, view, descriptor);
             }
             if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
             if (!descriptor) return cxx::unexpected(RenderError{kDeviceArgument});
-            const auto owned = source.sampler ? nullptr : descriptor;
+            const auto owned = source.sampler || uses_target ? nullptr : descriptor;
             core.DestroyDescriptor(std::exchange(record.views[i], owned));
             record.inputs[i] = source;
             const nri::UpdateDescriptorRangeDesc write{record.set, use.binding, use.element, &descriptor, 1};
             core.UpdateDescriptorRanges(&write, 1);
             changed = true;
         }
-        return record.set;
+        return {};
     }
 
-    RenderResult<void> RasterFramePreparation::growDescriptorPool() noexcept
+    RenderResult<void> FrameResources::growDescriptorPool(JobGpuResources& gpu) noexcept
     {
-        const auto& core = session_.nriCore();
-        auto required = graph_.bindingPlan().private_pool;
-        if (auto counted = session_.descriptors().addSnapshotDescriptors(required); !counted) return counted;
-        for (const auto& item : frame_.native.raster_bindings)
+        auto& session = gpu.session;
+        const auto& core = session.nriCore();
+        auto required = recordingGraph().bindingPlan().private_pool;
+        if (auto counted = session.descriptors().addSnapshotDescriptors(required); !counted) return counted;
+        for (const auto& item : this->native.raster_bindings)
         {
-            if (auto counted = rasterBindings(item.program).reserveSet(required); !counted)
+            if (auto counted = item.layout->reserveSet(required); !counted)
                 return cxx::unexpected(counted.error());
         }
-        auto capacity = frame_.descriptor_capacity;
+        auto capacity = descriptor_capacity;
         capacity.flags |= required.flags;
         for (auto field : kDescriptorPoolCounts)
         {
@@ -184,10 +172,10 @@ namespace lux::render::detail
             }
         }
         nri::DescriptorPool* pool = nullptr;
-        auto status = core.CreateDescriptorPool(session_.device(), capacity, pool);
+        auto status = core.CreateDescriptorPool(session.device(), capacity, pool);
         if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
         cxx::scope_exit rollback([&]() noexcept { core.DestroyDescriptorPool(pool); });
-        auto shared = session_.descriptors().createSnapshot(*pool);
+        auto shared = session.descriptors().createSnapshot(*pool);
         if (!shared) return cxx::unexpected(shared.error());
         std::vector<std::pair<nri::DescriptorSet**, nri::DescriptorSet*>> replacements;
         const auto allocate = [&](const auto& uses, PassDescriptorBindings native,
@@ -209,31 +197,33 @@ namespace lux::render::detail
             replacements.emplace_back(&destination, set);
             return {};
         };
-        for (auto& pass : frame_.passes)
+        for (auto& pass : passes)
         {
-            const auto& program = graph_.bindingPlan().pass(pass.compiled_pass->binding_slot);
+            const auto& program = recordingGraph().bindingPlan().pass(pass.compiled_pass->binding_slot);
             if (!program.has_private_set) continue;
-            const auto& native = graph_.programs()[pass.compiled_pass->binding_slot];
+            const auto& native = recordingGraph().programs()[pass.compiled_pass->binding_slot];
             auto ready = allocate(program.uses, native.descriptors, pass.private_descriptors,
                 [&](std::size_t i, const auto& use) noexcept -> nri::Descriptor*
             {
                 if (!program.bindings[use.field].private_binding) return nullptr;
-                if (use.sampler != kGraphInvalidIndex) return graph_.programs().sampler(use.sampler);
+                if (use.sampler != kGraphInvalidIndex) return recordingGraph().programs().sampler(use.sampler);
                 // Feature preparation precedes Instance::rebind. Dirty resources already
                 // name the new allocation; the old cached view is not a valid replay source.
-                if (frame_.bindings[use.resource].dirty) return static_cast<nri::Descriptor*>(nullptr);
+                if (bindings[use.resource].dirty) return static_cast<nri::Descriptor*>(nullptr);
                 return pass.history_views[i] ? pass.history_views[i] : pass.private_views[i];
             });
             if (!ready) return cxx::unexpected(ready.error());
         }
-        for (auto& item : frame_.native.raster_bindings)
+        for (auto& item : this->native.raster_bindings)
         {
-            const auto& program = rasterBindings(item.program);
+            const auto& program = *item.layout;
             if (program.fields.empty()) continue;
             auto ready = allocate(program.fields, program.native, item.set,
                 [&](std::size_t i, const auto&) noexcept -> nri::Descriptor*
             {
-                return item.inputs[i].sampler ? item.inputs[i].sampler : item.views[i];
+                const auto& input = item.inputs[i];
+                if (!input.target_view.isNull()) return session.descriptors().textureView(input.target_view);
+                return input.sampler ? input.sampler : item.views[i];
             });
             if (!ready) return cxx::unexpected(ready.error());
         }
@@ -245,25 +235,26 @@ namespace lux::render::detail
             if (*destination) relocated.emplace(*destination, value);
             *destination = value;
         }
-        const auto relocate = [&](RasterDrawList& list) noexcept
+        for (auto& list : raster_draws)
         {
-            for (auto*& set : list.descriptors)
+            for (auto& packet : list.packets)
             {
-                if (const auto found = relocated.find(set); found != relocated.end()) set = found->second;
+                if (!packet.descriptor_set) continue;
+                const auto found = relocated.find(packet.descriptor_set);
+                if (found != relocated.end()) packet.descriptor_set = found->second;
             }
-        };
-        for (auto& list : frame_.raster_draws) relocate(list);
-        frame_.invalidateRecordings();
-        auto* old_pool = std::exchange(frame_.native.descriptor_pool, pool);
-        frame_.descriptor_capacity = capacity;
-        frame_.descriptor_reserved = required;
-        if (session_.description().graphicsAPI == nri::GraphicsAPI::D3D12)
-            frame_.shared_descriptors = *shared;
+        }
+        invalidateRecordings();
+        auto* old_pool = std::exchange(this->native.descriptor_pool, pool);
+        descriptor_capacity = capacity;
+        descriptor_reserved = required;
+        if (session.description().graphicsAPI == nri::GraphicsAPI::D3D12)
+            shared_descriptors = *shared;
         rollback.release();
         if (old_pool)
         {
-            session_.deferRelease(
-                gpu_.accepted, [core = &core, old_pool]() noexcept { core->DestroyDescriptorPool(old_pool); }
+            session.deferRelease(
+                gpu.accepted, [core = &core, old_pool]() noexcept { core->DestroyDescriptorPool(old_pool); }
             );
         }
         return {};

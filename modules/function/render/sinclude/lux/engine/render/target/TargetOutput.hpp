@@ -3,8 +3,11 @@
 #include <NRI.h>
 #include <lux/engine/render/device/DeviceId.hpp>
 #include <lux/engine/render/runtime/JobId.hpp>
+#include <lux/engine/render/effect/EffectId.hpp>
+#include <optional>
 #include <lux/engine/render/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/runtime/Target.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
 #include <span>
 
 namespace lux::render::detail
@@ -16,7 +19,8 @@ namespace lux::render::detail
         std::uint64_t epoch = 1;
         RenderJobId writer;
         bool enabled = true;
-        bool resizing = false;
+        // Engaged while Resize or Remove owns the Target. A supplied Effect stays live until adoption or rollback.
+        std::optional<EffectId> pending_replacement;
 
         void releaseWriter(RenderJobId id) noexcept
         {
@@ -50,7 +54,8 @@ namespace lux::render::detail
         nri::Descriptor* view = nullptr;
         PresentationSync* presentation = nullptr;
         std::uint32_t sampled_index = UINT32_MAX;
-        SubmissionFrontiers* accepted_uses = nullptr; // Output borrow recorded at native acceptance.
+        SubmissionFrontiers* accepted_uses = nullptr; // Includes producer and external readers.
+        SubmissionFrontiers* producer_uses = nullptr; // Published image readers wait for the producer only.
     };
 
     // Physical output borrow. GPU frame slot and swap-chain image index remain distinct:

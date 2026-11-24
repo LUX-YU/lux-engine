@@ -1,10 +1,5 @@
 // Neutral view/slice ports. No fixed View domain or sibling Feature state.
-struct VisibilityView
-{
-    mat4 world_to_clip;
-    vec4 planes[6];
-    uvec4 flags;
-};
+#include "../mesh/VisibilityView.slang"
 
 struct ShadowSlice
 {

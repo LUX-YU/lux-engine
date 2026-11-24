@@ -49,6 +49,8 @@ namespace lux::render
         // A Feature prepares the actual array layer count in the acquired FIF slot.
         // Such images use whole-resource accesses and never share transient alias allocations.
         bool runtime_layers = false;
+        // A volume has one array layer. Its Z slices share a mip subresource and shrink with each mip.
+        std::optional<std::uint32_t> volume_depth;
         bool operator==(const GraphImageDesc&) const noexcept = default;
     };
 
@@ -76,6 +78,7 @@ namespace lux::render
     struct ImageCopyRegion final
     {
         std::uint32_t x = 0, y = 0, width = 0, height = 0;
+        std::uint32_t z = 0, depth = 1;
     };
 
     // monostate explicitly means the complete declared resource.
@@ -119,6 +122,7 @@ namespace lux::render
         INDIRECT,
         DEPTH_ATTACHMENT,
         UNIFORM_READ,
+        SHADER_BUFFER_READ, // Imported/exported SRV boundary. Pass binding access comes from shader reflection.
         PRESENT // Terminal state of a single-sample exported target image.
     };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/graph/GraphResource.hpp>
 #include <algorithm>
 #include <bit>
 #include <cstdint>
@@ -8,6 +9,20 @@
 
 namespace lux::render::detail
 {
+    // Both intervals are within a known backing or CPU projection. A zero size contributes no bytes.
+    inline void markDirtyBytes(GraphBufferRange& range, GraphBufferRange added) noexcept
+    {
+        if (!added.size) return;
+        if (!range.size)
+        {
+            range = added;
+            return;
+        }
+        const auto end = std::max(range.offset + range.size, added.offset + added.size);
+        range.offset = std::min(range.offset, added.offset);
+        range.size = end - range.offset;
+    }
+
     struct DirtyWordMask final
     {
         std::uint32_t word_index;

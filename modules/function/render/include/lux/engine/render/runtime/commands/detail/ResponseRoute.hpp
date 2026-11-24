@@ -10,5 +10,6 @@ namespace lux::render::runtime_detail
     {
         platform::ipc::RequesterId requester_id;
         RequestId request_id;
+        bool operator==(const ResponseRoute&) const noexcept = default;
     };
 } // namespace lux::render::runtime_detail

@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -44,6 +45,7 @@ namespace foundation_test
 
     int measureGraph(DeviceSession& session, const PreparedRenderGraph& candidate)
     {
+        std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
         auto& queue = session.queue();
         const auto bits = queue.properties().timestamp_bits;
         const auto frequency = session.description().other.timestampFrequencyHz;
@@ -64,7 +66,7 @@ namespace foundation_test
         CHECK(instance_job->initialize());
         CHECK(candidate.graph.submissions().size() == 1);
         CHECK(candidate.graph.submissions().front().queue == EQueueRole::GRAPHICS);
-        CHECK(candidate.graph.submissions().front().reusable_recording);
+        CHECK(candidate.graph.submissions().front().recordings.front().reusable);
 
         const auto& core = session.nriCore();
         nri::QueryPool* queries = nullptr;
@@ -101,7 +103,7 @@ namespace foundation_test
             Sample measured{};
             startGraphMeasurements();
             const auto prepare_start = Clock::now();
-            const auto prepared = instance_job->freezeFrame(0);
+            const auto prepared = instance_job->freezeFrame(0, freeze_draws);
             measured.prepare_ns = elapsedNs(prepare_start);
             measured.prepare_allocations = stopGraphMeasurements();
             CHECK(prepared && *prepared);

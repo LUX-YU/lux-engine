@@ -63,7 +63,7 @@ struct Property
     uint material_record;
     uint section_index;
     uint render_flags;
-    uint transform_record;
+    uint transform_id;
 };
 
 struct Word
@@ -92,13 +92,16 @@ struct PageAddresses
 #endif
 [[vk::binding(6, 2)]] StructuredBuffer<Word> members : register(t6, space3);
 
-struct Camera
+#include "VisibilityView.slang"
+
+[[vk::binding(10, 3)]] StructuredBuffer<VisibilityView> views : register(t10, space3);
+
+struct Layer
 {
-    mat4 view;
-    mat4 projection;
+    uint index;
 };
 
-[[vk::push_constant]] ConstantBuffer<Camera> camera : register(b0, space255);
+[[vk::push_constant]] ConstantBuffer<Layer> layer : register(b0, space255);
 
 void luxMain()
 {
@@ -118,10 +121,10 @@ void luxMain()
     if (present != 0)
     {
 #ifdef PAGED_INSTANCES
-        uint transform = property.transform_record;
+        uint transform = property.transform_id;
         model = ((Transform*)luxAddress(transforms[transform >> 14].value))[transform & 16383].model;
 #else
-        model = transforms[property.transform_record].model;
+        model = transforms[property.transform_id].model;
 #endif
     }
     float orientation = dot(transpose(model)[0].xyz, cross(transpose(model)[1].xyz, transpose(model)[2].xyz));
@@ -139,7 +142,7 @@ void luxMain()
 #endif
     bool permitted = (property.render_flags & required) == required;
     gl_Position = present != 0 && selected && permitted
-                      ? mul(camera.projection, mul(camera.view, mul(model, vec4(position, 1))))
+                      ? mul(views[layer.index].world_to_clip, mul(model, vec4(position, 1)))
                       : vec4(2, 2, 2, 1);
 #ifndef DEPTH_ONLY
 #ifndef VERTEX_NO_UV

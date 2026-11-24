@@ -177,11 +177,13 @@ namespace lux::render::detail
         releaseBackendData();
     }
 
-    std::uint32_t DeviceSession::resourceCapabilities() const noexcept
+    GpuResourceFeatures DeviceSession::resourceFeatures() const noexcept
     {
-        return (descriptors().capacity(nri::DescriptorType::TEXTURE) ? 1u : 0u) |
-            (enabledFeatures().texture_compression_bc ? 2u : 0u) |
-            (descriptors().capacity(nri::DescriptorType::STRUCTURED_BUFFER) ? 4u : 0u);
+        GpuResourceFeatures available;
+        if (descriptors().capacity(nri::DescriptorType::TEXTURE)) available |= EGpuResourceFeature::SAMPLED_IMAGE_ARRAY;
+        if (descriptors().capacity(nri::DescriptorType::STRUCTURED_BUFFER)) available |= EGpuResourceFeature::STORAGE_BUFFER_ARRAY;
+        if (enabledFeatures().texture_compression_bc) available |= EGpuResourceFeature::BLOCK_COMPRESSION_BC;
+        return available;
     }
 
     RenderResult<void> DeviceSession::drain() noexcept
@@ -265,7 +267,18 @@ namespace lux::render::detail
 
     NativeProgramBindings::~NativeProgramBindings() noexcept
     {
-        if (owner_) owner_->programs().releaseBindings(*this);
+        if (owner_ && !slots_.empty()) owner_->programs().releaseBindings(*this, owner_->acceptedFrontiers());
+    }
+
+    void NativeProgramBindings::discardUnsubmitted() noexcept
+    {
+        if (auto* owner = std::exchange(owner_, nullptr))
+            owner->programs().releaseBindings(*this, owner->makeFrontiers());
+    }
+
+    std::span<const CompiledRasterStream> NativeProgramBindings::rasterStreams() const & noexcept
+    {
+        return streams_;
     }
 
     const nri::Device* NativeProgramBindings::device() const noexcept

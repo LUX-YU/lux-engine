@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/resource/instance/Data.hpp>
 #include <lux/engine/render/resource/ResourceDefinition.hpp>
-#include <lux/engine/render/resource/BuiltinResources.hpp>
+#include <lux/engine/render/resource/instance/Requirement.hpp>
 
 #include <lux/engine/render/resource/instance/Binding.hpp>
 
@@ -15,8 +15,8 @@ namespace lux::render
         using Config = void;
         static inline const ResourceDefinition descriptor{
             kInstanceResourceName,
-            0,
-            0,
+            {},
+            {},
             cxx::make_basic_type_info<MeshInstanceBinding>(),
             "Mesh, material and transform references with live records for raster draws.",
             EResourceDomain::SCENE,

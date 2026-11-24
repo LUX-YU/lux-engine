@@ -14,6 +14,7 @@
 
 namespace lux::render
 {
+    inline constexpr auto kMeshPipelineNotReady = error::errorId("lux.render.mesh.pipeline_not_ready");
     inline constexpr std::string_view kRasterMaterialInput = "lux.render.input.raster_material";
 
     struct MaterialTag;
@@ -22,6 +23,15 @@ namespace lux::render
     using MaterialProgramId = ResourceId<MaterialProgramTag>;
     // Client-supplied finite values in the target program's parameter order.
     using MaterialParameters = std::vector<std::array<float, 4>>;
+
+    struct MaterialInstanceData final
+    {
+        MaterialProgramId program;
+        MaterialParameters parameters;
+        // Referenced textures remain the client's responsibility.
+        std::vector<TextureId> textures;
+    };
+
 
     struct MaterialUpdate final
     {

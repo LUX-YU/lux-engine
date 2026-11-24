@@ -48,7 +48,7 @@ namespace lux::render::detail
     ) noexcept
     {
         auto& gpu = execution.gpu_;
-        const auto& plan = execution.graph_;
+        const auto& plan = execution.frame_bindings.graph;
         const bool has_output = !output.frames.empty();
         const bool needs_output = plan.output() != kGraphInvalidIndex ||
             std::ranges::any_of(plan.resources(), [](const auto& resource) noexcept
@@ -91,7 +91,7 @@ namespace lux::render::detail
         for (std::uint32_t f = 0; f < gpu.frames.size(); ++f)
         {
             auto& candidate = result.frames[f];
-            const auto& live = execution.frames_[f];
+            const auto& live = execution.frame_bindings.frames[f];
             auto changes = candidate.physical.preparePhysical(
                 gpu.session, {plan, target, LivePhysicalPlacement{live.bindings, live.memory_bindings}}
             );
@@ -172,7 +172,7 @@ namespace lux::render::detail
         const auto& resources = graph.resources();
         const auto& physical = graph.physicalResources();
         const bool aliases = physical.allocation == ETransientAllocation::ALIAS_MEMORY;
-        const auto& frame = job.frames_[f];
+        const auto& frame = job.frame_bindings.frames[f];
         auto& candidate = frames[f];
         std::ranges::sort(candidate.changes.resources, {}, &GraphBindingChange::index);
         const auto binding = [&](std::uint32_t index) -> const FrameResourceBinding&
@@ -233,22 +233,8 @@ namespace lux::render::detail
                 if (replacement.binding.image)
                 {
                     const auto& range = std::get<GraphImageRange>(use.range);
-                    const bool arrayed = program.bindings[use.field].image_arrayed;
-                    const bool storage = use.kind == EDescriptorKind::STORAGE_IMAGE;
-                    nri::TextureViewDesc description{
-                        replacement.binding.image,
-                        storage
-                            ? (arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY : nri::TextureView::STORAGE_TEXTURE)
-                            : (arrayed ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE),
-                        imageFormat(std::get<GraphImageDesc>(resource.description).format).native,
-                        static_cast<nri::Dim_t>(range.first_mip),
-                        static_cast<nri::Dim_t>(range.mip_count),
-                        static_cast<nri::Dim_t>(range.first_layer),
-                        static_cast<nri::Dim_t>(range.layer_count)
-                    };
-                    description.planes = range.aspects == 1   ? nri::PlaneBits::COLOR
-                                         : range.aspects == 2 ? nri::PlaneBits::DEPTH
-                                                              : nri::PlaneBits::STENCIL;
+                    const auto description = graphImageView(replacement.binding.image, program.bindings[use.field].image_type,
+                        imageFormat(std::get<GraphImageDesc>(resource.description).format).native, range);
                     status = core.CreateTextureView(description, descriptor);
                 }
                 else
@@ -317,13 +303,13 @@ namespace lux::render::detail
     RenderResult<void> ResizeResources::prepareAdoption(runtime_detail::JobExecution& job) noexcept
     {
         const bool wrong_owner = owner_ != job.binding_identity || session_ != &job.gpu_.session;
-        if (wrong_owner || phase_ == EPhase::ADOPTED || frames.size() != job.frames_.size())
+        if (wrong_owner || phase_ == EPhase::ADOPTED || frames.size() != job.frame_bindings.frames.size())
             return cxx::unexpected(RenderError{kFrameContract});
         phase_ = EPhase::CANDIDATE;
         const auto& physical = job.graph().physicalResources();
-        for (std::uint32_t f = 0; f < job.frames_.size(); ++f)
+        for (std::uint32_t f = 0; f < job.frame_bindings.frames.size(); ++f)
         {
-            auto& frame = job.frames_[f];
+            auto& frame = job.frame_bindings.frames[f];
             auto& candidate = frames[f];
             candidate.image_adoptions.clear();
             candidate.buffer_adoptions.clear();
@@ -391,9 +377,9 @@ namespace lux::render::detail
         phase_ = EPhase::ADOPTED;
         accepted_.merge(job.gpu_.accepted);
         const auto& core = session_->nriCore();
-        for (std::uint32_t f = 0; f < job.frames_.size(); ++f)
+        for (std::uint32_t f = 0; f < job.frame_bindings.frames.size(); ++f)
         {
-            auto& frame = job.frames_[f];
+            auto& frame = job.frame_bindings.frames[f];
             auto& candidate = frames[f];
             for (const auto [live, incoming] : candidate.image_adoptions)
                 std::swap(frame.native.images[live], candidate.physical.images[incoming]);
@@ -436,7 +422,7 @@ namespace lux::render::detail
             {
                 frame.invalidateResource(job.graph().recordingDependencies(), replacement.index);
                 auto& binding = frame.bindings[replacement.index];
-                frame.native.collectRasterViews(
+                frame.collectRasterViews(
                     binding.buffer != replacement.binding.buffer ? binding.buffer : nullptr,
                     binding.image != replacement.binding.image ? binding.image : nullptr,
                     candidate.physical.views
@@ -445,29 +431,30 @@ namespace lux::render::detail
                 binding.select(replacement.binding.buffer, replacement.binding.image, core);
                 binding.buffer_offset = replacement.binding.buffer_offset;
                 binding.buffer_size = replacement.binding.buffer_size;
+                binding.queue_uses = replacement.binding.queue_uses;
                 binding.dirty = false;
                 std::erase(frame.changed_resources, replacement.index);
                 const auto& resource = job.graph().resources()[replacement.index];
-                for (const auto [p, index] : resource.barrier_uses)
+                for (const auto index : resource.barrier_uses)
                 {
                     if (binding.image)
                     {
-                        frame.passes[p].images[index].texture = binding.image;
+                        frame.entry_images[index].texture = binding.image;
                     }
                     else
                     {
-                        frame.passes[p].buffers[index].buffer = binding.buffer;
+                        frame.entry_buffers[index].buffer = binding.buffer;
                     }
                 }
-                for (auto index : resource.final_barrier_uses)
+                for (auto index : resource.exit_barrier_uses)
                 {
                     if (binding.image)
                     {
-                        frame.final_images[index].texture = binding.image;
+                        frame.exit_images[index].texture = binding.image;
                     }
                     else
                     {
-                        frame.final_buffers[index].buffer = binding.buffer;
+                        frame.exit_buffers[index].buffer = binding.buffer;
                     }
                 }
             }
@@ -495,32 +482,31 @@ namespace lux::render::detail
                 }
             }
             frame.record_ready = false;
-            std::ranges::fill(frame.history_valid, 0);
         }
         for (std::size_t h = 0; h < histories.size(); ++h)
         {
             auto& [index, replacement] = histories[h];
-            for (std::size_t f = 0; f < job.frames_.size(); ++f)
+            for (std::size_t f = 0; f < job.frame_bindings.frames.size(); ++f)
             {
                 for (const auto& old : job.histories_[index].slots)
                 {
-                    job.frames_[f].native.collectRasterViews(old.buffer, old.image, frames[f].physical.views);
+                    job.frame_bindings.frames[f].collectRasterViews(old.buffer, old.image, frames[f].physical.views);
                 }
-                job.frames_[f].pending_history_clears.mark(index);
-                job.frames_[f].pending_history_views.mark(index);
+                job.frame_bindings.frames[f].pending_history_clears.mark(index);
+                job.frame_bindings.frames[f].pending_history_views.mark(index);
             }
             std::swap(job.gpu_.histories[index], native_histories_[h]);
             std::swap(job.histories_[index], replacement);
         }
         for (auto& history : job.histories_)
         {
-            history.invalidate = true;
+            history.invalidateSamples();
         }
         job.output_ = output;
-        for (std::uint32_t slot = 0; slot < job.frames_.size(); ++slot)
+        for (std::uint32_t slot = 0; slot < job.frame_bindings.frames.size(); ++slot)
         {
-            job.frames_[slot].bindHistory(job.histories_, job.graph().recordingDependencies());
-            job.frames_[slot].updateHistoryViews(job.histories_, session_->nriCore());
+            job.frame_bindings.frames[slot].bindHistory(job.histories_, job.graph().recordingDependencies());
+            job.frame_bindings.frames[slot].updateHistoryViews(job.histories_, session_->nriCore());
         }
     }
 

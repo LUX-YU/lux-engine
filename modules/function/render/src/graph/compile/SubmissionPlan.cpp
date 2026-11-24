@@ -26,8 +26,27 @@ namespace lux::render::detail
         return physical_queue;
     }
 
+    namespace
+    {
+        // Overlapping command sequences and condition regions must stay in one queue and one batch.
+        std::size_t recordingIntervalEnd(const RecordingProgram& recording, std::size_t first) noexcept
+        {
+            auto end = first + 1;
+            for (auto p = first; p < end; ++p)
+            {
+                const auto& pass = recording.passes[p];
+                const auto& unit = recording.units[pass.unit];
+                end = std::max(end, std::size_t{unit.first_pass} + unit.pass_count);
+                if (pass.condition_region == kGraphInvalidIndex) continue;
+                const auto& region = recording.conditions[pass.condition_region];
+                end = std::max(end, std::size_t{region.first_pass} + region.pass_count);
+            }
+            return end;
+        }
+    } // namespace
+
     bool
-    GraphCompiler::Workspace::assignAsyncCompute(
+    RenderGraphCompiler::Workspace::assignAsyncCompute(
         compiled::RenderGraph& plan, std::uint32_t surface_output
     ) const noexcept
     {
@@ -63,22 +82,11 @@ namespace lux::render::detail
         bool assigned = false;
         for (std::size_t first = 0; first < order.size();)
         {
-            // Sequences and conditional regions both require a single physical queue.
-            // Close the interval over all overlapping units before assigning it.
-            auto end = first + 1;
-            bool can_migrate = true;
-            for (auto slot = first; slot < end; ++slot)
+            const auto end = recordingIntervalEnd(recording, first);
+            const bool can_migrate = std::ranges::all_of(order.subspan(first, end - first), [&](auto id)
             {
-                const auto& pass = recording.passes[slot];
-                const auto& unit = recording.units[pass.unit];
-                end = std::max(end, std::size_t(unit.first_pass) + unit.pass_count);
-                if (pass.condition_region != kGraphInvalidIndex)
-                {
-                    const auto& region = recording.conditions[pass.condition_region];
-                    end = std::max(end, std::size_t(region.first_pass) + region.pass_count);
-                }
-                can_migrate = can_migrate && eligible(graph.passes()[order[slot].index]);
-            }
+                return eligible(graph.passes()[id.index]);
+            });
             if (can_migrate)
             {
                 for (auto& pass : std::span(recording.passes).subspan(first, end - first))
@@ -144,7 +152,85 @@ namespace lux::render::detail
         return true;
     }
 
-    void GraphCompiler::Workspace::planSubmissions(compiled::RenderGraph& plan) noexcept
+    namespace
+    {
+        // A wait discovered late in a queue run belongs at its consumer. Combining it with
+        // the preceding independent work would move that wait to the start of the entire CB.
+        using QueuePositions = std::array<std::uint32_t, 3>; // Position + 1; zero means no predecessor.
+
+        std::vector<QueuePositions> foreignPredecessors(
+            const RecordingProgram& recording, const AnalyzedGraph& source, const std::array<std::size_t, 3>& physical
+        ) noexcept
+        {
+            const auto& passes = recording.passes;
+            const auto queue = [&](std::size_t p) { return physical[static_cast<std::size_t>(passes[p].queue)]; };
+            if (passes.empty()) return {};
+            const auto first_queue = queue(0);
+            const bool one_queue = std::ranges::all_of(passes, [&](const auto& pass)
+            {
+                return physical[static_cast<std::size_t>(pass.queue)] == first_queue;
+            });
+            if (one_queue) return {};
+            std::vector<QueuePositions> required(passes.size());
+            std::vector<std::uint32_t> head(passes.size());
+            std::vector<std::uint32_t> positions(source.graph.passes().size(), kGraphInvalidIndex);
+            for (std::size_t first = 0; first < passes.size();)
+            {
+                const auto end = recordingIntervalEnd(recording, first);
+                for (auto p = first; p < end; ++p)
+                {
+                    head[p] = static_cast<std::uint32_t>(first);
+                    positions[source.analysis.execution_order[p].index] = static_cast<std::uint32_t>(p);
+                }
+                first = end;
+            }
+            const auto require = [&](std::uint32_t producer, std::uint32_t consumer)
+            {
+                if (producer == kGraphInvalidIndex || consumer == kGraphInvalidIndex || queue(producer) == queue(consumer))
+                    return;
+                auto& position = required[head[consumer]][queue(producer)];
+                position = std::max(position, producer + 1);
+            };
+            for (const auto& edge : source.analysis.dependencies)
+                require(positions[edge.before.index], positions[edge.after.index]);
+            for (std::uint32_t p = 0; p < passes.size(); ++p)
+            {
+                for (const auto& image : recording.imageBarriers(passes[p])) require(image.previous_slot, p);
+                for (const auto& buffer : recording.bufferBarriers(passes[p])) require(buffer.previous_slot, p);
+            }
+            return required;
+        }
+
+        // Sort by (batch, operand) so repeated pass and boundary uses occupy one slot per batch.
+        using BatchOperand = std::pair<std::uint32_t, std::uint32_t>;
+
+        template<class Slot>
+        void publishBatchOperands(
+            std::vector<BatchOperand>& uses,
+            std::vector<Slot>& slots,
+            std::span<SubmissionBatch> batches,
+            std::span<const Slot> SubmissionBatch::* member
+        ) noexcept
+        {
+            if (!std::ranges::is_sorted(uses)) std::ranges::sort(uses);
+            uses.erase(std::ranges::unique(uses).begin(), uses.end());
+            slots.clear();
+            slots.reserve(uses.size());
+            auto use = uses.begin();
+            for (std::size_t batch = 0; batch < batches.size(); ++batch)
+            {
+                const auto first = slots.size();
+                while (use != uses.end() && use->first == batch)
+                {
+                    slots.push_back(Slot{use->second});
+                    ++use;
+                }
+                batches[batch].*member = std::span{slots}.subspan(first);
+            }
+        }
+    } // namespace
+
+    void RenderGraphCompiler::Workspace::planSubmissions(compiled::RenderGraph& plan) noexcept
     {
         const auto& graph = source.graph;
         const auto& analysis = source.analysis;
@@ -153,12 +239,9 @@ namespace lux::render::detail
         const auto& queues = device.queues;
         auto& batches = plan.submissions_;
         const auto physical = physicalQueueIndices(queues);
-        plan.first_batches_ = {};
         plan.last_batches_ = {};
-        plan.last_output_batches_ = {};
-        plan.output_first_batch_ = kGraphInvalidIndex;
-        auto& output_regions = plan.output_write_regions_;
-        output_regions.clear();
+        plan.writes_output_unconditionally_ = false;
+        std::vector<BatchOperand> output_writes;
         const auto output = plan.output_;
         const bool presents = presentsOutput();
         pass_batches.assign(graph.passes().size(), kGraphInvalidIndex);
@@ -171,68 +254,62 @@ namespace lux::render::detail
             // Keep the existing completion contract for a graph with no recording units.
             batches.push_back({});
         }
-        const auto retain_use = [&](std::uint32_t batch, GraphResourceId resource)
-        {
-            if (resource.index == output)
-            {
-                const auto queue = physical[static_cast<std::size_t>(batches[batch].queue)];
-                auto& tail = plan.last_output_batches_.batches[queue];
-                if (tail == kGraphInvalidIndex || batch > tail) tail = batch;
-                plan.output_first_batch_ = std::min(plan.output_first_batch_, batch);
-            }
-            if (resources[resource.index].origin == EGraphOrigin::IMPORTED)
-                batches[batch].imported_resources.push_back(resource);
-        };
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        std::vector<BatchOperand> raster_lists;
+#endif
+        const auto required = foreignPredecessors(recording, source, physical);
+        std::array<QueuePositions, 3> covered{};
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
             auto& pass = recording.passes[p];
-            if (batches.empty() || batches.back().queue != pass.queue)
+            bool new_wait = false;
+            if (!required.empty())
+            {
+                auto& waits = covered[physical[static_cast<std::size_t>(pass.queue)]];
+                for (std::size_t q = 0; q < waits.size(); ++q)
+                {
+                    if (!required[p][q]) continue;
+                    const auto producer = recording.passes[required[p][q] - 1].submission + 1;
+                    new_wait |= producer > waits[q];
+                    waits[q] = std::max(waits[q], producer);
+                }
+            }
+            if (batches.empty() || batches.back().queue != pass.queue || (new_wait && batches.back().pass_count))
             {
                 batches.push_back({pass.queue, p});
-                batches.back().first_output_region = static_cast<std::uint32_t>(output_regions.size());
             }
             const auto batch = static_cast<std::uint32_t>(batches.size() - 1);
             recording.passes[p].submission = batch;
             ++batches.back().pass_count;
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
             if (const auto* raster = recording.rasterCommands(pass))
             {
-                if (const auto* stream = std::get_if<RasterListCommands>(&raster->draw))
-                {
-                    auto& reads = batches.back().shared_draw_reads;
-                    if (std::ranges::find(reads, stream->data_index) == reads.end()) reads.push_back(stream->data_index);
-                }
+                if (std::holds_alternative<RasterListCommands>(raster->draw)) raster_lists.emplace_back(batch, p);
             }
+#endif
             pass_batches[analysis.execution_order[p].index] = batch;
             bool writes_output = false;
             for (const auto& use : graph.passes()[analysis.execution_order[p].index].uses)
             {
-                const auto add = [&](GraphResourceId resource)
-                {
-                    if (resources[resource.index].history != kGraphInvalidIndex)
-                    {
-                        batches.back().histories.push_back(resource);
-                    }
-                    retain_use(batch, resource);
-                };
                 const bool write = use.access != EGraphAccess::READ;
                 writes_output |= write && use.version.resource.index == output;
-                add(use.version.resource);
-                if (use.access == EGraphAccess::READ && use.fallback)
-                {
-                    add(use.fallback->resource);
-                }
+                const bool uses_history = resources[use.version.resource.index].history != kGraphInvalidIndex ||
+                    (!write && use.fallback && resources[use.fallback->resource.index].history != kGraphInvalidIndex);
+                batches.back().uses_history |= uses_history;
             }
             if (!writes_output) continue;
             auto& submission = batches.back();
+            if (submission.writes_output) continue;
             if (pass.condition_region == kGraphInvalidIndex)
             {
                 submission.writes_output = true;
+                plan.writes_output_unconditionally_ = true;
+                while (!output_writes.empty() && output_writes.back().first == batch) output_writes.pop_back();
             }
-            else if (!submission.writes_output &&
-                     (!submission.output_region_count || output_regions.back() != pass.condition_region))
+            else
             {
-                output_regions.push_back(pass.condition_region);
-                ++submission.output_region_count;
+                const BatchOperand write{batch, pass.condition_region};
+                if (output_writes.empty() || output_writes.back() != write) output_writes.push_back(write);
             }
         }
         const bool has_restore = !recording.after.images.empty() || !recording.after.buffers.empty();
@@ -241,11 +318,21 @@ namespace lux::render::detail
         {
             batches.push_back({EQueueRole::GRAPHICS, static_cast<std::uint32_t>(recording.passes.size())});
         }
-        const auto depend = [&](std::uint32_t consumer, std::uint32_t producer, nri::StageBits stages)
+        // Physical queue FIFO covers every earlier producer on the same queue. Keep its latest
+        // batch and accumulate all destination stages while each dependency is discovered.
+        std::array<SubmissionDependency, 3> empty_waits{};
+        for (auto& wait : empty_waits) wait.producer = kGraphInvalidIndex;
+        std::vector waits(batches.size(), empty_waits);
+        const auto depend = [&](std::uint32_t consumer, std::uint32_t producer, nri::StageBits stages) noexcept
         {
-            if (consumer != producer)
+            if (consumer == producer) return;
+            const auto queue = physical[static_cast<std::size_t>(batches[producer].queue)];
+            auto& wait = waits[consumer][queue];
+            if (wait.producer == kGraphInvalidIndex) wait = {producer, stages};
+            else
             {
-                batches[consumer].dependencies.push_back({producer, stages});
+                wait.producer = std::max(wait.producer, producer);
+                wait.stages = combineStages(wait.stages, stages);
             }
         };
         // Consumer stages describe every declared use, even when a covered read emitted no barrier.
@@ -282,17 +369,18 @@ namespace lux::render::detail
             const auto& pass = recording.passes[p];
             const auto transitionDependency = [&](const auto& barrier)
             {
+                batches[pass.submission].uses_history |= resources[barrier.resource].history != kGraphInvalidIndex;
                 if (barrier.previous_slot != kGraphInvalidIndex)
                 {
                     const auto producer = recording.passes[barrier.previous_slot].submission;
                     depend(pass.submission, producer, barrier.native.after.stages);
                 }
             };
-            for (const auto& barrier : pass.before.images)
+            for (const auto& barrier : recording.imageBarriers(pass))
             {
                 transitionDependency(barrier);
             }
-            for (const auto& barrier : pass.before.buffers)
+            for (const auto& barrier : recording.bufferBarriers(pass))
             {
                 transitionDependency(barrier);
             }
@@ -302,10 +390,7 @@ namespace lux::render::detail
         const auto finalHistory = [&](const auto& transition)
         {
             restored[transition.resource] = true;
-            if (resources[transition.resource].history != kGraphInvalidIndex)
-            {
-                batches[last].histories.push_back({transition.resource});
-            }
+            batches[last].uses_history |= resources[transition.resource].history != kGraphInvalidIndex;
         };
         for (const auto& transition : recording.after.images)
         {
@@ -315,10 +400,14 @@ namespace lux::render::detail
         {
             finalHistory(transition);
         }
+        publishBatchOperands(output_writes, plan.output_write_regions_, batches, &SubmissionBatch::output_regions);
+#ifdef LUX_RENDER_DEVELOPMENT_METRICS
+        publishBatchOperands(raster_lists, plan.batch_raster_list_passes_, batches, &SubmissionBatch::raster_list_passes);
+#endif
         for (std::uint32_t b = 0; b < batches.size(); ++b)
         {
             const auto& batch = batches[b];
-            if (initializes_history && !batch.histories.empty())
+            if (batch.uses_history)
             {
                 depend(b, 0, nri::StageBits::ALL);
             }
@@ -352,79 +441,32 @@ namespace lux::render::detail
         for (std::uint32_t b = 0; b < batches.size(); ++b)
         {
             const auto q = physical[static_cast<std::size_t>(batches[b].queue)];
-            auto& head = plan.first_batches_.batches[q];
-            head = std::min(head, b);
             auto& tail = plan.last_batches_.batches[q];
             if (tail != kGraphInvalidIndex) depend(b, tail, nri::StageBits::ALL);
             tail = b;
         }
 
-        const auto retain_transitions = [&](std::uint32_t batch, const BarrierBatch& barriers)
+        std::vector<std::size_t> offsets(batches.size() + 1);
+        for (const auto& batch_waits : waits)
+            for (const auto& edge : batch_waits)
+                if (edge.producer != kGraphInvalidIndex) ++offsets[edge.producer + 1];
+        for (std::size_t i = 1; i < offsets.size(); ++i) offsets[i] += offsets[i - 1];
+
+        plan.batch_dependencies_.resize(offsets.back());
+        plan.batch_successors_.resize(offsets.back());
+        const auto dependencies = std::span{plan.batch_dependencies_};
+        const auto successors = std::span{plan.batch_successors_};
+        std::size_t end = 0;
+        for (std::uint32_t i = 0; i < batches.size(); ++i)
         {
-            for (const auto& transition : barriers.images) retain_use(batch, {transition.resource});
-            for (const auto& transition : barriers.buffers) retain_use(batch, {transition.resource});
-        };
-        for (const auto& pass : recording.passes) retain_transitions(pass.submission, pass.before);
-        retain_transitions(last, recording.after);
-        for (auto& batch : batches)
-        {
-            auto& inputs = batch.imported_resources;
-            std::ranges::sort(inputs, {}, &GraphResourceId::index);
-            inputs.erase(std::ranges::unique(inputs).begin(), inputs.end());
-            std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
-            std::size_t count = 0;
-            for (const auto& dependency : batch.dependencies)
-            {
-                if (count != 0 && batch.dependencies[count - 1].producer == dependency.producer)
-                {
-                    auto& stages = batch.dependencies[count - 1].stages;
-                    stages = combineStages(stages, dependency.stages);
-                }
-                else
-                {
-                    batch.dependencies[count++] = dependency;
-                }
-            }
-            batch.dependencies.resize(count);
-            // Each physical queue has explicit FIFO edges above and signals whole-submit
-            // completion. Its latest producer covers earlier producers, with all wait stages.
-            std::array<SubmissionDependency, 3> latest;
-            for (auto& dependency : latest)
-            {
-                dependency.producer = kGraphInvalidIndex;
-            }
-            for (const auto& dependency : batch.dependencies)
-            {
-                const auto q = physical[static_cast<std::size_t>(batches[dependency.producer].queue)];
-                auto& retained = latest[q];
-                if (retained.producer == kGraphInvalidIndex)
-                {
-                    retained = dependency;
-                }
-                else
-                {
-                    retained.producer = std::max(retained.producer, dependency.producer);
-                    retained.stages = combineStages(retained.stages, dependency.stages);
-                }
-            }
-            batch.dependencies.clear();
-            for (const auto& dependency : latest)
-            {
-                if (dependency.producer != kGraphInvalidIndex)
-                {
-                    batch.dependencies.push_back(dependency);
-                }
-            }
-            std::ranges::sort(batch.dependencies, {}, &SubmissionDependency::producer);
-            std::ranges::sort(batch.histories, {}, &GraphResourceId::index);
-            batch.histories.erase(std::unique(batch.histories.begin(), batch.histories.end()), batch.histories.end());
+            const auto first = end;
+            for (const auto& wait : waits[i])
+                if (wait.producer != kGraphInvalidIndex) dependencies[end++] = wait;
+            batches[i].dependencies = dependencies.subspan(first, end - first);
+            batches[i].successors = successors.subspan(offsets[i], offsets[i + 1] - offsets[i]);
         }
         for (std::uint32_t consumer = 0; consumer < batches.size(); ++consumer)
-        {
-            for (const auto& dependency : batches[consumer].dependencies)
-            {
-                batches[dependency.producer].successors.push_back({consumer, dependency.stages});
-            }
-        }
+            for (const auto& edge : batches[consumer].dependencies)
+                successors[offsets[edge.producer]++] = {consumer, edge.stages};
     }
 } // namespace lux::render::detail

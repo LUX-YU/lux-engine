@@ -3,29 +3,37 @@
 #include <lux/engine/render/resource/material/Data.hpp>
 #include <lux/engine/render/resource/material/Binding.hpp>
 #include <lux/engine/render/resource/ResourceDefinition.hpp>
-#include <lux/engine/render/resource/BuiltinResources.hpp>
 #include <lux/engine/render/graph/DrawResource.hpp>
 #include <lux/engine/render/graph/DrawList.hpp>
 
 namespace lux::render
 {
-    class CpuCallFrame;
-    namespace detail { class RasterMaterialStorage; class SampledTexture2DStorage; }
+    inline constexpr ResourceNameView kMaterialResourceName{"lux.render.resource.material"};
 
-    struct MaterialDrawSources final
+    namespace detail
     {
-        DrawResourceSlot<detail::RasterMaterialStorage> records;
-        std::optional<DrawResourceSlot<detail::SampledTexture2DStorage>> textures;
-    };
+        class MaterialStorage;
+        class SampledTexture2DStorage;
+        struct CpuDrawStorage;
+    }
 
-    class MaterialRecordReader final
+    // Bind once when the Job installs the algorithm. The workspace borrows these owners for that installation.
+    class LUX_RENDER_PUBLIC MaterialDrawBinding final
     {
     public:
-        [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<rdesc::MaterialGpuReference>
-        select(CpuCallFrame&, const MaterialDrawSources&, RasterProgramSlot, MaterialId) noexcept;
+        [[nodiscard]] static RenderResult<MaterialDrawBinding>
+        bind(const InstalledDrawSources&, RasterResourceSlot records, std::optional<RasterResourceSlot> textures) noexcept;
+        [[nodiscard]] RenderResult<rdesc::MaterialGpuReference> record(RasterProgramSlot, MaterialId) const noexcept;
 
     private:
-        std::vector<RasterSampledImageRead> images_;
+        MaterialDrawBinding(
+            const detail::MaterialStorage& materials, const detail::SampledTexture2DStorage* textures,
+            detail::CpuDrawStorage& output
+        ) noexcept : materials_(materials), textures_(textures), output_(output) {}
+
+        const detail::MaterialStorage& materials_;
+        const detail::SampledTexture2DStorage* textures_;
+        detail::CpuDrawStorage& output_;
     };
 
     class MaterialResource final
@@ -35,16 +43,12 @@ namespace lux::render
         using Config = void;
         static inline const ResourceDefinition descriptor{
             kMaterialResourceName,
-            0,
-            0,
+            {},
+            {},
             cxx::make_basic_type_info<MaterialBinding>(),
             "Reflected raster material pages with stable GPU references and sampled texture dependencies.",
             EResourceDomain::DEVICE,
             resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
         };
-
-        using DrawStorage = detail::RasterMaterialStorage;
-
-        [[nodiscard]] static LUX_RENDER_PUBLIC DrawResourceType drawResourceType() noexcept;
     };
 } // namespace lux::render

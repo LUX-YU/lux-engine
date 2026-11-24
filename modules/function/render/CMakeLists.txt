@@ -31,32 +31,33 @@ generate_visibility_header(
 )
 
 set(render_sources
-    src/effect/builtin/DepthPyramid.cpp
-    src/effect/builtin/MeshVisibility.cpp
-    src/effect/builtin/GBuffer.cpp
-    src/effect/builtin/MeshRaster.cpp
-    src/effect/builtin/Shadow.cpp
-    src/effect/MeshSurfaceStream.cpp
+    src/effect/implementations/depth_reduction/Implementation.cpp
+    src/effect/implementations/mesh_visibility/Implementation.cpp
+    src/effect/implementations/deferred_geometry/Implementation.cpp
+    src/effect/implementations/forward_geometry/Implementation.cpp
+    src/effect/implementations/shadow/Implementation.cpp
+    src/effect/implementations/mesh_common/SurfaceDraws.cpp
     src/effect/EffectCatalog.cpp
-    src/effect/EffectGraphBuild.cpp
+    src/effect/EffectFrameWriter.cpp
+    src/graph/compile/EffectLowering.cpp
     src/effect/EffectGraph.cpp
     src/effect/EffectValidation.cpp
-    src/effect/builtin/Lighting.cpp
-    src/effect/builtin/ToneMapping.cpp
+    src/effect/implementations/deferred_lighting/Implementation.cpp
+    src/effect/implementations/tone_mapping/Implementation.cpp
     src/device/CopyEncoding.cpp
     src/runtime/RenderClient.cpp
-    src/frame/FrameLayout.cpp
     src/frame/FrameData.cpp
+    src/frame/FrameLayout.cpp
     src/resource/transform/TransformStorage.cpp
     src/resource/transform/TransformReplicas.cpp
-    src/resource/view/ViewParameterStorage.cpp
+    src/resource/view/SceneViewStorage.cpp
     src/runtime/Target.cpp
     src/core/Error.cpp
     src/graph/RasterViewport.cpp
     src/runtime/commands/Command.cpp
     src/resource/ResourceDefinition.cpp
     src/resource/StorageMeta.cpp
-    src/resource/GraphInstallation.cpp
+    src/resource/ProjectionBindings.cpp
     src/resource/ConstantBufferStorage.cpp
     src/resource/ResourceRegistry.cpp
     src/resource/FinalBufferVersions.cpp
@@ -68,13 +69,16 @@ set(render_sources
     src/graph/PassNormalizer.cpp
     src/graph/compile/GraphAnalysis.cpp
     src/graph/Diagnostics.cpp
-    src/features/mesh/RasterMesh.cpp
-    src/features/lighting/ClusteredLightingWork.cpp
-    src/features/shadow/ShadowProjection.cpp
-    src/features/mesh/MeshVisibilityWork.cpp
-    src/features/common/FullscreenRaster.cpp
+    src/device/PreparedRasterTable.cpp
+    src/resource/RasterProgramSet.cpp
+    src/effect/implementations/mesh_common/PreparedMeshPipelines.cpp
+    src/effect/implementations/mesh_common/IndexedDraws.cpp
+    src/effect/implementations/deferred_lighting/ClusteredLightingWork.cpp
+    src/effect/implementations/shadow/ShadowProjection.cpp
+    src/effect/implementations/mesh_visibility/MeshCulling.cpp
+    src/effect/implementations/common/FullscreenRaster.cpp
     src/resource/lighting/DirectLightingStorage.cpp
-    src/features/mesh/MeshGrouping.cpp
+    src/effect/implementations/mesh_common/DrawBuckets.cpp
     src/device/Error.cpp
     src/device/NativeExecution.cpp
     src/device/JobGpuResources.cpp
@@ -88,9 +92,8 @@ set(render_sources
     src/graph/execute/HistoryState.cpp
     src/target/OffscreenTarget.cpp
     src/target/SwapchainTarget.cpp
-    src/runtime/JobCpuPreparation.cpp
-    src/runtime/PreparedBufferUpload.cpp
-    src/graph/execute/RasterFramePreparation.cpp
+    src/graph/execute/RasterDraws.cpp
+    src/graph/execute/RasterDrawPackets.cpp
     src/graph/execute/RasterFrameAttachments.cpp
     src/graph/execute/RasterFrameDescriptors.cpp
     src/graph/execute/FrameDescriptors.cpp
@@ -98,12 +101,9 @@ set(render_sources
     src/graph/execute/NriRecordCommands.cpp
     src/graph/GraphOutput.cpp
     src/device/CompiledPrograms.cpp
-    src/device/RasterProgramUpdate.cpp
-    src/resource/ProgramInputRevision.cpp
-    src/resource/ResourceProgramUses.cpp
     src/graph/PlanDiagnostics.cpp
     src/graph/compile/BuiltinPass.cpp
-    src/graph/compile/GraphCompiler.cpp
+    src/graph/compile/RenderGraphCompiler.cpp
     src/graph/compile/EffectCompiler.cpp
     src/graph/compile/RecordingDependencies.cpp
     src/graph/compile/RenderingPlan.cpp
@@ -120,27 +120,25 @@ set(render_sources
     src/upload/StagingArena.cpp
     src/device/BufferArena.cpp
     src/resource/texture/SampledTexture2DStorage.cpp
-    src/resource/material/RasterMaterialStorage.cpp
-    src/resource/instance/RasterMeshInstanceStorage.cpp
+    src/resource/material/MaterialStorage.cpp
+    src/resource/instance/MeshInstanceStorage.cpp
     src/resource/mesh/IndexedTriangleMeshStorage.cpp
-    src/runtime/BuiltinRegistration.cpp
-    src/runtime/commands/LightingAdapter.cpp
-    src/runtime/commands/ToneMappingAdapter.cpp
+    src/assembly/BuiltinEffects.cpp
+    src/runtime/commands/TransformAdapter.cpp
+    src/runtime/commands/InstanceAdapter.cpp
+    src/runtime/commands/MaterialAdapter.cpp
     src/runtime/RenderServer.cpp
     src/runtime/commands/CommandRegistry.cpp
     src/runtime/RenderServerImpl.cpp
     src/resource/ResourceScopes.cpp
     src/runtime/FrameProgress.cpp
-    src/runtime/FrameOperation.cpp
     src/runtime/SubmissionOperation.cpp
-    src/runtime/JobControl.cpp
-    src/runtime/JobRelations.cpp
+    src/runtime/JobCommands.cpp
     src/runtime/JobResourceBinding.cpp
     src/runtime/JobExecution.cpp
     src/runtime/JobFrame.cpp
-    src/runtime/JobGraphResources.cpp
+    src/device/JobResourceBindings.cpp
     src/runtime/JobResourceDiagnostics.cpp
-    src/runtime/RasterProgramInputs.cpp
     src/runtime/RenderJob.cpp
     src/runtime/DeviceEntry.cpp
     src/runtime/Scene.cpp
@@ -163,7 +161,7 @@ foreach(shader
     FullscreenVertex
     DeferredLighting DeferredLightingShadow
     DeferredLightingClustered DeferredLightingClusteredShadow
-    TonemapLinear TonemapSrgb
+    TonemapLinear TonemapSrgb TonemapHdrLinear
 )
     set(defines)
     if(shader STREQUAL "FullscreenVertex")
@@ -180,6 +178,8 @@ foreach(shader
         set(source shaders/postprocess/TonemapFragment.slang)
         if(shader STREQUAL "TonemapSrgb")
             list(APPEND defines -DOUTPUT_SRGB=1)
+        elseif(shader STREQUAL "TonemapHdrLinear")
+            list(APPEND defines -DOUTPUT_HDR_LINEAR=1)
         endif()
     endif()
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.hpp")
@@ -255,6 +255,11 @@ target_include_directories(render PRIVATE
 target_include_directories(render_extensions INTERFACE
     "$<BUILD_INTERFACE:${LUX_NRI_SOURCE_DIR}/Include>"
     "$<INSTALL_INTERFACE:include/lux/engine/render/nri>"
+)
+
+install(FILES "shaders/SceneView.slang"
+    DESTINATION include/lux/engine/render/resource/view
+    COMPONENT lux_engine_render
 )
 
 install(DIRECTORY "${LUX_NRI_SOURCE_DIR}/Include/"

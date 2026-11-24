@@ -13,13 +13,13 @@ namespace lux::render::runtime_detail
             return false;
         }
         std::string output = "{\"allocation\":\"compiled physical slots\",\"frames\":[";
-        for (std::size_t i = 0; i < frames_.size(); ++i)
+        for (std::size_t i = 0; i < frame_bindings.frames.size(); ++i)
         {
             if (i)
             {
                 output += ',';
             }
-            const auto& frame = frames_[i];
+            const auto& frame = frame_bindings.frames[i];
             std::uint64_t bytes = 0;
             std::size_t prepared_buffers = 0;
             for (const auto& prepared : frame.native.prepared_buffers)
@@ -36,12 +36,15 @@ namespace lux::render::runtime_detail
                 gpu_.session.nriCore().GetBufferMemoryDesc(*buffer, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
             }
-            for (auto* image : frame.native.images)
+            const auto count_image = [&](nri::Texture& image) noexcept
             {
                 nri::MemoryDesc memory{};
-                gpu_.session.nriCore().GetTextureMemoryDesc(*image, nri::MemoryLocation::DEVICE, memory);
+                gpu_.session.nriCore().GetTextureMemoryDesc(image, nri::MemoryLocation::DEVICE, memory);
                 bytes += memory.size;
-            }
+            };
+            for (auto* image : frame.native.images) count_image(*image);
+            for (const auto& image : frame.native.layered_images) count_image(*image.texture);
+            const auto texture_count = frame.native.images.size() + frame.native.layered_images.size();
             const auto allocated = std::accumulate(
                 frame.native.memories.begin(),
                 frame.native.memories.end(),
@@ -57,7 +60,7 @@ namespace lux::render::runtime_detail
                       ",\"owned_command_buffers\":" + std::to_string(command_count) +
                       ",\"owned_buffers\":" +
                           std::to_string(frame.native.buffers.size() + prepared_buffers) +
-                      ",\"owned_textures\":" + std::to_string(frame.native.images.size()) +
+                      ",\"owned_textures\":" + std::to_string(texture_count) +
                       ",\"allocation_requirement_bytes\":" + std::to_string(bytes) +
                       ",\"explicit_memory_count\":" + std::to_string(frame.native.memories.size()) +
                       ",\"explicit_memory_bytes\":" + std::to_string(allocated) + ",\"memory_bindings\":[";

@@ -3,11 +3,12 @@
 #include <lux/engine/render/runtime/commands/DiscoveryCommands.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/runtime/commands/detail/HandlerRecord.hpp>
+#include <algorithm>
 #include <deque>
 #include <map>
 #include <lux/engine/render/resource/ResourceId.hpp>
 
-namespace lux::render { struct EffectImplementation; }
+namespace lux::render { struct ImplementationEntry; }
 
 namespace lux::render::runtime_detail
 {
@@ -36,6 +37,12 @@ namespace lux::render::runtime_detail
         ResourceInstanceId (*storage)(const platform::ipc::IpcMessage&) noexcept = nullptr;
         graph::NodeId (*effect_node)(const platform::ipc::IpcMessage&) noexcept = nullptr;
 
+        [[nodiscard]] const HandlerBinding* resourceBinding(ResourceTypeId type) const noexcept
+        {
+            const auto found = std::ranges::find(bindings, type, &HandlerBinding::resource);
+            return found == bindings.end() ? nullptr : &*found;
+        }
+
         [[nodiscard]] const HandlerBinding* binding(std::uint32_t index) const noexcept
         {
             return index < bindings.size() ? &bindings[index] : nullptr;
@@ -46,10 +53,26 @@ namespace lux::render::runtime_detail
     class CommandRegistry final
     {
     public:
-        void publishNodeCommands(const EffectNodeDefinition&, std::vector<CommandId>) noexcept;
-        void publishImplementationBindings(const EffectImplementation&, std::vector<CommandBindingLocation>) noexcept;
-        [[nodiscard]] std::span<const CommandId> nodeCommands(const EffectNodeDefinition&) const noexcept;
-        [[nodiscard]] std::span<const CommandBindingLocation> effectBindings(const EffectImplementation&) const noexcept;
+        template <RenderCommand C, auto Method, class Owner>
+        CommandId registerRoutedCommand(Owner& owner) noexcept
+        {
+            CommandBinding binding;
+            binding.initializeDeclaration<C>();
+            binding.call_ = {
+                [](void* object, CommandDispatchContext& context) noexcept
+                {
+                    auto& input = context.request.get<typename C::Request>();
+                    (static_cast<Owner*>(object)->*Method)(std::move(input), context.response_route);
+                },
+                &owner
+            };
+            return registerCommand(std::move(binding));
+        }
+
+        void publishNodeCommands(const EffectCapability&, std::vector<CommandId>) noexcept;
+        void publishImplementationBindings(const ImplementationEntry&, std::vector<CommandBindingLocation>) noexcept;
+        [[nodiscard]] std::span<const CommandId> nodeCommands(const EffectCapability&) const noexcept;
+        [[nodiscard]] std::span<const CommandBindingLocation> effectBindings(const ImplementationEntry&) const noexcept;
 
         CommandId registerCommand(CommandBinding) noexcept;
         [[nodiscard]] RenderResult<void>
@@ -85,8 +108,8 @@ namespace lux::render::runtime_detail
 
         // Handler records have stable addresses; these views borrow their owned names.
         // Setup and Server-owner access only; runtime discovery is an IPC command.
-        std::map<const EffectNodeDefinition*, std::vector<CommandId>> node_commands_;
-        std::map<const EffectImplementation*, std::vector<CommandBindingLocation>> implementation_bindings_;
+        std::map<const EffectCapability*, std::vector<CommandId>> node_commands_;
+        std::map<const ImplementationEntry*, std::vector<CommandBindingLocation>> implementation_bindings_;
         std::deque<std::string> resource_names_;
         std::deque<CommandDescriptor> resource_descriptors_;
         using HandlerName = std::pair<std::string_view, std::string_view>;

@@ -1,25 +1,15 @@
 #include "../Common.slang"
+#include "../SceneView.slang"
 
-struct View
-{
-    mat4 world_to_clip;
-    vec4 planes[6];
-    uvec4 flags;
-};
+#include "VisibilityView.slang"
 
-[[vk::binding(0, 0)]] RWStructuredBuffer<View> views : register(u0, space0);
+[[vk::binding(0, 0)]] RWStructuredBuffer<VisibilityView> views : register(u0, space0);
 
-struct Parameters
-{
-    mat4 view;
-    mat4 projection;
-};
-
-[[vk::push_constant]] ConstantBuffer<Parameters> parameters : register(b0, space255);
+[[vk::binding(1, 0)]] StructuredBuffer<SceneViewGpu> scene_view : register(t1, space0);
 
 void luxMain()
 {
-    mat4 clip = mul(parameters.projection, parameters.view);
+    mat4 clip = mul(scene_view[0].projection, scene_view[0].view);
     mat4 rows = clip;
     views[0].world_to_clip = clip;
     // Homogeneous clip inequalities, forward depth [0, w]. Normalization is unnecessary for

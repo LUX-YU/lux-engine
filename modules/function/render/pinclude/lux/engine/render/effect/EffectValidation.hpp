@@ -1,13 +1,17 @@
 #pragma once
 
+#include <lux/engine/render/effect/EffectImplementation.hpp>
+
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectDiagnostic.hpp>
+#include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/render/effect/EffectGraph.hpp>
 #include <cstdint>
 #include <limits>
 #include <span>
 #include <memory>
-#include <string_view>
+#include <string>
+#include <lux/engine/render/core/ConfigValue.hpp>
 #include <vector>
 
 namespace lux::render::effect_detail
@@ -40,24 +44,21 @@ namespace lux::render::effect_detail
     struct ValidatedEffectNode final
     {
         graph::NodeId source;
-        // Borrows the sealed Catalog for this cold validation and build only.
-        const EffectNodeDefinition* capability;
-        const EffectImplementation* implementation;
-        // Borrows the source EffectGraph owner during initialization/lowering only.
-        std::string_view arguments;
+        // Borrows the sealed Catalog for the lifetime of the configured Effect.
+        const EffectCapability* capability;
+        const ImplementationEntry* implementation;
         EffectTableRange pins;
         bool live = false;
+        std::unique_ptr<EffectImplementation> configured;
     };
 
     struct ValidatedEffectOutput final
     {
-        // Same bounded source-owner borrow as arguments; no runtime owner is created.
-        std::string_view name;
         std::uint32_t pin = kInvalidEffectIndex;
         bool target = false;
     };
 
-    // Compile scratch only. This is neither the published Effect nor a second executable graph.
+    // The Effect retains this device-independent topology after releasing the editable graph.
     // Node order is stable NodeId order; pin order is capability declaration order.
     struct ValidatedEffectGraph final
     {
@@ -67,6 +68,10 @@ namespace lux::render::effect_detail
         std::vector<std::uint32_t> topological_order;
         std::vector<ValidatedEffectOutput> outputs;
     };
+
+    [[nodiscard]] RenderError reportEffectFailure(
+        const RenderErrorSink&, RenderError, const EffectDiagnostic&, std::string_view
+    ) noexcept;
 
     using EffectValidationResult = cxx::expected<ValidatedEffectGraph, EffectDiagnostic>;
 

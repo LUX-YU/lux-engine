@@ -43,6 +43,9 @@ namespace lux::render::detail
             return swap_chain_ != nullptr;
         }
 
+        [[nodiscard]] RenderResult<void> preflightPresentation(EDisplayMode, bool display_changed = false) noexcept;
+        [[nodiscard]] float sdrWhiteNits() const noexcept { return available() ? sdr_white_nits_ : 0.F; }
+
         TargetState state;
 
         [[nodiscard]] bool needsRecreation() const noexcept
@@ -51,7 +54,8 @@ namespace lux::render::detail
         }
 
         [[nodiscard]] RenderResult<bool> prefetched() const noexcept;
-        [[nodiscard]] RenderResult<bool> bindImage(std::uint32_t frame_slot) noexcept;
+        // Admission observed READY on this owner turn. Binding consumes no semaphore.
+        void bindReadyImage(std::uint32_t frame_slot) noexcept;
 
         enum class ENativeStep : std::uint8_t { NONE, ACQUIRE, PRESENT };
         [[nodiscard]] ENativeStep beginAdvance(bool acquire) noexcept;
@@ -81,6 +85,7 @@ namespace lux::render::detail
         }
 
         SwapchainTarget(DeviceSession&, TargetDesc, SurfaceDescription) noexcept;
+        [[nodiscard]] RenderResult<void> readHdrDisplay() noexcept;
 
         [[nodiscard]] bool nativePending() const noexcept
         {
@@ -114,6 +119,7 @@ namespace lux::render::detail
         DeviceSession& session_;
         TargetDesc description_;
         SurfaceDescription surface_;
+        float sdr_white_nits_ = 0.F;
         nri::SwapChainInterface swap_chain_operations_{};
         nri::SwapChain* swap_chain_ = nullptr;
         std::vector<nri::Texture*> images_; // Borrowed from the swap chain.

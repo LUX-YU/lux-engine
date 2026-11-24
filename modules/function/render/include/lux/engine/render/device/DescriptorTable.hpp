@@ -11,6 +11,8 @@
 #include <lux/engine/render/graph/Sampler.hpp>
 #include <vector>
 
+namespace lux::render::runtime_detail { struct DeviceRound; }
+
 namespace lux::render
 {
     struct DeviceOptions;
@@ -19,7 +21,6 @@ namespace lux::render
 namespace lux::render::detail
 {
     class DeviceSession;
-    class FrameOperation;
     struct DescriptorSlotTag;
 
     // Device-thread owner of stable descriptor indices and replaceable physical tables.
@@ -56,6 +57,8 @@ namespace lux::render::detail
         // Recorded commands may retain this Set only while observing the native generation on reuse.
         [[nodiscard]] nri::DescriptorSet* descriptors(nri::DescriptorType) const noexcept;
         [[nodiscard]] std::uint32_t capacity(nri::DescriptorType) const noexcept;
+        [[nodiscard]] nri::Descriptor* textureView(Slot slot) const noexcept;
+
 
         // D3D12 binds one resource/sampler heap pair. Copy shared tables into the writable frame's pool.
         struct Snapshot final
@@ -72,7 +75,7 @@ namespace lux::render::detail
         [[nodiscard]] RenderResult<void> updateSnapshot(Snapshot&) const noexcept;
 
     private:
-        friend class FrameOperation;
+        friend struct runtime_detail::DeviceRound;
 
         struct NativePoolTag;
         using NativePoolId = cxx::SlotKey<NativePoolTag>;
@@ -84,8 +87,6 @@ namespace lux::render::detail
             std::uint32_t readers = 0;
             bool replaced = false;
         };
-
-        using NativeBindingSelection = std::array<NativePoolId, 3>;
 
         struct Entry final
         {
@@ -121,9 +122,8 @@ namespace lux::render::detail
         };
 
         [[nodiscard]] RenderResult<void> reserve(nri::DescriptorType, std::uint32_t required) noexcept;
-        [[nodiscard]] NativeBindingSelection nativeBindingSelection() const noexcept;
-        void retainNativeBindings(const NativeBindingSelection&) noexcept;
-        void releaseNativeBindings(const NativeBindingSelection&) noexcept;
+        void retainFramePools(std::vector<NativePoolId>& held) noexcept;
+        void releaseFramePools(std::vector<NativePoolId>& held) noexcept;
         void retirePool(NativePoolId) noexcept;
         void destroyPool(NativePoolId) noexcept;
 

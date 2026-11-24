@@ -25,7 +25,7 @@ struct Property
     uint material_record;
     uint section_index;
     uint render_flags;
-    uint transform_record;
+    uint transform_id;
 };
 #ifdef PAGED_INSTANCES
 struct Address
@@ -47,14 +47,9 @@ struct PageAddresses
 [[vk::binding(1, 0)]] StructuredBuffer<Word> alive : register(t1, space0);
 [[vk::binding(7, 0)]] StructuredBuffer<Property> properties : register(t7, space0);
 #endif
-struct View
-{
-    mat4 world_to_clip;
-    vec4 planes[6];
-    uvec4 flags;
-};
+#include "VisibilityView.slang"
 
-[[vk::binding(2, 0)]] StructuredBuffer<View> views : register(t2, space0);
+[[vk::binding(2, 0)]] StructuredBuffer<VisibilityView> views : register(t2, space0);
 
 struct Lux_candidates
 {
@@ -63,20 +58,7 @@ struct Lux_candidates
 
 [[vk::binding(3, 0)]] StructuredBuffer<Lux_candidates> candidates : register(t3, space0);
 
-// Records/chunk indices address the dense live-group table, not recycled CPU logical slots.
-struct DrawGroup
-{
-    uint index_count;
-    uint candidate_count;
-    uint first_index;
-    int vertex_offset;
-    uint candidate_offset;
-    uint visible_offset;
-    uint visible_stride;
-    uint view_count;
-    vec4 center;
-    vec4 half_extent;
-};
+#include "DrawGroup.slang"
 
 [[vk::binding(4, 0)]] StructuredBuffer<DrawGroup> groups : register(t4, space0);
 
@@ -135,10 +117,10 @@ void luxMain()
         if (included)
         {
 #ifdef PAGED_INSTANCES
-            uint transform = property.transform_record;
+            uint transform = property.transform_id;
             model = ((Transform*)luxAddress(transforms[transform >> 14].value))[transform & 16383].model;
 #else
-            model = transforms[property.transform_record].model;
+            model = transforms[property.transform_id].model;
 #endif
             float determinant = dot(transpose(model)[0].xyz, cross(transpose(model)[1].xyz, transpose(model)[2].xyz));
             winding = determinant < 0 ? 1 : 0;

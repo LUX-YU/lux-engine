@@ -1,5 +1,3 @@
-#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
-#include <lux/engine/render/runtime/commands/TransformCommands.hpp>
 #include <lux/engine/render/resource/transform/TransformStorage.hpp>
 
 #include <lux/engine/render/device/DeviceSession.hpp>
@@ -7,42 +5,11 @@
 #include <lux/engine/render/runtime/FrameProgress.hpp>
 #include <lux/engine/render/resource/transform/Resource.hpp>
 #include <lux/engine/render/resource/transform/Binding.hpp>
-#include <utility>
 
 namespace lux::render::detail
 {
     namespace
     {
-        void createTransforms(
-            TransformStorage& storage, const TransformCommands::Create::Request& input,
-            TransformCommands::Create::Response& reply
-        ) noexcept
-        {
-            auto result = storage.create(input.matrices);
-            reply = result ? TransformCommands::Create::Response{{}, std::move(*result)}
-                           : TransformCommands::Create::Response{result.error()};
-        }
-
-        RenderResult<void>
-        updateTransforms(TransformStorage& storage, std::span<const TransformRecordUpdate> values) noexcept
-        {
-            return storage.update(values);
-        }
-
-        void updateTransformsCommand(
-            TransformStorage& storage, const TransformCommands::Update::Request& input, AckResponse& reply
-        ) noexcept
-        {
-            const auto result = updateTransforms(storage, input.values);
-            reply.error = result ? RenderError{} : result.error();
-        }
-
-        void releaseTransform(TransformStorage& storage, const TransformId& id, AckResponse& reply) noexcept
-        {
-            const auto result = storage.release(id);
-            reply.error = result ? RenderError{} : result.error();
-        }
-
         RenderResult<std::unique_ptr<TransformStorage>>
         createTransformStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
         {
@@ -60,14 +27,14 @@ namespace lux::render::detail
     {
     }
 
-    RenderResult<std::vector<TransformId>> TransformStorage::create(std::span<const TransformMatrix> matrices) noexcept
+    RenderResult<std::vector<TransformRef>> TransformStorage::create(std::span<const TransformMatrix> matrices) noexcept
     {
-        if (matrices.empty()) return std::vector<TransformId>{};
+        if (matrices.empty()) return std::vector<TransformRef>{};
         collectRetired();
-        if (revision_ == UINT64_MAX || !records_.canInsert(matrices.size()))
+        if (!records_.canInsert(matrices.size()))
             return cxx::unexpected(RenderError{kStorageCapacity});
         if (!std::ranges::all_of(matrices, isFiniteTransform)) return cxx::unexpected(RenderError{kStorageContract});
-        std::vector<TransformId> identities;
+        std::vector<TransformRef> identities;
         identities.reserve(matrices.size());
         for (const auto& matrix : matrices)
         {
@@ -75,14 +42,12 @@ namespace lux::render::detail
             markDirty(extension_detail::ResourceIdentity::local(id).index);
             identities.push_back(id);
         }
-        ++revision_;
         return identities;
     }
 
     RenderResult<void> TransformStorage::update(std::span<const TransformRecordUpdate> updates) noexcept
     {
         if (updates.empty()) return {};
-        if (revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
         for (const auto& update : updates)
         {
             if (!records_.contains(update.transform)) return cxx::unexpected(RenderError{kStorageIdentity});
@@ -94,11 +59,10 @@ namespace lux::render::detail
             records_.writeValidated(slot, update.matrix);
             markDirty(slot);
         }
-        ++revision_;
         return {};
     }
 
-    RenderResult<void> TransformStorage::release(TransformId id) noexcept
+    RenderResult<void> TransformStorage::release(TransformRef id) noexcept
     {
         auto released = records_.release(id);
         if (!released) return released;
@@ -123,55 +87,31 @@ namespace lux::render::detail
         }
     }
 
-    std::span<const CommandBinding> transformStorageCommands() noexcept
-    {
-        static const std::array commands{
-            CommandBinding::declare<TransformCommands::Create, &createTransforms>(),
-            CommandBinding::declare<TransformCommands::Update, &updateTransformsCommand>(),
-            CommandBinding::declare<TransformCommands::Release, &releaseTransform>()
-        };
-        return commands;
-    }
-
     ResourceRegistration TransformStorage::factory() noexcept
     {
-        static const auto frame_call =
-            FrameDataCall::declare<TransformResource, TransformStorage, &updateTransforms>();
         static const StorageBindingOps binding{
-            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            .prepareFrame = [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<TransformStorage*>(value)->prepareFrame(frame.slot, uploads); },
-            [](const void* value) noexcept { return &static_cast<const TransformStorage*>(value)->revision_; },
-            [](const void* value, std::uint32_t projection) noexcept -> RenderResult<StorageGraphImport>
+            .describeGraphImport = [](const void* value, std::uint32_t projection) noexcept -> RenderResult<ResourceProjection>
             {
                 const auto& owner = *static_cast<const TransformStorage*>(value);
-                const auto expected = owner.paged_ ? ETransformGraphProjection::PAGE_ADDRESSES :
-                    ETransformGraphProjection::RECORDS;
+                const auto expected = transformGraphProjection(owner.paged_);
                 if (projection != static_cast<std::uint32_t>(expected))
                     return cxx::unexpected(RenderError{kStorageMismatch});
-                const auto bytes = owner.paged_ ?
-                    kTransformInitialPageAddresses * sizeof(std::uint64_t) : sizeof(TransformMatrix);
-                return StorageGraphImport{
-                    GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ,
-                    EGraphUse::STORAGE_READ
-                };
+                return TransformResource::projection(expected);
             },
-            [](void* value, std::uint32_t projection, const VGraphResourceDesc& plan,
+            .resolveGraphImport = [](void* value, std::uint32_t projection, const VGraphResourceDesc& plan,
                std::span<ResourceInput> output) noexcept -> RenderResult<void>
             {
                 auto& owner = *static_cast<TransformStorage*>(value);
-                const auto expected = owner.paged_ ? ETransformGraphProjection::PAGE_ADDRESSES :
-                    ETransformGraphProjection::RECORDS;
+                const auto expected = transformGraphProjection(owner.paged_);
                 if (projection != static_cast<std::uint32_t>(expected))
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 return owner.resolve(plan, output);
             },
-            nullptr,
-            [](void* value, const ReplicaSettlement& settlement) noexcept
+            .settleFrame = [](void* value, const ReplicaSettlement& settlement) noexcept
             { static_cast<TransformStorage*>(value)->finishPreparation(settlement); }
         };
-        return makeResourceRegistration<TransformResource, TransformStorage, createTransformStorage>(
-            &binding,
-            frame_call
-        );
+        return makeResourceRegistration<TransformResource, TransformStorage, createTransformStorage, &TransformStorage::update>(&binding);
     }
 } // namespace lux::render::detail

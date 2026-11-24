@@ -27,7 +27,7 @@ namespace lux::render::detail
                 const auto* image = binding(dispatch->image).image;
                 if (!image) return cxx::unexpected(RenderError{kDeviceArgument});
                 const auto& desc = core.GetTextureDesc(*image);
-                auto groups = dispatchGroups(*dispatch, {desc.width, desc.height}, session.description());
+                auto groups = dispatchGroups(*dispatch, {desc.width, desc.height, desc.depth}, session.description());
                 if (!groups) return cxx::unexpected(groups.error());
             }
         }
@@ -64,7 +64,7 @@ namespace lux::render::detail
                 const auto* image = binding(operand.slot).image;
                 if (!image) return cxx::unexpected(RenderError{kDeviceArgument});
                 const auto& desc = core.GetTextureDesc(*image);
-                return copyRegion(operand, {desc.width, desc.height});
+                return copyRegion(operand, {desc.width, desc.height, desc.depth});
             };
             const auto& transfers = plan.recordingProgram().transfers;
             for (const auto packet : transfers.commands(*transfer))
@@ -76,7 +76,7 @@ namespace lux::render::detail
                     if (!from) return cxx::unexpected(from.error());
                     auto to = resolve(copy.destination);
                     if (!to) return cxx::unexpected(to.error());
-                    if (from->width != to->width || from->height != to->height)
+                    if (from->width != to->width || from->height != to->height || from->depth != to->depth)
                         return cxx::unexpected(RenderError{kInvalidTargetExtent});
                 }
                 else if (packet.opcode == ETransferOpcode::UPLOAD || packet.opcode == ETransferOpcode::READBACK)

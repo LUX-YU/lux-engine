@@ -35,7 +35,8 @@ namespace lux::render
         std::array<std::uint32_t, 3> descriptor_layout_limits{};
         // Physical allocation grows independently from the immutable layout limit.
         std::array<std::uint32_t, 3> descriptor_initial_counts{256, 16, 64};
-        std::array<std::uint32_t, 3> private_descriptor_reserve{0, 0, 4};
+        // Leave room for the built-in mesh vertex inputs beside the shared material table.
+        std::array<std::uint32_t, 3> private_descriptor_reserve{0, 0, 5};
         // Number of zero-user native programs retained; active programs are not constrained by this budget.
         std::uint32_t cached_unused_programs = 256;
         EGraphicsBackend backend = EGraphicsBackend::VULKAN;

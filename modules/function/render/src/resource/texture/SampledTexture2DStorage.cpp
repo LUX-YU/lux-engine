@@ -1,3 +1,5 @@
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/runtime/commands/TextureCommands.hpp>
 #include <NRI.h>
@@ -11,7 +13,7 @@
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
-#include <lux/engine/render/effect/CpuCallFrame.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/upload/ImageTransfer.hpp>
 
 namespace lux::render::detail
@@ -458,21 +460,25 @@ namespace lux::render::detail
 
 namespace lux::render
 {
-    DrawResourceType TextureResource::drawResourceType() noexcept
+    RenderResult<TextureDrawBinding>
+    TextureDrawBinding::bind(const InstalledDrawSources& sources, RasterResourceSlot slot) noexcept
     {
-        return {ResourceName{kTextureResourceName.name()}, cxx::make_basic_type_info<detail::SampledTexture2DStorage>()};
+        const auto source = sources.bind<detail::SampledTexture2DStorage>(slot, EDrawResourceRead::SAMPLED_IMAGES);
+        if (!source) return cxx::unexpected(source.error());
+        if (!source->owner) return cxx::unexpected(RenderError{kStorageIdentity});
+        return TextureDrawBinding{*source->owner, source->output};
     }
 
-    RenderResult<TextureGpuRef>
-    TextureResource::sample(CpuCallFrame& frame, DrawResourceSlot<DrawStorage> source, TextureId id) noexcept
+    RenderResult<TextureGpuRef> TextureDrawBinding::sample(TextureId id) const noexcept
     {
-        auto storage = frame.readDrawResource(source);
-        if (!storage) return cxx::unexpected(storage.error());
-        const auto* image = *storage ? (*storage)->find(id) : nullptr;
+        if (output_.frame_slot == kGraphInvalidIndex) return cxx::unexpected(RenderError{kFrameContract});
+        const auto* image = storage_.find(id);
         if (!image) return cxx::unexpected(RenderError{kStorageIdentity});
-        const auto& desc = image->description();
-        auto read = frame.useSampledImage(source, image->image(), {1, 0, desc.mipNum, 0, desc.layerNum});
-        if (!read) return cxx::unexpected(read.error());
+        if constexpr (detail::kCollectReadMetrics)
+        {
+            const auto& desc = image->description();
+            output_.textures.push_back({&image->image(), {1, 0, desc.mipNum, 0, desc.layerNum}});
+        }
         return image->gpuReference();
     }
-}
+} // namespace lux::render

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/runtime/TargetId.hpp>
 #include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/effect/EffectId.hpp>
 #include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/render/runtime/Target.hpp>
 #include <optional>
@@ -19,6 +20,10 @@ namespace lux::render
     {
         TargetId target{};
         TargetDesc description{};
+        // Replacement for the installed surface writer. Prepare the Effect on this device before reconfiguration.
+        EffectId output_effect{};
+        // A host display-change event can require a fresh WSI/display description even at the same extent.
+        bool display_changed = false;
     };
 
     struct TargetCreated final
@@ -30,6 +35,8 @@ namespace lux::render
         // Physical output still exists after this attempt; false after an unsuccessful WSI replacement.
         // This does not mean a new image has been rendered or presented.
         bool output_available{};
+        // Display-referred SDR white for linear HDR composition. Zero when no HDR surface is available.
+        float sdr_white_nits{};
     };
 
     struct CreateTarget final
@@ -39,8 +46,8 @@ namespace lux::render
         using Response = TargetCreated;
     };
 
-    // On success the Target is paused. Apply the replied dimensions and SetTargetActive(true)
-    // together in the next complete frame; earlier queued frames cannot draw with stale size-dependent inputs.
+    // A mode switch with a replacement Effect retains the writer and its activation. Other resizes pause the Target.
+    // Resume a paused Target with the epoch returned by ResizeTarget.
     struct ResizeTarget final
     {
         // If a WSI replacement fails after retiring the previous chain, output_available is false.

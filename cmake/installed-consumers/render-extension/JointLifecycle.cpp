@@ -1,7 +1,7 @@
 #include "BufferProductFixture.hpp"
 #include "JointAverage.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <cmath>
 
@@ -10,7 +10,7 @@ namespace
     namespace graph = lux::graph;
     using sdk_buffers::ProductBuffer;
     using sdk_buffers::ProductDescriptor;
-    constexpr auto hdr = ToneMapping::color;
+    constexpr auto hdr = ToneMappingPorts::color.semantic;
     constexpr std::uint32_t equal_word = 0x5a5a5a5a, distinct_word = 0x6b6b6b6b;
     constexpr auto display = effectPortSemantic("display");
     constexpr auto result = effectPortSemantic("result");
@@ -67,10 +67,10 @@ namespace
         {
             static const StorageBindingOps binding{
                 .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
-                    -> RenderResult<StorageGraphImport>
+                    -> RenderResult<ResourceProjection>
                 {
                     if (projection) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport{
+                    return ResourceProjection{
                         GraphBufferDesc{4}, {GraphBufferRange{0, 4}},
                         EGraphUse::TRANSFER_SOURCE, EGraphUse::TRANSFER_SOURCE
                     };
@@ -108,15 +108,14 @@ namespace
 
     ResourceVersion outputBuffer(EffectCompileContext& context, std::string_view name, GraphBufferRange bytes)
     {
-        return take(context.importFinalBuffer(name, {ResourceName{ProductDescriptor::descriptor.type.name()}}, {
+        return take(context.importFinalBuffer(name, ProductDescriptor::descriptor.type, {
             "", GraphBufferDesc{ProductBuffer::bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, bytes
         }));
     }
 
     ResourceVersion captureBuffer(EffectCompileContext& context, std::string_view name)
     {
-        const auto type = ResourceName{GraphCaptureDescriptor::descriptor.type.name()};
-        return take(context.importFinalBuffer(name, {type}, {
+        return take(context.importFinalBuffer(name, GraphCaptureDescriptor::descriptor.type, {
             "", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
             EGraphUse::TRANSFER_DESTINATION, report_bytes
         }));
@@ -125,15 +124,15 @@ namespace
     ResourceVersion
     inputBuffer(EffectCompileContext& context, std::string_view name, ResourceNameView type, std::uint32_t bytes)
     {
-        return take(context.importResource(name, {ResourceName{type.name()}}, {
-            "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, bytes}}, EGraphUse::TRANSFER_SOURCE
+        return take(context.importResource(name, type, {
+            GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::TRANSFER_SOURCE
         }));
     }
 
     RenderResult<void> buildSource(EffectCompileContext& context, std::string_view mode) noexcept
     {
         const GraphImageDesc desc{64, 64, 1, 1, half_float};
-        if (mode != "inputs")
+        if (mode != "inputs" && mode != "feedback")
         {
             const bool bright = mode == "bright";
             const auto rgb = bright ? std::array{.25f, .5f, .75f, 1.f} : std::array{.125f, .375f, .625f, 1.f};
@@ -144,24 +143,31 @@ namespace
         ++source_builds;
         const auto first = take(context.importTargetImage("first", half_float));
         const auto second = take(context.importTargetImage("second", half_float));
-        const auto same = take(context.sameBinding(first.resource, second.resource));
         const auto mixed = take(context.declareResource({"average", desc}));
         const auto program = take(context.addProgram(GraphProgram{kJointAverage.load(context.shaderTarget())}));
+        const auto average = [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
+        {
+            ComputeWork work;
+            work.interface.program = program;
+            work.interface.resources = {
+                {"first_image", {first}}, {"second_image", {second}},
+                {"generated", {{mixed, 0}, {}, EGraphAccess::WRITE}}
+            };
+            work.dispatch = ImageDispatchArguments{mixed};
+            auto pass = arm.addComputePass("average HDR sources", std::move(work));
+            if (!pass) return lux::cxx::unexpected(pass.error());
+            return pass->written.front();
+        };
+        if (mode == "feedback")
+        {
+            const auto value = take(average(context));
+            const auto output = take(context.declareResource({"published color", desc}));
+            const auto copy = take(context.addTransferPass("publish average", TransferWork{{CopyImage{{value}, {{output, 0}}}}}));
+            return context.publish(hdr, {{hdr, copy.written.front()}});
+        }
+        const auto same = take(context.sameBinding(first.resource, second.resource));
         const auto selected = take(context.choose(same,
-            [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion> { return first; },
-            [&](EffectCompileContext& arm) noexcept -> RenderResult<ResourceVersion>
-            {
-                ComputeWork work;
-                work.interface.program = program;
-                work.interface.resources = {
-                    {"first_image", {first}}, {"second_image", {second}},
-                    {"generated", {{mixed, 0}, {}, EGraphAccess::WRITE}}
-                };
-                work.dispatch = ImageDispatchArguments{mixed};
-                auto pass = arm.addComputePass("average HDR sources", std::move(work));
-                if (!pass) return lux::cxx::unexpected(pass.error());
-                return pass->written.front();
-            }
+            [&](EffectCompileContext&) noexcept -> RenderResult<ResourceVersion> { return first; }, average
         ));
         return context.publish(hdr, {{hdr, selected}});
     }
@@ -248,26 +254,18 @@ namespace
         return context.publish(result, {{result, copy.written.front()}});
     }
 
-    EffectNodeDefinition definition(std::string_view name)
+    EffectCapability definition(std::string_view name)
     {
-        EffectNodeDefinition cap;
-        cap.identity = {graph::nodeTypeId(name), std::string{name}, 1};
-        if (name == source_name)
-            cap.ports = {
-                {hdr, "color", {std::string{HdrColorBundle::type}, 1}, graph::EPinDirection::OUTPUT}
-            };
-        else
-        {
-            cap.ports = {{result, "result", {"test.sdk.report", 1}, graph::EPinDirection::OUTPUT}};
-            if (name == report_name)
-            {
-                cap.ports.push_back({
-                    display, "display", {std::string{ToneMapping::display_type}, 1},
-                    graph::EPinDirection::INPUT, 1, true
-                });
-            }
-        }
-        return cap;
+        static constexpr EffectPortDefinition source[]{
+            {hdr, "color", {HdrColorBundle::type, 1}, graph::EPinDirection::OUTPUT}
+        };
+        static constexpr EffectPortDefinition report[]{
+            {result, "result", {"test.sdk.report", 1}, graph::EPinDirection::OUTPUT},
+            {display, "display", {kDisplayColorType, 1}, graph::EPinDirection::INPUT, 1, true}
+        };
+        auto ports = std::span<const EffectPortDefinition>{report}.first(name == report_name ? 2 : 1);
+        if (name == source_name) ports = source;
+        return {.id = graph::nodeTypeId(name), .canonical_name = name, .ports = ports};
     }
 
     void install(RenderServer& server, std::string_view name, decltype(EffectImplementation::build) build)
@@ -275,7 +273,7 @@ namespace
         const auto cap = definition(name);
         CHECK(server.registerEffectCapability(cap));
         EffectImplementation impl;
-        impl.capability = cap.identity.id;
+        impl.capability = cap.id;
         impl.identity = {std::string{name}, 1};
         impl.supported_outputs = name == source_name ? std::vector{hdr} : std::vector{result};
         impl.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
@@ -306,11 +304,11 @@ namespace
             if (mode == "inputs")
             {
                 const auto tone = take(edit.addNode(
-                    ToneMapping::definition(), {std::string{ToneMapping::linear}, 1}, "exposure=0"
+                    capabilities::ToneMapping, {std::string{"lux.render.tone_mapping.linear"}, 1}, "exposure=0"
                 ));
                 const auto sink = node(report_name, {});
-                const auto mapped = edit.pinId(tone, ToneMapping::color);
-                CHECK(edit.connect(color, edit.pinId(tone, ToneMapping::hdr_color)));
+                const auto mapped = edit.pinId(tone, ToneMappingPorts::color.semantic);
+                CHECK(edit.connect(color, edit.pinId(tone, ToneMappingPorts::hdr_color.semantic)));
                 CHECK(edit.connect(mapped, edit.pinId(sink, display)));
                 CHECK(edit.setOutput("color", mapped, true));
                 CHECK(edit.setOutput("frame", edit.pinId(sink, result)));
@@ -342,7 +340,7 @@ namespace
 
     void verify(const CapturedPixels& capture, std::uint32_t slot, ExpectedReport expected)
     {
-        CHECK(capture.frames.size() == 2 && slot < capture.frames.size());
+        CHECK(slot < capture.frames.size());
         std::array<std::uint32_t, 4> words{};
         const auto& frame = capture.frames[slot];
         CHECK(frame.size() >= sizeof(words));
@@ -522,7 +520,7 @@ namespace
         TargetId target_;
     };
 
-    bool jointLifecycle(const Session& session, const RenderServer& server)
+    bool jointLifecycle(const Session& session, const RenderServer& server, bool single_slot)
     {
         const auto dim = session.target(true);
         const auto bright = session.target(true);
@@ -534,6 +532,27 @@ namespace
         session.send<RequestRenderJob>({dim_job});
         session.send<RequestRenderJob>({bright_job});
 
+        const auto publish_average = [&]
+        {
+            JobBinding inputs;
+            inputs.target_images = {
+                {dim, "first", EProductRead::LATEST_PUBLISHED}, {bright, "second", EProductRead::CURRENT_RUN}
+            };
+            const auto feedback = session.prepare("feedback");
+            session.send<RebindRenderJobEffect>({session.device, dim_job, feedback, dim, inputs});
+            // Making bright read dim in the current round would close a real two-Target cycle.
+            inputs.target_images.front().read = EProductRead::CURRENT_RUN;
+            inputs.target_images.back().read = EProductRead::LATEST_PUBLISHED;
+            const auto cycle = session.send<RebindRenderJobEffect>({session.device, bright_job, feedback, bright, inputs}, false);
+            CHECK(cycle.error.type == kJobCycle);
+            session.send<RequestRenderJob>({bright_job});
+            const auto self = session.send<RebindRenderJobEffect>({session.device, dim_job, feedback, dim, inputs}, false);
+            CHECK(self.error.type == kCommandContract);
+            inputs.target_images.front().read = EProductRead::LATEST_PUBLISHED;
+            session.send<RebindRenderJobEffect>({session.device, dim_job, feedback, dim, inputs});
+            session.send<RequestRenderJob>({dim_job});
+        };
+
         ReceiptReader reader{session};
         const auto before = server.stats().compiled_graphs;
         const auto effect = session.prepare("inputs");
@@ -542,11 +561,21 @@ namespace
         JobBinding binding;
         binding.inputs.conditions = {1, 1};
         binding.resources = {{"shared_seed", seed}};
-        binding.target_images = {{dim, "first"}, {dim, "second"}};
+        binding.target_images = {{dim, "first", EProductRead::LATEST_PUBLISHED}, {dim, "second", EProductRead::LATEST_PUBLISHED}};
         CapturePair captures_a, captures_b;
         auto inputs_a = binding;
         captures_a.bind(session, inputs_a, false);
         auto a = session.writer(effect, std::move(inputs_a));
+        if (single_slot)
+        {
+            publish_average();
+            const auto frame = session.frame(a, {1, 1});
+            CHECK(frame.slot_index == 0);
+            for (const auto job : {a.job, dim_job, bright_job}) stopAndRemoveJob(session.client, session.commands, job);
+            captures_a.finish(session, frame, {false, equal_word, fallback_word});
+            std::puts("ONE FIF PASS: writer sampled its previous physical image and published the expected mixed pixel");
+            return true;
+        }
         binding.target_images.front().target = bright;
         captures_b.bind(session, binding, true);
         auto b = session.writer(effect, std::move(binding));
@@ -583,14 +612,15 @@ namespace
         reader.read(b.report(), refreshed, {true, distinct_word, fallback_word});
 
         session.send<StopRenderJob>(a.job);
-        a.binding.target_images.front().target = bright;
+        publish_average();
+        // Both operands now read that single average. The report also verifies the equal-binding branch.
         session.send<StartRenderJob>({session.device, a.job, a.target, a.binding});
         const auto progress = session.send<QueryExecutionProgress>(a.job);
         CHECK(progress.progress.count(EExecutionOutcome::EXECUTED) == 0);
         const auto restarted = session.frame(a, {1, 1});
         reader.read(a.report(), restarted, {false, equal_word, fallback_word});
         const auto compiles = server.stats().compiled_graphs - before;
-        CHECK(compiles == 1 && source_builds == 1 && report_builds == 1);
+        CHECK(compiles == 2 && source_builds == 2 && report_builds == 1);
         std::printf("Prepare/Start/Rebind/restart compiled graphs=%llu; conflict=kJobBusy\n",
             static_cast<unsigned long long>(compiles));
         for (const auto job : {a.job, b.job, bright_job, dim_job})
@@ -607,7 +637,8 @@ int main(int argc, char** argv)
     auto execution = lux::execution::ExecutionRuntime::create({2, 128, {128}});
     CHECK(execution);
     RenderServerConfig config{"installed.joint.lifecycle", nativeValidationEnabled()};
-    config.frames_in_flight = 2;
+    const bool single_slot = argc > 2 && std::string_view{argv[2]} == "single-slot";
+    config.frames_in_flight = single_slot ? 1 : 2;
     auto server = take(RenderServer::create(config, **execution));
     take(server->registerResource<ProductBuffer>());
     take(server->registerResource<SharedWord>());
@@ -626,10 +657,11 @@ int main(int argc, char** argv)
     options.texture_descriptors = true;
     const auto device = call<CreateDeviceSession>(*requester, commands, options).device;
     const auto scene = call<CreateScene>(*requester, commands, {}).scene;
-    const bool delayed = jointLifecycle({*requester, commands, device, scene}, *server);
+    const bool delayed = jointLifecycle({*requester, commands, device, scene}, *server, single_slot);
     server->stop();
     owner.join();
     CHECK(running && server->stats().validation_errors == 0);
+    if (single_slot) return 0;
     std::printf("joint lifecycle: independent History, accepted Rebind and restart, delayed reader=%d\n",
         int(delayed));
     return delayed ? 0 : 77;

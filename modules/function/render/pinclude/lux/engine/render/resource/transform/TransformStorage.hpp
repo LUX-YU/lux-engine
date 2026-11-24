@@ -28,12 +28,12 @@ namespace lux::render::detail
         TransformStorage(ResourceCreateContext&, ResourceInstanceId) noexcept;
         ~TransformStorage() noexcept;
         [[nodiscard]] static ResourceRegistration factory() noexcept;
-        [[nodiscard]] RenderResult<std::vector<TransformId>> create(std::span<const TransformMatrix>) noexcept;
+        [[nodiscard]] RenderResult<std::vector<TransformRef>> create(std::span<const TransformMatrix>) noexcept;
         [[nodiscard]] RenderResult<void> update(std::span<const TransformRecordUpdate>) noexcept;
-        [[nodiscard]] RenderResult<void> release(TransformId) noexcept;
-        [[nodiscard]] bool contains(TransformId id) const noexcept { return records_.contains(id); }
-        void retainInstance(TransformId id) noexcept { records_.retainInstance(id); }
-        void releaseInstance(TransformId id) noexcept { records_.releaseInstance(id); }
+        [[nodiscard]] RenderResult<void> release(TransformRef) noexcept;
+        [[nodiscard]] bool contains(TransformRef id) const noexcept { return records_.contains(id); }
+        void retainInstance(TransformRef id) noexcept { records_.retainInstance(id); }
+        void releaseInstance(TransformRef id) noexcept { records_.releaseInstance(id); }
     private:
         static constexpr std::uint32_t kPageSlots = 16'384;
 
@@ -47,8 +47,8 @@ namespace lux::render::detail
             DirtyRanges dirty;
             std::vector<DirtyWordMask> selected, staged;
             std::uint64_t address_revision = 0;
-            bool table_dirty = false;
-            bool table_staged = false;
+            std::size_t table_cursor = 0;
+            std::size_t table_staged = 0;
         };
 
         void collectRetired() noexcept;
@@ -71,6 +71,5 @@ namespace lux::render::detail
         SubmissionFrontiers completed_;
         std::array<Replica, 3> replicas_;
         ResourceRegistry& resources_;
-        std::uint64_t revision_ = 1;
     };
 } // namespace lux::render::detail

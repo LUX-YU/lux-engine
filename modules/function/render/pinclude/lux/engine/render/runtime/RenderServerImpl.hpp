@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/JobOutput.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
+
 
 #include <algorithm>
 #include <atomic>
@@ -56,16 +57,17 @@ namespace lux::render
 
         RenderServerConfig config_;
         execution::CpuScheduler cpu_scheduler_; // Borrowed from the application's ExecutionRuntime.
-        execution::CpuScheduler program_scheduler_, recording_scheduler_;
         detail::RecordingWorkers recording_workers_;
         ipc::IpcResponder responder_;
         EffectCatalog effect_catalog_;
         std::atomic<std::uint64_t> validation_errors_{0}, validation_warnings_{0};
         struct RuntimeState final
         {
-            RuntimeState() noexcept { resources_.jobs_ = &jobs_; }
-
             ResourceRegistry resources_;
+            // Resource scopes consult the logical Jobs during deletion, including device teardown.
+            detail::DeviceEntry::JobTable jobs_;
+            // Device resource projections borrow stable rows in their logical Scene.
+            cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<std::unique_ptr<detail::DeviceEntry>, DeviceSessionTag> devices_;
             [[nodiscard]] detail::DeviceEntry* device(DeviceSessionId id) const noexcept
             {
@@ -73,18 +75,35 @@ namespace lux::render
                 return entry ? entry->get() : nullptr;
             }
             CommandRegistry command_registry_;
-            cxx::StableSlotMap<RenderScene, SceneTag> scenes_;
             cxx::StableSlotMap<VRenderTarget, TargetTag> targets_;
             cxx::StableSlotMap<RenderEffect, EffectTag> effects_;
-            cxx::StableSlotMap<RenderJob, RenderJobTag> jobs_;
         };
 
         // Release the window and actual device before run() returns. Reverse order keeps each borrow valid.
         std::optional<RuntimeState> runtime_{std::in_place};
         std::vector<RenderJobId> running_jobs_;
         const ServerInstanceId instance_id_;
-        std::uint64_t next_input_layout_revision_ = 1;
 
+        struct InputWindow final
+        {
+            ipc::RequesterId requester;
+            RequestRenderJob::Run lead;
+            std::vector<RequestRenderJob::Run> additional_runs;
+
+            template <class Visitor> void forEachRun(Visitor&& visit) const noexcept
+            {
+                visit(lead);
+                for (const auto& run : additional_runs) visit(run);
+            }
+        };
+
+        std::vector<InputWindow> input_windows_;
+        void releaseInputWindows() noexcept;
+        [[nodiscard]] bool waitsForWindow(ipc::RequesterId) const noexcept;
+        [[nodiscard]] bool inputQueueFull() const noexcept;
+        std::deque<ipc::ReceivedRequest> deferred_inputs_;
+        CommandId run_command_;
+        CommandId frame_update_command_;
         ResponseOutbox response_outbox_;
         stdexec::counting_scope command_scope_;
         stdexec::simple_counting_scope upload_scope_;
@@ -109,7 +128,6 @@ namespace lux::render
         std::atomic<std::uint64_t> jobs_considered_{0}, jobs_selected_{0}, dependency_edges_{0};
         std::atomic<std::uint64_t> job_selection_calls_{0}, job_selection_growths_{0}, job_topology_growths_{0};
         std::atomic<std::uint64_t> rounds_opened_{0}, slot_cpu_hold_ns_{0};
-        std::atomic<std::uint64_t> program_preparation_ns_{0}, program_preparations_{0}, discarded_preparations_{0};
         std::atomic<std::uint64_t> raster_buffer_ranges_{0}, raster_buffer_bytes_{0}, raster_image_ranges_{0};
         std::atomic<std::uint64_t> raster_image_subresources_{0};
         std::atomic<std::uint64_t> raster_geometry_ranges_{0}, raster_geometry_bytes_{0};
@@ -129,32 +147,40 @@ namespace lux::render
         void handleStopJob(const RenderJobId&, AckResponse&) noexcept;
         void removeJob(const RenderJobId&, AckResponse&) noexcept;
         void setJobCadence(const SetRenderJobCadence::Request&, AckResponse&) noexcept;
-        void setJobDependencies(const SetRenderJobDependencies::Request&, AckResponse&) noexcept;
-        auto requestJob(RequestRenderJob::Request&&) noexcept;
-        void stopJob(RenderJob&) noexcept;
+        void requestJob(RequestRenderJob::Request&&, ResponseRoute) noexcept;
+        void rejectWindow(RequestRenderJob::Request&, ResponseRoute, RenderError) noexcept;
+        void rejectPendingRun(RenderJob&, RenderError) noexcept;
+        [[nodiscard]] RenderResult<void> applyWindowInputs(WindowUpdates&, FrameInputs&) noexcept;
+        [[nodiscard]] RenderResult<void> applyWindowCommand(WindowCommand&, FrameInputs&) noexcept;
+        void stopJob(RenderJob&, RenderError) noexcept;
         void retireStoppedExecution(RenderJob&) noexcept;
         void releaseExecutionResources(
-            std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
+            std::unique_ptr<JobExecution>, std::unique_ptr<detail::JobGpuResources>, std::vector<ResourceInstanceId>&
         ) noexcept;
-        void destroyExecution(std::unique_ptr<JobExecution>, std::unique_ptr<detail::JobGpuResources>) noexcept;
-        [[nodiscard]] RenderResult<void> retainExecutionResource(JobExecution&, ResourceInstanceId) noexcept;
-        [[nodiscard]] bool jobTargetReady(const RenderJob&) const noexcept;
-        [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId) const noexcept;
+        void destroyExecution(
+            std::unique_ptr<JobExecution>, std::unique_ptr<detail::JobGpuResources>, std::vector<ResourceInstanceId>&
+        ) noexcept;
+        [[nodiscard]] bool frameUsesResource(const detail::DeviceEntry&, ResourceInstanceId, bool include_frozen) const noexcept;
+        [[nodiscard]] bool awaitingInputRead(ResourceInstanceId) const noexcept;
+        [[nodiscard]] bool awaitingInputRead(const FrameData&) const noexcept;
+        [[nodiscard]] ResourceInstanceId mutableInput(const CommandRecord&, const ipc::IpcMessage&) const noexcept;
+        [[nodiscard]] bool awaitingInputRead(CommandId, const ipc::IpcMessage&) const noexcept;
         [[nodiscard]] bool frameUsesTarget(TargetId) const noexcept;
         [[nodiscard]] bool executionTargetsResizing(const JobExecution&) const noexcept;
-        [[nodiscard]] bool resourcesAvailable(std::span<const ResourceInstanceId>) const noexcept;
-        [[nodiscard]] std::vector<detail::JobRelationEntry>
-        jobRelations(const JobExecution* candidate = nullptr) noexcept;
+        [[nodiscard]] bool resourcesAvailable(const FrameInputs::Job&) const noexcept;
+        [[nodiscard]] RenderResult<std::vector<RenderJobId>> orderProductConsumers(const JobExecution&) const noexcept;
         [[nodiscard]] bool canChangeExecution(const RenderJob&) const noexcept;
 
         [[nodiscard]] RenderResult<void>
         assembleExecution(
-            ResourceRegistry::GraphInstallation&, const JobBinding&, const RenderEffect&, std::span<const std::uint32_t>
+            JobExecution&, ResourceRegistry::BindingChanges&, const JobBinding&, std::span<const ResolvedResource>
         ) noexcept;
 
-        [[nodiscard]] RenderResult<std::vector<std::uint32_t>>
-        bindEffectResources(
-            detail::DeviceEntry&, ViewScope, std::span<const EffectStorageImport>, std::span<const JobResourceInput>
+        using ResolvedResources = RenderResult<std::vector<ResolvedResource>>;
+        [[nodiscard]] ResolvedResources
+        installScopedInputs(JobExecution&, ResourceRegistry::BindingChanges&, ViewScope) noexcept;
+        [[nodiscard]] ResolvedResources bindEffectResources(
+            JobExecution&, ResourceRegistry::BindingChanges&, ViewScope, std::span<const JobResourceInput>
         ) noexcept;
 
         enum class EJobStartMode : std::uint8_t { START, REBIND };
@@ -168,11 +194,10 @@ namespace lux::render
             EJobStartMode mode;
         };
 
-        AckResponse buildJobExecution(JobStartRequest) noexcept;
-        [[nodiscard]] RenderResult<void> buildJobInputLayout(const RenderJob&, JobExecution&) noexcept;
+        AckResponse buildJobExecution(JobStartRequest, VRenderTarget* replacement = nullptr) noexcept;
 
         [[nodiscard]] RenderResult<void>
-        validateJobBinding(const JobStartRequest&, const RenderJob&, const compiled::RenderGraph&) const noexcept;
+        validateJobBinding(const JobStartRequest&, const RenderJob&, const compiled::RenderGraph&, const VRenderTarget*) const noexcept;
 
         using ResizeCandidates = std::vector<std::pair<RenderJobId, detail::ResizeResources>>;
         [[nodiscard]] RenderResult<ResizeCandidates>
@@ -180,13 +205,15 @@ namespace lux::render
 
 
         void rebuildFrameInputs(detail::DeviceEntry&) noexcept;
-        [[nodiscard]] RenderError selectFrameInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<void> selectGraphInputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
-        [[nodiscard]] RenderResult<bool> acquireFrameOutputs(detail::DeviceEntry&, std::uint32_t slot) noexcept;
+        [[nodiscard]] std::optional<FrameInputs::TargetReadSlot> resolveTargetRead(FrameInputs&, RasterTargetImage) noexcept;
+        [[nodiscard]] RenderResult<bool> appendDrawReads(FrameInputs&, std::uint32_t reader, std::uint32_t slot) noexcept;
+        void selectFrameInputs(detail::DeviceEntry&, detail::FrameContext) noexcept;
+        void qualifyTargetReads(detail::DeviceEntry&, std::uint32_t job, bool collect_producers = false) noexcept;
+        [[nodiscard]] RenderResult<bool> qualifyWindowTargets(detail::DeviceEntry&) noexcept;
+        void adoptReadyWindows(detail::DeviceEntry&, detail::FrameContext) noexcept;
+        void bindSelectedTargets(detail::DeviceEntry&, std::uint32_t slot) noexcept;
         void progressTargetFlights(detail::DeviceEntry&) noexcept;
         [[nodiscard]] std::vector<RenderJobId> jobsBindingTarget(TargetId) const noexcept;
-        [[nodiscard]] std::uint32_t publishedOutputSlot(TargetId) const noexcept;
-        [[nodiscard]] bool publishedOutputReadable(TargetId, std::uint32_t slot) const noexcept;
         exec::task<RenderResult<void>> submitCurrentFrame(detail::DeviceEntry&) noexcept;
         void cancelActiveFrame(detail::DeviceEntry&, RenderError) noexcept;
         [[nodiscard]] bool serviceOperations(bool admitting) noexcept;
@@ -194,12 +221,11 @@ namespace lux::render
         void progressUploads(detail::DeviceEntry&) noexcept;
         [[nodiscard]] bool progressFrame(detail::DeviceEntry&) noexcept;
 
-        [[nodiscard]] bool progressProgramPreparations(detail::DeviceEntry&) noexcept;
-        void startProgramPreparation(detail::DeviceEntry&, JobExecution&, std::uint32_t build) noexcept;
-        [[nodiscard]] bool settleProgramCompilation(detail::DeviceEntry&) noexcept;
-        void queryFrameInputLayout(const RenderJobId&, QueryRenderJobInputLayout::Response&) noexcept;
-        void updateFrameData(const UpdateFrameData::Request&, AckResponse&) noexcept;
-        [[nodiscard]] RenderResult<void> adoptFrameData(const JobExecution&, const FrameData&) noexcept;
+        [[nodiscard]] detail::DeviceEntry* resourceDevice(ResourceInstanceId) const noexcept;
+        UpdateFrameData::Response updateFrameData(UpdateFrameData::Request&&) noexcept;
+        std::vector<detail::FrameDataCall> selected_updates_;
+        [[nodiscard]] RenderResult<void>
+        adoptFrameData(const FrameData&, FrameInputs* = nullptr) noexcept;
         void finishFrame(detail::DeviceEntry&, RenderError) noexcept;
         [[nodiscard]] bool beginFrame(detail::DeviceEntry&) noexcept;
         void submitFrameRendering(detail::DeviceEntry&) noexcept;
@@ -208,15 +234,20 @@ namespace lux::render
         diagnostic(nri::Message severity, const char*, std::uint32_t, const char*, void* user) noexcept;
 
         void queryResource(const ResourceRequest&, ResourceResponse&) noexcept;
+        void listResourceJobs(const ResourceAddress&, ListResourceJobs::Response&) noexcept;
+        void removeResource(const ResourceAddress&, AckResponse&) noexcept;
         void getOrCreateResource(const ResourceRequest&, ResourceResponse&) noexcept;
         [[nodiscard]] RenderResult<ResourceSet*>
-        resourceScope(detail::DeviceEntry&, const VResourceScope&, ResourceTypeId, bool create) noexcept;
+        jobResourceScope(detail::DeviceEntry&, JobExecution&, ViewScope, ResourceCreateContext*) noexcept;
+        [[nodiscard]] RenderResult<ResourceSet*>
+        resourceScope(detail::DeviceEntry&, const VResourceScope&, ResourceTypeId, ResourceCreateContext*) noexcept;
 
         void createScene(const CreateScene::Request&, CreateScene::Response&) noexcept;
 
         void removeScene(const RemoveScene::Request&, RemoveScene::Response&) noexcept;
 
         void createView(const CreateView::Request&, CreateView::Response&) noexcept;
+        void updateView(const UpdateView::Request&, UpdateView::Response&) noexcept;
         void updateJobInputs(const UpdateJobInputs::Request&, AckResponse&) noexcept;
         void invalidateHistory(const InvalidateHistory::Request&, InvalidateHistory::Response&) noexcept;
 
@@ -246,7 +277,12 @@ namespace lux::render
 
         void stopCommand(const Stop::Request&, Stop::Response&) noexcept;
 
-        void dispatchRequest(ipc::ReceivedRequest received) noexcept;
+        void receiveRequest(ipc::ReceivedRequest) noexcept;
+        void dispatchRequest(ipc::ReceivedRequest) noexcept;
+        void rejectInput(ipc::ReceivedRequest&, RenderError) noexcept;
+        bool drainInputs() noexcept;
+        [[nodiscard]] bool hasDeferredRun(RenderJobId) const noexcept;
+        void cancelDeferredRuns(RenderJobId) noexcept;
         [[nodiscard]] RenderResult<HandlerCall>
         resolveCommandCall(CommandId, const CommandRecord&, runtime_detail::CommandDispatchContext&) noexcept;
         void failDevice(detail::DeviceEntry&, RenderError) noexcept;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/device/GpuResourceFeatures.hpp>
+
 #include <exec/task.hpp>
 #include <lux/cxx/execution/ManualContext.hpp>
 
@@ -67,7 +69,7 @@ namespace lux::render::detail
         DeviceSession(const DeviceSession&) = delete;
         DeviceSession& operator=(const DeviceSession&) = delete;
 
-        [[nodiscard]] std::uint32_t resourceCapabilities() const noexcept;
+        [[nodiscard]] GpuResourceFeatures resourceFeatures() const noexcept;
         [[nodiscard]] RenderResult<void> drain() noexcept;
         // Shared by all logical queue roles in this Session's native host domain. Start only
         // from the control owner; CPU workers must first deliver back to that owner.
@@ -237,6 +239,7 @@ namespace lux::render::detail
         bool use_device_addresses_ = false;
         GraphQueueCosts graph_queue_costs_;
         friend struct DeviceBackend;
+        friend class NativeProgramBindings;
         void requireCleanupComplete(const RenderResult<void>&) noexcept;
         explicit DeviceSession(cxx::execution::ManualContext::Scheduler native_scheduler) noexcept;
         void releaseBackendData() noexcept;

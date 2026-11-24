@@ -12,6 +12,19 @@ namespace lux::render::detail
             return {buffer, buffer_offset, buffer_size, image, addressed_buffers, addressed_revision, queue_uses};
         }
 
+        [[nodiscard]] bool sameBacking(const ResourceInput& value) const noexcept
+        {
+            return buffer == value.buffer && buffer_offset == value.offset && buffer_size == value.size &&
+                image == value.image;
+        }
+
+        [[nodiscard]] bool sameAddresses(const ResourceInput& value) const noexcept
+        {
+            return addressed_revision == value.addressed_revision &&
+                addressed_buffers.data() == value.addressed_buffers.data() &&
+                addressed_buffers.size() == value.addressed_buffers.size();
+        }
+
         // NRI returns descriptions owned by the selected native objects.
         void select(nri::Buffer* next_buffer, nri::Texture* next_image, const nri::CoreInterface& core) noexcept
         {

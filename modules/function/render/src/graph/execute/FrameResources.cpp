@@ -1,3 +1,6 @@
+#include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/graph/execute/PhysicalFrameAllocation.hpp>
+#include <lux/engine/render/memory/Cleanup.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <cstring>
 #include <lux/engine/render/graph/execute/FrameResources.hpp>
@@ -11,7 +14,7 @@ namespace lux::render::detail
 {
     namespace
     {
-        bool containsBytes(const PassResourceInput& resource, std::uint64_t offset, std::uint64_t count) noexcept
+        bool containsBytes(const FrameResourceBinding& resource, std::uint64_t offset, std::uint64_t count) noexcept
         {
             const bool fits = offset <= resource.buffer_size && count <= resource.buffer_size - offset;
             const bool addressable = offset <= UINT64_MAX - resource.buffer_offset &&
@@ -21,22 +24,25 @@ namespace lux::render::detail
 
         struct TransferSources final
         {
-            std::span<const PassResourceInput> resources;
+            std::span<const FrameResourceBinding> bindings;
+            std::span<const CompiledResource> resources;
+            std::span<const std::uint8_t> history_valid;
             CopyAlignment alignment;
 
-            [[nodiscard]] const PassResourceInput& selected(const auto& operand) const noexcept
+            [[nodiscard]] const FrameResourceBinding& selected(const auto& operand) const noexcept
             {
-                const auto& primary = resources[operand.slot];
-                const bool fallback = !primary.history_valid && operand.fallback != kGraphInvalidIndex;
-                if (fallback) return resources[operand.fallback];
-                return primary;
+                const auto history = resources[operand.slot].history;
+                const bool fallback = operand.fallback != kGraphInvalidIndex &&
+                    history != kGraphInvalidIndex && !history_valid[history];
+                return bindings[fallback ? operand.fallback : operand.slot];
             }
 
             [[nodiscard]] RenderResult<nri::TextureRegionDesc> region(const ImageOperand& operand) const noexcept
             {
                 const auto& image = selected(operand);
                 if (!image.image) return cxx::unexpected(RenderError{kDeviceArgument});
-                return copyRegion(operand, {image.width, image.height});
+                const auto& desc = *image.image_description;
+                return copyRegion(operand, {desc.width, desc.height, desc.depth});
             }
 
             [[nodiscard]] RenderResult<void>
@@ -46,7 +52,7 @@ namespace lux::render::detail
                 if (!from) return cxx::unexpected(from.error());
                 auto to = region(copy.destination);
                 if (!to) return cxx::unexpected(to.error());
-                if (from->width != to->width || from->height != to->height)
+                if (from->width != to->width || from->height != to->height || from->depth != to->depth)
                     return cxx::unexpected(RenderError{kInvalidTargetExtent});
                 output.source = selected(copy.source).image;
                 output.destination = selected(copy.destination).image;
@@ -63,28 +69,30 @@ namespace lux::render::detail
                 const auto& buffer = selected(copy.buffer);
                 auto layout = copyLayout(copy, *rect, buffer.buffer_offset, alignment);
                 if (!layout) return cxx::unexpected(layout.error());
-                if (!containsBytes(buffer, copy.buffer.range.offset, layout->slicePitch))
+                const auto bytes = std::uint64_t{layout->slicePitch} * rect->depth;
+                if (!containsBytes(buffer, copy.buffer.range.offset, bytes))
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 output = {selected(copy.image).image, buffer.buffer, *rect, *layout};
+                const auto rows = (std::uint32_t{rect->height} + copy.image.block_dim - 1) / copy.image.block_dim;
+                // A placed footprint steps by its packed row count on D3D12. Encode padding between Z planes explicitly.
+                if (rect->depth > 1 && layout->slicePitch != std::uint64_t{layout->rowPitch} * rows)
+                {
+                    output.slice_copies = rect->depth;
+                    output.region.depth = 1;
+                }
                 return {};
             }
         };
 
     } // namespace
 
-    ResourceQueueUses FrameResources::selectedUses(std::uint32_t resource) const noexcept
-    {
-        const auto found = std::ranges::find(replaced_projections, resource, &FrozenProjection::resource);
-        return found == replaced_projections.end() ? bindings[resource].queue_uses : found->uses;
-    }
-
     void FrameResources::initializeRows(const compiled::RenderGraph& plan) noexcept
     {
         parameters = plan.bindingPlan().initial_parameters;
         bindings.resize(plan.resources().size());
-        record_resources.resize(plan.resources().size());
+        raster_vertices.resize(plan.recordingProgram().raster_vertices.size());
+        raster_addresses.resize(plan.recordingProgram().raster_addresses.size());
         dispatches.resize(plan.recordingProgram().compute.size());
-        pending_resources.initialize(plan.resources().size());
         pending_passes.initialize(plan.passes().size());
         pending_operand_fields.initialize(plan.bindingPlan().recordings.operand_fields.size());
         transfers.initialize(plan.recordingProgram().transfers);
@@ -96,17 +104,48 @@ namespace lux::render::detail
         enabled_pass_count = static_cast<std::uint32_t>(plan.passes().size());
         history_valid.resize(plan.histories().size(), 0);
         conditions.resize(plan.conditionCount());
-        publish_history.resize(plan.histories().size());
+        pending_condition_inputs.initialize(plan.conditionCount());
+        pending_regions.initialize(enabled_regions.size());
         history_clears.resize(plan.histories().size());
         changed_resources.reserve(plan.resources().size());
         unavailable_buffers = plan.recordingDependencies().required_buffers;
         native.images.reserve(plan.recordingDependencies().owned_image_capacity);
     }
 
+    void FrameResources::collectRasterViews(
+        nri::Buffer* buffer, nri::Texture* image, std::vector<nri::Descriptor*>& retired
+    ) noexcept
+    {
+        if (!buffer && !image) return;
+        if (image)
+        {
+            const auto removed = std::erase_if(native.raster_attachment_views, [&](const auto& attachment) noexcept
+            {
+                if (attachment.image != image) return false;
+                retired.push_back(attachment.view);
+                return true;
+            });
+            // Layer views can be shared by several rendering scopes in this FIF.
+            if (removed) invalidateRecordings();
+        }
+        for (auto& record : native.raster_bindings)
+        {
+            for (std::size_t i = 0; i < record.inputs.size(); ++i)
+            {
+                const auto& input = record.inputs[i];
+                const bool matches = (buffer && input.buffer == buffer) || (image && input.image == image);
+                if (!matches) continue;
+                if (auto* view = std::exchange(record.views[i], nullptr)) retired.push_back(view);
+                record.inputs[i] = {};
+                invalidatePass(recordingGraph(), record.pass);
+            }
+        }
+    }
+
     void FrameResources::retireRasterViews(DeviceSession& session, nri::Buffer* buffer, nri::Texture* image) noexcept
     {
         std::vector<nri::Descriptor*> views;
-        native.collectRasterViews(buffer, image, views);
+        collectRasterViews(buffer, image, views);
         if (!views.empty())
         {
             session.deferRelease([core = &session.nriCore(), views = std::move(views)]() noexcept
@@ -116,21 +155,84 @@ namespace lux::render::detail
         }
     }
 
+    RenderResult<void> FrameResources::bindDynamicBuffer(
+        const compiled::RenderGraph& graph, DeviceSession& device, std::size_t slot, std::uint64_t size
+    ) noexcept
+    {
+        const auto& contract = graph.dynamicBuffers()[slot];
+        if (size < contract.minimum_bytes || size > contract.maximum_bytes || size % 4)
+            return cxx::unexpected(RenderError{kFrameContract, {kGraphInvalidIndex, contract.resource}});
+        auto& replica = native.prepared_buffers[slot];
+        if (size > replica.capacity)
+        {
+            if (replica.generation == UINT64_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
+            const auto capacity = size > std::bit_floor(UINT64_MAX) ?
+                contract.maximum_bytes : std::min(std::bit_ceil(size), contract.maximum_bytes);
+            const auto description = graphBufferDescription(device, graph.resources()[contract.resource], capacity);
+            if (!description) return cxx::unexpected(description.error());
+            nri::Buffer* candidate = nullptr;
+            const auto result =
+                device.nriCore().CreatePlacedBuffer(device.device(), NriDeviceHeap, *description, candidate);
+            if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
+            bindResource(graph, device, contract.resource, {candidate, 0, size});
+            releaseAfterGpu(device, replica.buffer);
+            replica.buffer = candidate;
+            ++replica.generation;
+            replica.capacity = capacity;
+            replica.accepted = {};
+        }
+        else
+        {
+            const auto& current = bindings[contract.resource];
+            if (current.buffer != replica.buffer || current.buffer_size != size)
+                bindResource(graph, device, contract.resource, {replica.buffer, 0, size});
+        }
+        return {};
+    }
+
+    void InstalledGraphBindings::bind(GraphResourceId resource, std::uint32_t slot, const ResourceInput& value) noexcept
+    {
+        const auto first = slot == UINT32_MAX ? 0 : slot;
+        const auto end = slot == UINT32_MAX ? static_cast<std::uint32_t>(frames.size()) : slot + 1;
+        for (auto current = first; current < end; ++current)
+            frames[current].bindResource(graph, device, resource.index, value);
+    }
+
+    RenderResult<void>
+    InstalledGraphBindings::qualifyImage(GraphResourceId resource, const nri::Texture& image) const noexcept
+    {
+        return detail::qualifyImportedImage(device, graph.resources()[resource.index], image, target);
+    }
+
     void FrameResources::bindResource(
         const compiled::RenderGraph& graph, DeviceSession& session, std::uint32_t resource, const ResourceInput& value
     ) noexcept
     {
         auto& binding = bindings[resource];
-        const bool changed_physical = binding.buffer != value.buffer || binding.buffer_offset != value.offset ||
-                                      binding.buffer_size != value.size || binding.image != value.image;
-        const bool changed_addresses = binding.addressed_revision != value.addressed_revision ||
-                                       binding.addressed_buffers.data() != value.addressed_buffers.data() ||
-                                       binding.addressed_buffers.size() != value.addressed_buffers.size();
+        const bool changed_physical = !binding.sameBacking(value);
+        const bool changed_addresses = !binding.sameAddresses(value);
+        if (frozen_for_submission)
+        {
+            const auto pending = std::ranges::find(pending_bindings_, resource, &PendingBinding::resource);
+            if (!changed_physical && !changed_addresses && binding.queue_uses == value.queue_uses)
+            {
+                // A publication can also return to the frozen value before the receipt arrives.
+                if (pending != pending_bindings_.end()) pending_bindings_.erase(pending);
+                return;
+            }
+            if (pending == pending_bindings_.end()) pending_bindings_.push_back({resource, value});
+            else pending->value = value;
+            return;
+        }
         binding.addressed_buffers = value.addressed_buffers;
         binding.addressed_revision = value.addressed_revision;
-        if (frozen_for_submission && binding.queue_uses != value.queue_uses) preserveUses(resource);
         binding.queue_uses = value.queue_uses;
         if (changed_addresses) record_ready = false;
+        if (!changed_physical)
+        {
+            binding.select(value.buffer, value.image, session.nriCore());
+            return;
+        }
         if (graph.resources()[resource].memory_used &&
             std::holds_alternative<GraphBufferDesc>(graph.resources()[resource].description))
         {
@@ -149,8 +251,8 @@ namespace lux::render::detail
         binding.select(value.buffer, value.image, session.nriCore());
         binding.buffer_offset = value.offset;
         binding.buffer_size = value.size;
-        if (changed_physical) invalidateResource(graph.recordingDependencies(), resource);
-        if (changed_physical && !binding.dirty)
+        invalidateResource(graph.recordingDependencies(), resource);
+        if (!binding.dirty)
         {
             binding.dirty = true;
             changed_resources.push_back(resource);
@@ -182,17 +284,11 @@ namespace lux::render::detail
         for (std::size_t p = 0; p < barriers.size(); ++p) passes[p].alias_barrier = barriers[p];
     }
 
-    void FrameResources::initializeRasterStreams(const RecordingDependencies& recording) noexcept
+    void FrameResources::finishSubmission(const compiled::RenderGraph& graph, DeviceSession& session) noexcept
     {
-        raster_draws.resize(recording.raster_list_count);
-        if (recording.producer_passes.empty()) return;
-        stream_descriptor_rows.resize(recording.raster_list_count);
-    }
-
-    void FrameResources::preserveUses(std::uint32_t resource) noexcept
-    {
-        if (std::ranges::find(replaced_projections, resource, &FrozenProjection::resource) == replaced_projections.end())
-            replaced_projections.push_back({resource, bindings[resource].queue_uses});
+        frozen_for_submission = false;
+        for (const auto& update : pending_bindings_) bindResource(graph, session, update.resource, update.value);
+        pending_bindings_.clear();
     }
 
     void mergeIndexedIndirectDraws(RasterDrawList& draws, std::uint32_t limit) noexcept
@@ -200,20 +296,14 @@ namespace lux::render::detail
         if (limit <= 1 || draws.packets.size() < 2) return;
         const auto same_state = [&](const RasterDrawPacket& a, const RasterDrawPacket& b) noexcept
         {
-            const bool same_pipeline = a.pipeline == b.pipeline && a.bindings.layout == b.bindings.layout &&
-                a.bindings.private_set == b.bindings.private_set && a.bindings.shared_sets == b.bindings.shared_sets;
+            const bool same_pipeline = a.pipeline == b.pipeline && a.bindings == b.bindings;
             const bool same_index = a.index == b.index && a.index_offset == b.index_offset &&
                 a.index_type == b.index_type;
             const bool same_scissor = a.scissor.x == b.scissor.x && a.scissor.y == b.scissor.y &&
                 a.scissor.width == b.scissor.width && a.scissor.height == b.scissor.height;
-            const bool same_counts = a.descriptor_count == b.descriptor_count && a.vertex_count == b.vertex_count &&
+            const bool same_counts = a.descriptor_set == b.descriptor_set && a.vertex_count == b.vertex_count &&
                 a.parameter_size == b.parameter_size;
             if (!same_pipeline || !same_index || !same_scissor || !same_counts) return false;
-            const auto descriptors = std::span(draws.descriptors);
-            if (!std::ranges::equal(
-                    descriptors.subspan(a.first_descriptor, a.descriptor_count),
-                    descriptors.subspan(b.first_descriptor, b.descriptor_count)
-                )) return false;
             for (std::uint32_t i = 0; i < a.vertex_count; ++i)
             {
                 const auto& left = draws.vertices[a.first_vertex + i];
@@ -284,12 +374,11 @@ namespace lux::render::detail
         record_ready = false;
         if (command_batches.empty()) return; // Inputs can precede initialize().
         const auto batch = graph.passes()[compiled_pass].submission;
-        if (compiled_pass < graph.submissions()[batch].output_begin) command_batches[batch].invalidate();
+        if (graph.submissions()[batch].reusesPass(compiled_pass)) command_batches[batch].invalidate();
     }
 
     void FrameResources::invalidateResource(const RecordingDependencies& dependencies, std::uint32_t resource) noexcept
     {
-        pending_resources.mark(resource);
         for (const auto field : dependencies.resource_operand_fields[resource]) pending_operand_fields.mark(field);
         for (const auto p : dependencies.resource_passes[resource]) pending_passes.mark(p);
         record_ready = false;
@@ -322,7 +411,8 @@ namespace lux::render::detail
         section.viewport = pass.viewport;
         section.parameter_size = dynamic.producer_stream ? 0 : static_cast<std::uint32_t>(draws.parameters.size());
         section.draw_count = static_cast<std::uint32_t>(draws.packets.size());
-        for (auto& packet : draws.packets) packet.scissor = pass.scissor;
+        if (!dynamic.producer_stream)
+            for (auto& packet : draws.packets) packet.scissor = pass.scissor;
     }
 
     namespace
@@ -387,27 +477,10 @@ namespace lux::render::detail
             if (const auto* fixed = std::get_if<nri::DispatchDesc>(&recording.compute[i].dispatch))
                 dispatches[i].dispatch = *fixed;
         linked_recording_.emplace(FrozenRecordingFrame{
-            graph, transfers, record_resources, passes, dispatches, raster_draws, history_initializations.values(), enabled_regions,
-            binding_choices, final_images, final_buffers, native.descriptor_pool, shared_descriptors.sets,
+            graph, transfers, raster_vertices, raster_addresses, passes, dispatches, raster_draws,
+            history_initializations.values(), enabled_regions,
+            binding_choices, entry_images, entry_buffers, exit_images, exit_buffers, native.descriptor_pool, shared_descriptors.sets,
             command_batches, native.batches});
-    }
-
-    void FrameResources::patchRecordResource(std::uint32_t i, std::uint32_t history) noexcept
-    {
-        const auto& binding = bindings[i];
-        auto& resource = record_resources[i];
-        resource.buffer = binding.buffer;
-        resource.buffer_offset = binding.buffer_offset;
-        resource.buffer_size = binding.buffer_size;
-        resource.image = binding.image;
-        resource.history_valid = history == kGraphInvalidIndex || history_valid[history] != 0;
-        resource.width = resource.height = 0;
-        if (binding.image)
-        {
-            const auto& description = *binding.image_description;
-            resource.width = description.width;
-            resource.height = description.height;
-        }
     }
 
     void FrameResources::patchRecordPass(const RecordingProgram& program, std::uint32_t i) noexcept
@@ -416,10 +489,10 @@ namespace lux::render::detail
         if (const auto* scope = program.rasterScope(*pass.compiled_pass))
         {
             const auto& attachment = scope->colors.empty() ? *scope->depth : scope->colors.front();
-            const auto& image = record_resources[attachment.access.version.resource.index];
+            const auto* image = bindings[attachment.access.version.resource.index].image_description;
             const auto mip = std::get<GraphImageRange>(attachment.access.range).first_mip;
-            const auto width = std::max(1u, image.width >> mip);
-            const auto height = std::max(1u, image.height >> mip);
+            const auto width = image ? std::max(1u, std::uint32_t{image->width} >> mip) : 1u;
+            const auto height = image ? std::max(1u, std::uint32_t{image->height} >> mip) : 1u;
             const auto& area = scope->viewport ? *scope->viewport : viewport;
             pass.viewport = {
                 area.x * width, area.y * height, area.width * width, area.height * height,
@@ -467,7 +540,7 @@ namespace lux::render::detail
         const auto& fields = dependencies.operand_fields;
         const auto& memory = limits.memoryAlignment;
         const CopyAlignment alignment{memory.uploadBufferTextureRow, memory.uploadBufferTextureSlice};
-        const TransferSources sources{record_resources, alignment};
+        const TransferSources sources{bindings, recordingGraph().resources(), history_valid, alignment};
         const auto& program = recording.transfers;
         FrozenOperandPatches patched{};
         for (const auto index : pending_operand_fields.slots())
@@ -478,10 +551,31 @@ namespace lux::render::detail
             if (condition != kGraphInvalidIndex && !enabled_regions[condition]) continue;
             switch (field)
             {
+            case Field::RASTER_VERTEX:
+            {
+                const auto& vertex = recording.raster_vertices[row];
+                const auto& buffer = bindings[vertex.buffer];
+                if (!containsBytes(buffer, vertex.offset, 1)) return cxx::unexpected(RenderError{kDeviceArgument});
+                raster_vertices[row] = {
+                    vertex.binding, {buffer.buffer, buffer.buffer_offset + vertex.offset, vertex.stride}
+                };
+                continue;
+            }
+            case Field::RASTER_ADDRESS:
+            {
+                const auto& address = recording.raster_addresses[row];
+                const auto& buffer = bindings[address.location.buffer];
+                if (!containsBytes(buffer, address.location.offset, address.bytes))
+                    return cxx::unexpected(RenderError{kDeviceArgument});
+                const auto offset = buffer.buffer_offset + address.location.offset;
+                if (offset % address.alignment) return cxx::unexpected(RenderError{kDeviceArgument});
+                raster_addresses[row] = {buffer.buffer, offset};
+                continue;
+            }
             case Field::INDIRECT_DISPATCH:
             {
                 const auto& location = std::get<BufferLocation>(recording.compute[row].dispatch);
-                const auto& buffer = record_resources[location.buffer];
+                const auto& buffer = bindings[location.buffer];
                 if (!containsBytes(buffer, location.offset, sizeof(nri::DispatchDesc)))
                     return cxx::unexpected(RenderError{kDeviceArgument});
                 const auto offset = buffer.buffer_offset + location.offset;
@@ -494,8 +588,9 @@ namespace lux::render::detail
             case Field::IMAGE_DISPATCH:
             {
                 const auto& extent = std::get<ImageDispatchExtent>(recording.compute[row].dispatch);
-                const auto& image = record_resources[extent.image];
-                auto groups = dispatchGroups(extent, {image.width, image.height}, limits);
+                const auto* image = bindings[extent.image].image_description;
+                if (!image) return cxx::unexpected(RenderError{kDeviceArgument});
+                auto groups = dispatchGroups(extent, {image->width, image->height, image->depth}, limits);
                 if (!groups) return cxx::unexpected(groups.error());
                 dispatches[row].dispatch = *groups;
                 ++patched.compute;
@@ -571,7 +666,6 @@ namespace lux::render::detail
         if (!linked_recording_) return cxx::unexpected(RenderError{kDeviceArgument});
         auto& input = *linked_recording_;
         const auto& graph = input.plan;
-        for (const auto i : pending_resources.slots()) patchRecordResource(i, graph.resources()[i].history);
         for (const auto i : pending_passes.slots()) patchRecordPass(graph.recordingProgram(), i);
         if (pending_operand_fields.slots().empty()) last_operands = {};
         else
@@ -579,8 +673,7 @@ namespace lux::render::detail
             auto patched = patchOperandFields(graph.recordingProgram(), graph.recordingDependencies(), limits);
             if (!patched) return patched;
         }
-        last_patches = {pending_resources.slots().size(), pending_passes.slots().size()};
-        pending_resources.clear();
+        last_patched_passes = pending_passes.slots().size();
         pending_passes.clear();
         if (!pending_history_clears.slots().empty())
         {

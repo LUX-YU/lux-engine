@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/runtime/SceneId.hpp>
+#include <lux/engine/render/runtime/JobId.hpp>
 #include <variant>
 
 namespace lux::render
@@ -19,6 +20,6 @@ namespace lux::render
     };
 
     // Existing business ownership, not a Storage location or a new lifetime domain.
-    using VResourceScope = std::variant<DeviceScope, SceneId, ViewScope>;
+    using VResourceScope = std::variant<DeviceScope, SceneId, ViewScope, RenderJobId>;
 
 } // namespace lux::render

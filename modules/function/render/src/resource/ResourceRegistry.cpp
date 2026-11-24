@@ -1,8 +1,11 @@
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/resource/FrameDataCall.hpp>
+#include <lux/engine/render/runtime/DeviceEntry.hpp>
+#include <lux/engine/render/runtime/InstalledFrameResource.hpp>
 #include <algorithm>
-#include <lux/engine/render/resource/GraphInstallation.hpp>
-#include <lux/engine/render/runtime/RenderJob.hpp>
+#include <lux/engine/render/resource/InstalledProjection.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/runtime/commands/detail/CommandDispatchContext.hpp>
 #include <exception>
 #include <limits>
@@ -47,6 +50,12 @@ namespace lux::render
                 value.addressed_revision;
         }
 
+        bool validBufferSlice(const detail::ResourceInput& value, const detail::DeviceSession& device) noexcept
+        {
+            const auto capacity = value.buffer ? device.nriCore().GetBufferDesc(*value.buffer).size : UINT64_MAX;
+            return value.offset <= capacity && value.size <= capacity - value.offset;
+        }
+
         bool validQueueUses(
             bool has_backing, detail::ResourceQueueUses uses, const detail::DeviceSession& device
         ) noexcept
@@ -63,13 +72,26 @@ namespace lux::render
         }
     }
 
-    RenderResult<void> ResourceRegistry::qualifyBufferUses(
-        const ProjectionMap& projections,
-        std::uint32_t projection,
-        std::span<const ProjectionBuffer> buffers,
-        const GraphBindingUse& user
+    std::array<ResourceRegistry::ProjectionBuffer, 3> ResourceRegistry::proposedBuffers(
+        std::uint32_t projection, const ProjectionFamily& family, std::span<const GraphBufferPublication> updates
     ) noexcept
     {
+        auto slices = family.buffers;
+        for (const auto& update : updates)
+        {
+            if (update.projection != projection) continue;
+            for (std::uint32_t i = 0; i < family.frame_count; ++i)
+                if (update.frame == UINT32_MAX || update.frame == i)
+                    slices[i] = {update.value.buffer, {update.value.offset, update.value.size}};
+        }
+        return slices;
+    }
+
+    RenderResult<void> ResourceRegistry::qualifyBufferUses(
+        const ProjectionMap& projections, const BufferClaim& claim, std::span<const GraphBufferPublication> updates
+    ) noexcept
+    {
+        const auto& [projection, buffers, user] = claim;
         const auto overlaps = [](GraphBufferRange a, GraphBufferRange b) noexcept
         {
             return a.offset <= b.offset ? b.offset - a.offset < a.size : a.offset - b.offset < b.size;
@@ -79,33 +101,37 @@ namespace lux::render
             if (writer) return GraphBufferRange{slice.bytes.offset + writer->offset, writer->size};
             return slice.bytes;
         };
+        const auto& requested_write = user.slot->output_range;
         for (const auto& slice : buffers)
         {
             if (slice.bytes.size > UINT64_MAX - slice.bytes.offset)
                 return cxx::unexpected(RenderError{kGraphInvalidRange});
-            if (!user.writer) continue;
-            const auto claim = *user.writer;
-            if (!slice.buffer || claim.offset > slice.bytes.size || claim.size > slice.bytes.size - claim.offset)
+            if (!requested_write) continue;
+            const auto range = *requested_write;
+            if (!slice.buffer || range.offset > slice.bytes.size || range.size > slice.bytes.size - range.offset)
                 return cxx::unexpected(RenderError{kGraphInvalidRange});
         }
         for (const auto& [other_projection, binding] : projections)
         {
             const bool same_projection = projection == other_projection;
-            const auto previous = same_projection ? buffers :
-                std::span(binding.backing.buffers).first(binding.backing.frame_count);
+            const auto other_slices = proposedBuffers(other_projection, binding.backing, updates);
+            const auto previous = same_projection ? buffers : std::span(other_slices).first(binding.backing.frame_count);
             for (const auto& bound : binding.users)
             {
-                if (!bound.writer && !user.writer) continue;
+                const auto& bound_write = bound.slot->output_range;
+                if (!bound_write && !requested_write) continue;
                 const bool same_job = bound.binding.job == user.binding.job;
                 const bool replacing = same_job && bound.binding.generation != user.binding.generation;
-                const bool same_use = same_job && bound.resource == user.resource;
+                const bool same_use = same_job && bound.slot->resource == user.slot->resource;
                 // Disabled command bodies still record their planned barriers.
-                const bool compatible_barriers = bound.boundary.canShare(user.boundary);
-                const bool exclusive_paths = same_projection && compatible_barriers && same_job && bound.writer &&
-                    user.writer && (!bound.may_access || !user.may_access);
+                const bool compatible_barriers = bound.slot->boundary.canShare(user.slot->boundary);
+                const bool exclusive_paths = same_projection && compatible_barriers && same_job && bound_write &&
+                    requested_write && (!bound.may_access || !user.may_access);
                 if (replacing || same_use || exclusive_paths) continue;
                 const auto conflict = same_job ? kGraphConflictingOutput : kJobBusy;
-                if (same_projection && (!bound.writer || !user.writer || overlaps(*bound.writer, *user.writer)))
+                const bool conflicts = same_projection &&
+                    (!bound_write || !requested_write || overlaps(*bound_write, *requested_write));
+                if (conflicts)
                     return cxx::unexpected(RenderError{conflict});
                 for (const auto& a : buffers)
                 {
@@ -113,11 +139,11 @@ namespace lux::render
                     for (const auto& b : previous)
                     {
                         if (a.buffer != b.buffer) continue;
-                        if (overlaps(physical(a, user.writer), physical(b, bound.writer)))
+                        if (overlaps(physical(a, requested_write), physical(b, bound_write)))
                             return cxx::unexpected(RenderError{conflict});
                         // Separate Job writers can take turns at the same native boundary under their product pins.
-                        const bool can_take_turns = !same_job && bound.writer && user.writer &&
-                            bound.boundary.use == user.boundary.use;
+                        const bool can_take_turns = !same_job && bound_write && requested_write &&
+                            bound.slot->boundary.use == user.slot->boundary.use;
                         if (!compatible_barriers && !can_take_turns) return cxx::unexpected(RenderError{conflict});
                     }
                 }
@@ -140,7 +166,7 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageMismatch});
         }
         const auto buffers = std::span(backing.buffers).first(backing.frame_count);
-        if (auto valid = qualifyBufferUses(projections, projection, buffers, user); !valid) return valid;
+        if (auto valid = qualifyBufferUses(projections, {projection, buffers, user}); !valid) return valid;
         const auto existing = projections.find(projection);
         if (existing != projections.end() && existing->second.backing != backing)
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -148,29 +174,30 @@ namespace lux::render
     }
 
     RenderResult<ResourceRegistry::ProjectionFamily>
-    ResourceRegistry::GraphInstallation::resolveBacking(
-        const runtime_detail::BoundStorageProjection& link, const GraphBindingUse& user
+    ResourceRegistry::resolveBacking(
+        const runtime_detail::ProjectionSubscription& link, const GraphBindingUse& user
     ) noexcept
     {
-        auto* entry = registry_.entries_.find(link.storage);
-        if (!entry || !entry->execution_uses) return cxx::unexpected(RenderError{kStorageIdentity});
+        auto* entry = entries_.find(link.storage);
+        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
+        const auto frame_count = static_cast<std::uint32_t>(user.target->frames.size());
         const auto installed = entry->graph_bindings.find(link.projection);
         if (installed != entry->graph_bindings.end())
         {
-            const auto buffers = std::span(installed->second.backing.buffers).first(execution_.frameCount());
-            if (auto valid = qualifyBufferUses(entry->graph_bindings, link.projection, buffers, user); !valid)
+            const auto buffers = std::span(installed->second.backing.buffers).first(frame_count);
+            if (auto valid = qualifyBufferUses(entry->graph_bindings, {link.projection, buffers, user}); !valid)
                 return cxx::unexpected(valid.error());
         }
-        const auto& ops = *registry_.types_.find(entry->type)->factory.storage()->bindings();
+        const auto& ops = *entry->type->factory.storage().bindings();
         std::array<detail::ResourceInput, 3> slices{};
-        auto output = std::span(slices).first(execution_.frameCount());
-        const auto& description = execution_.graph().resources()[link.resource.index].description;
+        auto output = std::span(slices).first(frame_count);
+        const auto& description = user.target->graph.resources()[user.slot->resource.index].description;
         if (auto resolved = ops.resolveGraphImport(entry->instance, link.projection, description, output); !resolved)
             return cxx::unexpected(resolved.error());
 
         // An extension may have created other resources during resolution. Reacquire the row by identity.
-        entry = registry_.entries_.find(link.storage);
-        ProjectionFamily candidate{execution_.frameCount(), std::holds_alternative<GraphImageDesc>(description)};
+        entry = entries_.find(link.storage);
+        ProjectionFamily candidate{frame_count, std::holds_alternative<GraphImageDesc>(description)};
         auto& buffers = candidate.buffers;
         auto& images = candidate.images;
         auto& queue_uses = candidate.queue_uses;
@@ -181,16 +208,18 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kStorageMismatch});
             images[i] = output[i].image;
             queue_uses[i] = output[i].queue_uses;
-            if (!validQueueUses(images[i] || output[i].buffer, queue_uses[i], *registry_.deviceOf(link.storage)))
+            if (!validQueueUses(images[i] || output[i].buffer, queue_uses[i], *deviceOf(link.storage)))
                 return cxx::unexpected(RenderError{kStorageMismatch});
             if (images[i])
             {
-                const auto& compiled = execution_.graph().resources()[link.resource.index];
+                const auto& compiled = user.target->graph.resources()[user.slot->resource.index];
                 if (compiled.concurrent_image_read && (!queue_uses[i].preparation || !queue_uses[i].accepted))
                     return cxx::unexpected(RenderError{kStorageMismatch});
-                if (auto valid = execution_.qualifyImportedImage(link.resource, *images[i]); !valid)
+                if (auto valid = user.target->qualifyImage(user.slot->resource, *images[i]); !valid)
                     return cxx::unexpected(valid.error());
             }
+            if (!is_image && !validBufferSlice(output[i], user.target->device))
+                return cxx::unexpected(RenderError{kGraphInvalidRange});
             buffers[i] = {output[i].buffer, {output[i].offset, output[i].size}};
         }
         if (auto valid = qualifyGraphImport(entry->graph_bindings, link.projection, candidate, user); !valid)
@@ -204,19 +233,12 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kStorageMismatch});
         }
         for (std::uint32_t slot = 0; slot < output.size(); ++slot)
-            execution_.bindResource(link.resource, slot, output[slot]);
+            user.target->bind(user.slot->resource, slot, output[slot]);
         return candidate;
     }
 
-    runtime_detail::JobExecution& ResourceRegistry::installedReader(detail::ExecutionBindingId binding) const noexcept
-    {
-        const auto* job = jobs_->find(binding.job);
-        if (!job || !job->execution || job->execution->binding_identity != binding) std::terminate();
-        return *job->execution;
-    }
-
     void ResourceRegistry::unbindGraphProjection(
-        const runtime_detail::BoundStorageProjection& link, const detail::ExecutionBindingId& identity
+        const runtime_detail::ProjectionSubscription& link, const detail::ExecutionBindingId& identity
     ) noexcept
     {
         auto& projections = entries_.find(link.storage)->graph_bindings;
@@ -225,12 +247,21 @@ namespace lux::render
         auto& users = found->second.users;
         const auto* reader = users.find(link.subscription);
         const bool current = reader && reader->binding == identity;
-        if (!current || reader->resource != link.resource) std::terminate();
+        if (!current) std::terminate();
+        const bool was_writer = reader->slot->output_range.has_value();
         if (link.subscription.gen == std::numeric_limits<decltype(link.subscription.gen)>::max() - 1)
             ++found->second.retired_slots;
         users.erase(link.subscription);
         if (users.empty()) projections.erase(found);
-        if (link.output_range) pruneBufferProducts(link.storage);
+        if (was_writer) pruneBufferProducts(link.storage);
+    }
+
+    bool ResourceRegistry::hasGraphInputUsers(ResourceInstanceId id, std::uint32_t projection) const noexcept
+    {
+        const auto* entry = entries_.find(id);
+        if (!entry) return false;
+        const auto binding = entry->graph_bindings.find(projection);
+        return binding != entry->graph_bindings.end() && !binding->second.users.empty();
     }
 
     RenderResult<std::size_t> ResourceRegistry::publishGraphInput(
@@ -238,69 +269,97 @@ namespace lux::render
     ) noexcept
     {
         auto* entry = entries_.find(storage);
-        if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
-        // One Storage can expose the same backing through multiple projections.
-        if (installation_ && installation_->holds(storage)) return cxx::unexpected(RenderError{kDeviceBusy});
+        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
         const auto found = entry->graph_bindings.find(projection);
-        const auto publish_image = [&]() -> RenderResult<std::size_t>
+        if (value.image || (found != entry->graph_bindings.end() && found->second.backing.image_projection))
         {
             if (hasBufferFields(value)) return cxx::unexpected(RenderError{kStorageMismatch});
             const GraphImagePublication update{projection, frame, value.image, value.queue_uses};
             return publishGraphImages(storage, {&update, 1});
-        };
-        if (value.image) return publish_image();
-        if (found != entry->graph_bindings.end() && found->second.backing.image_projection) return publish_image();
-        if (!validQueueUses(value.buffer != nullptr, value.queue_uses, *deviceOf(storage)))
-            return cxx::unexpected(RenderError{kStorageMismatch});
-        if (value.size > UINT64_MAX - value.offset) return cxx::unexpected(RenderError{kGraphInvalidRange});
-        if (found == entry->graph_bindings.end())
-        {
-            if (entry->products.empty()) return 0;
-            std::array<ProjectionBuffer, 3> replacement;
-            replacement.fill({value.buffer, {value.offset, value.size}});
-            if (frame != UINT32_MAX && frame >= replacement.size()) return cxx::unexpected(RenderError{kFrameContract});
-            const auto first = frame == UINT32_MAX ? 0u : frame;
-            auto slices = std::span{replacement}.first(frame == UINT32_MAX ? replacement.size() : 1);
-            if (auto valid = replaceProductBacking(storage, projection, first, slices); !valid)
-                return cxx::unexpected(valid.error());
-            pruneBufferProducts(storage);
-            return 0;
         }
-        auto& binding = found->second;
-        const auto& users = binding.users;
-        // Each storage belongs to one device with a single configured FIF count.
-        const auto count = binding.backing.frame_count;
-        if (frame != UINT32_MAX && frame >= count)
-            return cxx::unexpected(RenderError{kFrameContract});
-        auto candidate = binding.backing.buffers;
-        const auto first = frame == UINT32_MAX ? 0u : frame;
-        const auto end = frame == UINT32_MAX ? count : frame + 1;
-        for (auto i = first; i < end; ++i) candidate[i] = {value.buffer, {value.offset, value.size}};
-        if (candidate != binding.backing.buffers)
+        const GraphBufferPublication update{projection, frame, value};
+        return publishGraphBuffers(storage, {&update, 1});
+    }
+
+    RenderResult<std::size_t>
+    ResourceRegistry::publishGraphBuffers(ResourceInstanceId storage, std::span<const GraphBufferPublication> updates) noexcept
+    {
+        auto* entry = entries_.find(storage);
+        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (updates.empty()) return 0;
+        if (pending_bindings_ && pending_bindings_->holds(storage)) return cxx::unexpected(RenderError{kDeviceBusy});
+        auto& device = entry->storage_set->device_;
+        const auto count = device.frameProgress().frameCount();
+        for (std::size_t i = 0; i < updates.size(); ++i)
         {
-            const bool has_writer = std::ranges::any_of(entry->graph_bindings, [](const auto& current)
+            const auto& update = updates[i];
+            const auto& value = update.value;
+            if (update.frame != UINT32_MAX && update.frame >= count) return cxx::unexpected(RenderError{kFrameContract});
+            if (value.image || !validQueueUses(value.buffer != nullptr, value.queue_uses, device.session()))
+                return cxx::unexpected(RenderError{kStorageMismatch});
+            if (!validBufferSlice(value, device.session())) return cxx::unexpected(RenderError{kGraphInvalidRange});
+            for (const auto& prior : updates.first(i))
             {
-                return std::ranges::any_of(current.second.users, [](const auto& use)
-                {
-                    return use.writer.has_value();
-                });
-            });
-            if (has_writer)
-            {
-                const auto slices = std::span(candidate).first(count);
-                for (const auto& user : users)
-                    if (auto valid = qualifyBufferUses(entry->graph_bindings, projection, slices, user); !valid)
-                        return cxx::unexpected(valid.error());
+                const bool overlaps = prior.frame == UINT32_MAX || update.frame == UINT32_MAX || prior.frame == update.frame;
+                if (prior.projection == update.projection && overlaps) return cxx::unexpected(RenderError{kStorageContract});
             }
-            const auto slices = std::span{candidate}.subspan(first, end - first);
-            if (auto valid = replaceProductBacking(storage, projection, first, slices); !valid)
+            if (auto valid = qualifyProductReplacement(storage, update, count); !valid)
                 return cxx::unexpected(valid.error());
-            binding.backing.buffers = candidate;
-            if (!entry->product_buffers.empty()) pruneBufferProducts(storage);
         }
-        for (auto i = first; i < end; ++i) binding.backing.queue_uses[i] = value.queue_uses;
-        for (const auto& user : users) installedReader(user.binding).bindResource(user.resource, frame, value);
-        return users.size();
+
+        for (const auto& update : updates)
+        {
+            const auto found = entry->graph_bindings.find(update.projection);
+            if (found == entry->graph_bindings.end()) continue;
+            const auto& binding = found->second;
+            if (binding.backing.image_projection) return cxx::unexpected(RenderError{kStorageMismatch});
+            const auto candidate = proposedBuffers(update.projection, binding.backing, updates);
+            for (const auto& user : binding.users)
+            {
+                if (!entry->product_buffers.empty() && candidate != binding.backing.buffers)
+                {
+                    const BufferClaim claim{update.projection, std::span(candidate).first(count), user};
+                    if (auto valid = qualifyBufferUses(entry->graph_bindings, claim, updates); !valid)
+                        return cxx::unexpected(valid.error());
+                }
+                for (std::uint32_t f = 0; f < count; ++f)
+                {
+                    if (update.frame != UINT32_MAX && update.frame != f) continue;
+                    const auto& reader = user.target->frames[f];
+                    if (!reader.frozen_for_submission) continue;
+                    const auto& selected = reader.bindings[user.slot->resource.index];
+                    if (!selected.sameBacking(update.value) || !selected.sameAddresses(update.value))
+                        return cxx::unexpected(RenderError{kDeviceBusy});
+                }
+            }
+        }
+
+        // Allocate tracking for new writer backings after qualification and before changing any issued version.
+        for (const auto& update : updates)
+        {
+            const auto found = entry->graph_bindings.find(update.projection);
+            if (found != entry->graph_bindings.end() && found->second.hasWriter())
+                reserveProductBuffer(storage, update.value.buffer);
+        }
+        std::size_t updated = 0;
+        for (const auto& update : updates)
+        {
+            adoptProductReplacement(storage, update, count);
+            const auto found = entry->graph_bindings.find(update.projection);
+            if (found == entry->graph_bindings.end()) continue;
+            auto& binding = found->second;
+            const auto& value = update.value;
+            for (std::uint32_t f = 0; f < count; ++f)
+            {
+                if (update.frame != UINT32_MAX && update.frame != f) continue;
+                binding.backing.buffers[f] = {value.buffer, {value.offset, value.size}};
+                binding.backing.queue_uses[f] = value.queue_uses;
+            }
+            for (const auto& user : binding.users) user.target->bind(user.slot->resource, update.frame, value);
+            updated += binding.users.size();
+        }
+        if (!entry->product_buffers.empty()) pruneBufferProducts(storage);
+        return updated;
     }
 
     RenderResult<std::size_t>
@@ -309,8 +368,8 @@ namespace lux::render
     ) noexcept
     {
         auto* entry = entries_.find(storage);
-        if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (!updates.empty() && installation_ && installation_->holds(storage))
+        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (!updates.empty() && pending_bindings_ && pending_bindings_->holds(storage))
             return cxx::unexpected(RenderError{kDeviceBusy});
         auto& bindings = entry->graph_bindings;
         for (std::size_t i = 0; i < updates.size(); ++i)
@@ -339,21 +398,21 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kFrameContract});
             for (const auto& user : family.users)
             {
-                const auto& reader = installedReader(user.binding);
-                const auto& graph_resource = reader.graph().resources()[user.resource.index];
+                const auto& reader = *user.target;
+                const auto& graph_resource = reader.graph.resources()[user.slot->resource.index];
                 if (!std::holds_alternative<GraphImageDesc>(graph_resource.description))
                     return cxx::unexpected(RenderError{kStorageMismatch});
                 for (std::uint32_t f = 0; f < count; ++f)
                 {
                     if (!includesFrame(update, f)) continue;
                     if (family.backing.images[f] == update.image && family.backing.queue_uses[f] == update.uses) continue;
-                    if (reader.frozenForSubmission(f)) return cxx::unexpected(RenderError{kDeviceBusy});
+                    if (reader.frames[f].frozen_for_submission) return cxx::unexpected(RenderError{kDeviceBusy});
                 }
                 if (update.image)
                 {
                     if (graph_resource.concurrent_image_read && (!update.uses.preparation || !update.uses.accepted))
                         return cxx::unexpected(RenderError{kStorageMismatch});
-                    auto valid = reader.qualifyImportedImage(user.resource, *update.image);
+                    auto valid = reader.qualifyImage(user.slot->resource, *update.image);
                     if (!valid) return cxx::unexpected(valid.error());
                 }
             }
@@ -381,7 +440,7 @@ namespace lux::render
                 family.backing.queue_uses[f] = update.uses;
                 const detail::ResourceInput input{.image = update.image, .queue_uses = update.uses};
                 for (const auto& user : family.users)
-                    installedReader(user.binding).bindResource(user.resource, f, input);
+                    user.target->bind(user.slot->resource, f, input);
             }
             updated += family.users.size();
         }
@@ -397,31 +456,102 @@ namespace lux::render
     ResourceRegistry::beginCommand(ResourceInstanceId id, bool exclusive) noexcept
     {
         auto* entry = entries_.find(id);
-        if (!entry || !entry->instance)
+        if (!entry || !entry->instance || entry->storage_set->closed_)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const bool conflicting_command = entry->exclusive_command || (exclusive && entry->command_uses != 0);
+        return beginCommand(*entry, exclusive);
+    }
+
+    RenderResult<void*> ResourceRegistry::beginCommand(Entry& entry, bool exclusive) noexcept
+    {
+        const bool conflicting_command = entry.exclusive_command || (exclusive && entry.command_uses != 0);
         if (conflicting_command)
         {
             return cxx::unexpected(RenderError{kDeviceBusy});
         }
-        if (entry->command_uses == UINT32_MAX) std::terminate();
-        ++entry->command_uses;
-        entry->exclusive_command = exclusive;
-        return entry->instance;
+        if (entry.command_uses == UINT32_MAX) std::terminate();
+        ++entry.command_uses;
+        entry.exclusive_command = exclusive;
+        return entry.instance;
+    }
+
+    RenderResult<bool> ResourceRegistry::selectFrameUpdate(
+        const FrameData::Batch& batch, const FrameData& packet, detail::FrameDataCall& selected
+    ) noexcept
+    {
+        const auto id = batch.target.instance;
+        auto* entry = entries_.find(id);
+        if (!entry || !entry->instance || entry->storage_set->closed_) return cxx::unexpected(RenderError{kStorageIdentity});
+        if (auto error = entry->storage_set->device_.admissionError(); error.type) return cxx::unexpected(error);
+        const auto& registration = entry->type->factory;
+        if (!registration.applyFrame() || !std::ranges::equal(registration.channels(), batch.channels))
+            return cxx::unexpected(RenderError{kFrameContract});
+        const bool per_run = registration.descriptor->lifetime == EResourceContentLifetime::PER_RUN;
+        bool supplied = per_run;
+        for (std::size_t i = 0; !supplied && i < batch.channels.size(); ++i)
+            supplied = packet.column(batch.first_column + i).count != 0;
+        if (!supplied) return false;
+        auto owner = beginCommand(*entry, false);
+        if (!owner) return cxx::unexpected(owner.error());
+        selected = {id, *owner, registration.applyFrame(), batch.first_column, per_run};
+        return true;
     }
 
     bool ResourceRegistry::hasBorrows(ResourceInstanceId id) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry && (entry->command_uses != 0 || entry->execution_uses != 0);
+        return entry && (entry->command_uses || (pending_bindings_ && pending_bindings_->protects(id)) ||
+            entry->storage_set->device_.jobUsesResource(id));
+    }
+
+    void ResourceRegistry::collectFrameDependencies(
+        std::span<const ResourceInstanceId> roots, std::vector<ResourceInstanceId>& result
+    ) const noexcept
+    {
+        // The candidate already owns the sorted roots. Dependencies become immutable on publication.
+        result.clear();
+        const auto visit = [&](ResourceInstanceId id) noexcept
+        {
+            const auto* entry = entries_.find(id);
+            if (!entry) std::terminate();
+            for (auto dependency : entry->dependencies)
+            {
+                if (std::ranges::binary_search(roots, detail::resourceOrder(dependency), {}, detail::resourceOrder))
+                    continue;
+                if (std::ranges::find(result, dependency) == result.end()) result.push_back(dependency);
+            }
+        };
+        for (auto root : roots) visit(root);
+        for (std::size_t i = 0; i < result.size(); ++i) visit(result[i]);
+        std::ranges::sort(result, {}, detail::resourceOrder);
     }
 
     bool ResourceRegistry::hasDependents(ResourceInstanceId id) const noexcept
     {
-        const auto* entry = entries_.find(id);
-        return entry && entry->dependent_storages != 0;
+        return std::ranges::any_of(entries_, [id](const Entry& owner) noexcept
+        {
+            return std::ranges::find(owner.dependencies, id) != owner.dependencies.end();
+        });
+    }
+
+    bool ResourceRegistry::hasSurvivingDependencyOn(const ResourceSet& set) const noexcept
+    {
+        for (const auto& owner : entries_)
+        {
+            if (owner.storage_set == &set && owner.instance) continue;
+            for (auto id : owner.dependencies)
+            {
+                const auto* target = entries_.find(id);
+                if (target && target->storage_set == &set && target->instance) return true;
+            }
+        }
+        return false;
+    }
+
+    RenderResult<ResourceInstanceId> ResourceCreateContext::require(ResourceNameView dependency) noexcept
+    {
+        return resources.requireDuringConstruction(*this, constructing_, resources.typeId(dependency));
     }
 
     RenderResult<ResourceInstanceId> ResourceRegistry::requireDuringConstruction(
@@ -430,7 +560,8 @@ namespace lux::render
     {
         auto* entry = entries_.find(consumer);
         const auto* definition = factory(type);
-        if (!entry || entry->instance || !definition) return cxx::unexpected(RenderError{kStorageContract});
+        const bool constructing = entry && !entry->instance && entry->position == SIZE_MAX;
+        if (!constructing || !definition) return cxx::unexpected(RenderError{kStorageContract});
         auto* scope = entry->storage_set->ownerFor(definition->descriptor->domain);
         if (!scope) return cxx::unexpected(RenderError{kStorageMismatch});
         auto dependency = scope->getOrCreate(context, type);
@@ -438,30 +569,8 @@ namespace lux::render
 
         auto& dependencies = entries_.find(consumer)->dependencies;
         if (std::ranges::find(dependencies, *dependency) == dependencies.end())
-        {
-            auto& count = entries_.find(*dependency)->dependent_storages;
-            if (count == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
             dependencies.push_back(*dependency);
-            ++count;
-        }
         return *dependency;
-    }
-
-    RenderResult<void> ResourceRegistry::retainExecution(ResourceInstanceId id) noexcept
-    {
-        auto* entry = entries_.find(id);
-        if (!entry || !entry->instance) return cxx::unexpected(RenderError{kStorageIdentity});
-        if (entry->exclusive_command) return cxx::unexpected(RenderError{kDeviceBusy});
-        if (entry->execution_uses == UINT32_MAX) return cxx::unexpected(RenderError{kStorageCapacity});
-        ++entry->execution_uses;
-        return {};
-    }
-
-    void ResourceRegistry::releaseExecution(ResourceInstanceId id) noexcept
-    {
-        auto* entry = entries_.find(id);
-        if (!entry || !entry->execution_uses) std::terminate();
-        --entry->execution_uses;
     }
 
     bool ResourceRegistry::hasExclusiveCommand(ResourceInstanceId id) const noexcept
@@ -470,10 +579,16 @@ namespace lux::render
         return entry && entry->exclusive_command;
     }
 
-    const detail::DeviceSession* ResourceRegistry::deviceOf(ResourceInstanceId id) const noexcept
+    detail::DeviceEntry* ResourceRegistry::deviceOwner(ResourceInstanceId id) const noexcept
     {
         const auto* entry = entries_.find(id);
         return entry && entry->instance ? &entry->storage_set->device_ : nullptr;
+    }
+
+    const detail::DeviceSession* ResourceRegistry::deviceOf(ResourceInstanceId id) const noexcept
+    {
+        const auto* owner = deviceOwner(id);
+        return owner ? &owner->session() : nullptr;
     }
 
     bool ResourceRegistry::canReference(ResourceInstanceId owner, ResourceInstanceId dependency) const noexcept
@@ -510,6 +625,17 @@ namespace lux::render
         {
             entry->exclusive_command = false;
         }
+        auto* scope = entry->storage_set;
+        if (scope->closed_ && !scope->hasBorrows())
+        {
+            auto& retired = scope->parent_->retiring_jobs_;
+            const auto found = std::ranges::find(retired, scope, &std::unique_ptr<ResourceSet>::get);
+            if (found != retired.end())
+            {
+                auto released = std::move(*found);
+                retired.erase(found);
+            }
+        }
     }
 
     ResourceRegistry::~ResourceRegistry() noexcept
@@ -523,7 +649,7 @@ namespace lux::render
     ResourceTypeId ResourceRegistry::declarationOf(ResourceInstanceId id) const noexcept
     {
         const auto* entry = entries_.find(id);
-        return entry && entry->instance ? entry->type : ResourceTypeId{};
+        return entry && entry->instance ? entry->type->id : ResourceTypeId{};
     }
 
     ResourceTypeId ResourceRegistry::typeId(ResourceNameView type) const noexcept
@@ -544,53 +670,49 @@ namespace lux::render
         return index.isNull() ? nullptr : &types_.find(index)->factory;
     }
 
-    const ConfigValue* ResourceRegistry::configuration(ResourceTypeId type) const noexcept
+    const ResourceRegistration* ResourceRegistry::factoryOf(ResourceInstanceId id) const noexcept
     {
-        const auto* entry = types_.find(type);
-        return entry ? &entry->configuration : nullptr;
+        const auto* entry = entries_.find(id);
+        return entry && entry->instance ? &entry->type->factory : nullptr;
     }
 
     RenderResult<const ResourceRegistration*>
-    ResourceRegistry::qualify(ResourceTypeId type, EResourceDomain domain, const ResourceCreateContext& context)
-        const noexcept
+    ResourceRegistry::qualify(ResourceTypeId type, EResourceDomain domain, GpuResourceFeatures available) const noexcept
+    {
+        const auto result = qualifyType(type, domain, available);
+        if (!result) return cxx::unexpected(result.error());
+        return &(*result)->factory;
+    }
+
+    RenderResult<const ResourceRegistry::Type*>
+    ResourceRegistry::qualifyType(ResourceTypeId type, EResourceDomain domain, GpuResourceFeatures available) const noexcept
     {
         const auto* definition = types_.find(type);
         if (!definition)
         {
             return cxx::unexpected(RenderError{kStorageFactory});
         }
-        const bool is_wrong_registry = &context.resources != this;
         const bool is_wrong_domain = definition->factory.descriptor->domain != domain;
-        if (is_wrong_registry || is_wrong_domain)
+        if (is_wrong_domain)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        if (!definition->factory.descriptor->supports(context.device.resourceCapabilities()))
+        if (!definition->factory.descriptor->supports(available))
         {
             return cxx::unexpected(RenderError{kStorageCapability});
         }
-        if (definition->factory.storage()->config_type.isValid() && !definition->configuration)
+        if (definition->factory.storage().config_type.isValid() && !definition->configuration)
         {
             return cxx::unexpected(RenderError{kStorageContract});
         }
-        return &definition->factory;
+        return definition;
     }
 
     RenderResult<void> ResourceRegistry::validateFactory(const ResourceRegistration& factory) const noexcept
     {
-        if (!factory.descriptor || !factory.storage())
-        {
-            return cxx::unexpected(RenderError{kStorageFactory});
-        }
         if (auto valid = validateResourceRegistration(factory); !valid)
         {
             return cxx::unexpected(valid.error());
-        }
-        if (const auto* ops = factory.storage()->bindings())
-        {
-            const bool has_prepare = ops->prepareFrame != nullptr;
-            const bool has_settle = ops->settleFrame != nullptr;
-            if (has_prepare != has_settle) return cxx::unexpected(RenderError{kStorageContract});
         }
         if (!typeId(factory.descriptor->type).isNull())
         {
@@ -607,9 +729,11 @@ namespace lux::render
         {
             return valid;
         }
-        const bool is_missing_config = factory.storage()->config_type.isValid() && !configuration;
+        const auto expected = factory.storage().config_type;
+        const bool is_missing_config = expected.isValid() && !configuration;
         if (is_missing_config) return cxx::unexpected(RenderError{kStorageContract});
-        const bool is_wrong_config_type = configuration && factory.storage()->config_type != configuration.type();
+        const auto actual = configuration.type();
+        const bool is_wrong_config_type = configuration && (expected != actual || expected.name() != actual.name());
         if (is_wrong_config_type)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
@@ -619,7 +743,7 @@ namespace lux::render
 
     ResourceRegistry::Type::Type(ResourceRegistration source, ConfigValue config) noexcept
         : descriptor(*source.descriptor), frame_inputs(descriptor.frame_inputs.begin(), descriptor.frame_inputs.end()),
-          frame_channels(source.frame_call.channels.begin(), source.frame_call.channels.end()),
+          frame_channels(source.channels().begin(), source.channels().end()),
           factory(std::move(source)), configuration(std::move(config))
     {
         const auto own_name = [this](std::string_view text) noexcept -> std::string_view
@@ -638,27 +762,31 @@ namespace lux::render
         descriptor.frame_inputs = frame_inputs;
         factory.descriptor = &descriptor;
 
-        auto& call = factory.frame_call;
-        own_type(call.declaration_type);
-        own_type(call.storage_type);
-        own_type(call.method_type);
-        for (auto& channel : frame_channels)
+        if (!frame_channels.empty())
         {
-            own_type(channel.declaration);
-            own_type(channel.element);
+            // Registration qualified one declaration and the exact element identity of every column.
+            auto declaration = frame_channels.front().declaration;
+            own_type(declaration);
+            for (std::size_t i = 0; i < frame_channels.size(); ++i)
+            {
+                frame_channels[i].declaration = declaration;
+                frame_channels[i].element = frame_inputs[i];
+            }
         }
-        call.channels = frame_channels;
+        factory.frame_channels_ = frame_channels;
 
-        auto& storage = *factory.storage_;
+        auto& storage = factory.storage_;
         own_type(storage.config_type);
         own_type(storage.implementation_type);
-        if (storage.snapshot_ops) own_type(storage.snapshot_ops->type);
+        if (storage.binding_ops && storage.binding_ops->cpu_view) own_type(storage.binding_ops->cpu_view->type);
     }
 
     ResourceTypeId ResourceRegistry::publishFactory(ResourceRegistration factory, ConfigValue configuration) noexcept
     {
         const auto id = types_.emplace(std::move(factory), std::move(configuration));
-        types_by_name_.emplace(std::string(types_.find(id)->factory.descriptor->type.name()), id);
+        auto& row = *types_.find(id);
+        row.id = id;
+        types_by_name_.emplace(std::string(row.descriptor.type.name()), id);
         return id;
     }
 
@@ -672,20 +800,19 @@ namespace lux::render
         return publishFactory(std::move(factory), std::move(configuration));
     }
 
-    ResourceInstanceId ResourceRegistry::reserve(ResourceSet& set, ResourceTypeId type) noexcept
+    ResourceInstanceId ResourceRegistry::reserve(ResourceSet& set, const Type& type) noexcept
     {
-        return entries_.emplace(Entry{&set, 0, type});
+        return entries_.emplace(Entry{&set, SIZE_MAX, &type});
     }
 
     RenderResult<StorageOwner>
-    ResourceRegistry::create(
-        ResourceCreateContext& dependencies,
-        ResourceInstanceId id,
-        const void* configuration
-    ) noexcept
+    ResourceRegistry::create(ResourceCreateContext& dependencies, ResourceInstanceId id) noexcept
     {
         const auto type = entries_.find(id)->type;
-        return types_.find(type)->factory.storage()->create(dependencies, id, configuration);
+        // A nested factory gets its own identity while sharing the caller's rollback list.
+        auto construction = dependencies;
+        construction.constructing_ = id;
+        return type->factory.storage().create(construction, id, type->configuration.data());
     }
 
     void ResourceRegistry::publish(ResourceInstanceId id, std::size_t position, void* instance) noexcept
@@ -702,18 +829,19 @@ namespace lux::render
         entries_.find(id)->position = position;
     }
 
+    void ResourceRegistry::unpublish(ResourceInstanceId id) noexcept
+    {
+        auto* entry = entries_.find(id);
+        if (!entry || !entry->instance || !entry->graph_bindings.empty()) std::terminate();
+        entry->instance = nullptr;
+    }
+
     void ResourceRegistry::revoke(ResourceInstanceId id) noexcept
     {
-        if (hasBorrows(id) || hasDependents(id) || !entries_.find(id)->graph_bindings.empty())
-        {
-            std::terminate();
-        }
-        for (auto dependency : entries_.find(id)->dependencies)
-        {
-            auto* owner = entries_.find(dependency);
-            if (!owner || !owner->dependent_storages) std::terminate();
-            --owner->dependent_storages;
-        }
+        const auto* entry = entries_.find(id);
+        // Removal qualified the incoming edges before unpublishing. Scope teardown qualifies them
+        // once and destroys dependents first. A factory reservation was never available to require().
+        if (!entry || entry->instance) std::terminate();
         entries_.erase(id);
     }
 

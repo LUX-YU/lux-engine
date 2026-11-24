@@ -6,20 +6,23 @@
 
 namespace lux::render::detail
 {
-    struct ImageDimensions final { std::uint32_t width, height; };
+    struct ImageDimensions final { std::uint32_t width, height, depth = 1; };
     struct CopyAlignment final { std::uint32_t row, slice; };
 
     [[nodiscard]] inline RenderResult<nri::DispatchDesc>
     dispatchGroups(const ImageDispatchExtent& dispatch, ImageDimensions extent, const nri::DeviceDesc& device) noexcept
     {
-        if (!extent.width || !extent.height) return cxx::unexpected(RenderError{kDeviceArgument});
-        const auto width = std::max(1u, extent.width >> dispatch.mip);
-        const auto height = std::max(1u, extent.height >> dispatch.mip);
+        if (!extent.width || !extent.height || !extent.depth) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto groupsFor = [&](std::uint32_t size, std::uint32_t group_size) noexcept
+        {
+            return (std::max(1u, size >> dispatch.mip) - 1) / group_size + 1;
+        };
         const nri::DispatchDesc groups{
-            (width - 1) / dispatch.group_size[0] + 1, (height - 1) / dispatch.group_size[1] + 1, 1
+            groupsFor(extent.width, dispatch.group_size[0]), groupsFor(extent.height, dispatch.group_size[1]),
+            groupsFor(extent.depth, dispatch.group_size[2])
         };
         const auto& limit = device.shaderStage.compute.dispatchMaxDim;
-        if (groups.workGroupNumX > limit[0] || groups.workGroupNumY > limit[1])
+        if (groups.workGroupNumX > limit[0] || groups.workGroupNumY > limit[1] || groups.workGroupNumZ > limit[2])
             return cxx::unexpected(RenderError{kDeviceArgument});
         return groups;
     }
@@ -31,9 +34,10 @@ namespace lux::render::detail
         if (!extent.width || !extent.height) return cxx::unexpected(RenderError{kDeviceArgument});
         const auto width = std::max(1u, extent.width >> range.first_mip);
         const auto height = std::max(1u, extent.height >> range.first_mip);
-        const auto rect = image.region.value_or(ImageCopyRegion{0, 0, width, height});
+        const auto depth = std::max(1u, extent.depth >> range.first_mip);
+        const auto rect = image.region.value_or(ImageCopyRegion{0, 0, width, height, 0, depth});
         const bool fits = rect.width && rect.height && std::uint64_t(rect.x) + rect.width <= width &&
-            std::uint64_t(rect.y) + rect.height <= height;
+            std::uint64_t(rect.y) + rect.height <= height && rect.depth && std::uint64_t(rect.z) + rect.depth <= depth;
         const auto block = image.block_dim;
         const bool aligned = rect.x % block == 0 && rect.y % block == 0 &&
             (rect.width % block == 0 || rect.x + rect.width == width) &&
@@ -45,7 +49,7 @@ namespace lux::render::detail
             range.aspects == 2 ? nri::PlaneBits::DEPTH : nri::PlaneBits::STENCIL;
         using Dim = nri::Dim_t;
         return nri::TextureRegionDesc{
-            Dim(rect.x), Dim(rect.y), 0, Dim(rect.width), Dim(rect.height), 1,
+            Dim(rect.x), Dim(rect.y), Dim(rect.z), Dim(rect.width), Dim(rect.height), Dim(rect.depth),
             Dim(range.first_mip), Dim(range.first_layer), planes
         };
     }
@@ -67,8 +71,8 @@ namespace lux::render::detail
         const auto min_slice = row * rows;
         const auto slice = copy.slice_pitch ? copy.slice_pitch : align(min_slice, alignment.slice);
         const auto& range = copy.buffer.range;
-        const bool valid_row = row >= minimum_row && row <= UINT32_MAX && row % alignment.row == 0;
-        const bool valid_slice = slice >= min_slice && slice <= UINT32_MAX && slice <= range.size &&
+        const bool valid_row = row >= minimum_row && row <= UINT32_MAX && row % alignment.row == 0 && row % copy.image.block_bytes == 0;
+        const bool valid_slice = slice >= min_slice && slice <= UINT32_MAX && slice * region.depth <= range.size &&
             slice % alignment.slice == 0;
         const bool valid_offset = range.offset <= UINT64_MAX - buffer_base &&
             (buffer_base + range.offset) % alignment.slice == 0;

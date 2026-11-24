@@ -1,35 +1,36 @@
+#include "FixtureEffect.hpp"
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
+#include <lux/engine/render/resource/instance/Requirement.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
 #include "FixtureCommands.hpp"
 #include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
 #include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include <lux/engine/render/runtime/commands/MeshCommands.hpp>
 #include <lux/engine/render/runtime/commands/TextureCommands.hpp>
 #include <lux/engine/render/runtime/commands/TransformCommands.hpp>
-#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include <lux/engine/render/runtime/commands/ViewCommands.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
-#include <lux/engine/render/resource/material/ProgramSource.hpp>
-#include <lux/engine/render/resource/mesh/MeshLayout.hpp>
+#include <lux/engine/render/resource/RasterProgramSet.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include "NativeDevice.hpp"
 #include "SceneCapture.hpp"
+#include "TargetDrawList.hpp"
 #include "EffectGraphColor.hpp"
-#include <lux/engine/render/effect/builtin/Shadow.hpp>
-#include <lux/engine/render/effect/builtin/DepthPyramid.hpp>
-#include <lux/engine/render/effect/builtin/GBuffer.hpp>
-#include <lux/engine/render/effect/builtin/Lighting.hpp>
+#include "SceneViewColor.hpp"
+#include <lux/engine/render/effect/capabilities/DepthReduction.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredLighting.hpp>
 #include <lux/engine/render/runtime/commands/LightingCommands.hpp>
-#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
-#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/effect/capabilities/ToneMapping.hpp>
 #include "EffectGraphImport.hpp"
 #include "EffectGraphProducer.hpp"
-#include "EffectMeshImports.hpp"
-#include "EffectMeshImportsPaged.hpp"
 #include "EffectNodeUniform.hpp"
 #include "EffectPreparedBuffer.hpp"
 #include "EffectStreamIndirect.hpp"
 #include "EffectStreamInline.hpp"
+#include "EffectStreamTarget.hpp"
 #include "EffectStreamLayers.hpp"
 #include "EffectStreamMaterial.hpp"
 #include "EffectStreamMesh.hpp"
@@ -38,7 +39,6 @@
 #include "EffectStreamSharedTexture.hpp"
 #include "EffectStreamUniform.hpp"
 #include "EffectStreamVertex.hpp"
-#include <lux/engine/render/features/shadow/ShadowInputs.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/resource/lighting/Resource.hpp>
 #include <lux/engine/render/resource/instance/Resource.hpp>
@@ -47,7 +47,6 @@
 #include <lux/engine/render/resource/mesh/Resource.hpp>
 #include <lux/engine/render/resource/texture/Resource.hpp>
 #include <lux/engine/render/resource/transform/TransformRecords.hpp>
-#include <lux/engine/render/resource/transform/Binding.hpp>
 #include <lux/engine/render/resource/transform/Resource.hpp>
 #include <lux/engine/render/resource/view/Resource.hpp>
 #ifdef _WIN32
@@ -69,10 +68,9 @@
 #include "FrameHarness.hpp"
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
-#include <lux/engine/render/effect/EffectInitializationContext.hpp>
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
-#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
+#include <lux/engine/render/graph/compile/RenderGraphCompiler.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -201,7 +199,7 @@ static void graphOutput(Validation& validation)
     auto definition = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(definition));
     const GraphOutputRequirements output_description{target.format, target.samples};
-    auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
+    auto ready_result = stdexec::sync_wait(RenderGraphCompiler::compileNative(
         *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
         {definition, analysis}, {.target = output_description}
     ));
@@ -210,7 +208,7 @@ static void graphOutput(Validation& validation)
     auto physical = std::optional{take(OffscreenTarget::create(*session, target, frames->frameCount()))};
     auto execution_gpu = std::make_unique<JobGpuResources>(*session, frames->frameCount());
     auto execution_job = std::make_unique<JobExecution>(
-        *execution_gpu, graph.graph, testInstallation(), physical->output()
+        *execution_gpu, graph, testInstallation(), physical->output()
     );
     CHECK(execution_job->initialize());
     auto incompatible_output = physical->output();
@@ -273,6 +271,7 @@ static void graphOutput(Validation& validation)
 
 static void importedIdentityReuse(Validation& validation, EGraphicsBackend backend)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
@@ -286,11 +285,12 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     CHECK(builder.exportOutput({pass.written.front()}));
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
-    auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
-        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
+    GraphCompileDiagnostics report;
+    auto ready_result = stdexec::sync_wait(RenderGraphCompiler::compileNative(
+        *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}, {.diagnostics = &report}
     ));
     CHECK(ready_result);
-    auto plan = take(std::move(std::get<0>(*ready_result)));
+    PreparedRenderGraph plan{take(std::move(std::get<0>(*ready_result))), std::move(report)};
     std::string dump;
     const DumpSink sink{&dump, [](void* destination, std::string_view text) noexcept
     {
@@ -364,7 +364,7 @@ static void importedIdentityReuse(Validation& validation, EGraphicsBackend backe
     CHECK(instance_job->initialize());
     CHECK(!frames->completed(0, *instance_job));
     change_reads(0);
-    CHECK(take(instance_job->freezeFrame(0)));
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
     change_reads(1);
     render();
     CHECK(rebuilds() == cached_rebuilds + 1);
@@ -460,7 +460,7 @@ static void importedExtentContracts(Validation& validation)
         }
         auto graph = take(std::move(builder).finish());
         auto analysis = take(analyzeRenderGraph(graph));
-        auto ready_result = stdexec::sync_wait(GraphCompiler::compile(
+        auto ready_result = stdexec::sync_wait(RenderGraphCompiler::compileNative(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
         ));
         CHECK(ready_result);
@@ -480,7 +480,7 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources invalid_gpu(*session, 1);
-            JobExecution invalid_job{invalid_gpu, plan.graph, testInstallation(), TargetOutput{}};
+            JobExecution invalid_job{invalid_gpu, plan, testInstallation(), TargetOutput{}};
             invalid_job.bindImage(source, 0, *images[0]);
             invalid_job.bindImage(destination, 0, *images[1]);
             const auto rejected = invalid_job.initialize();
@@ -488,7 +488,7 @@ static void importedExtentContracts(Validation& validation)
         }
         {
             JobGpuResources instance_gpu(*session, 1);
-            JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
+            JobExecution instance_job{instance_gpu, plan, testInstallation(), TargetOutput{}};
             instance_job.bindImage(source, 0, *images[0]);
             instance_job.bindImage(destination, 0, *images[2]);
             CHECK(instance_job.initialize());
@@ -530,14 +530,12 @@ namespace
     constexpr std::string_view hdr_import_name = "test.output.import_hdr";
     constexpr std::string_view hdr_binding = "author.hdr";
 
-    EffectNodeDefinition outputSource(bool hdr)
+    EffectCapability outputSource(bool hdr)
     {
         const auto name = hdr ? hdr_source_name : display_clear_name;
-        const auto type = hdr ? HdrColorBundle::type : ToneMapping::display_type;
-        return {
-            .identity = {graph::nodeTypeId(name), std::string{name}, 1},
-            .ports = {{ToneMapping::color, "color", {std::string{type}, 1}, graph::EPinDirection::OUTPUT}}
-        };
+        static constexpr std::array hdr_ports{outputPort("color", {HdrColorBundle::type, 1})};
+        static constexpr std::array display_ports{ToneMappingPorts::color};
+        return {.id = graph::nodeTypeId(name), .canonical_name = name, .ports = hdr ? hdr_ports : display_ports};
     }
 
     template <bool Hdr>
@@ -550,39 +548,58 @@ namespace
         const auto clear = take(context.addTransferPass(
             "clear output", TransferWork{{ClearImage{{{color, 0}}, {.25f, .5f, .75f, 1}}}}
         ));
-        return context.publish(ToneMapping::color, {{ToneMapping::color, clear.written.front()}});
+        return context.publish(ToneMappingPorts::color.semantic, {{ToneMappingPorts::color.semantic, clear.written.front()}});
     }
 
     RenderResult<void> buildOutputImport(EffectCompileContext& context, std::string_view) noexcept
     {
         const auto image = context.importTargetImage(hdr_binding, rdesc::ETextureFormat::RGBA16_SFLOAT);
         if (!image) return lux::cxx::unexpected(image.error());
-        return context.publish(ToneMapping::color, {{ToneMapping::color, *image}});
+        return context.publish(ToneMappingPorts::color.semantic, {{ToneMappingPorts::color.semantic, *image}});
+    }
+
+    RenderResult<void> buildViewColor(EffectCompileContext& context, std::string_view) noexcept
+    {
+        const auto row = take(context.importResource(
+            ViewParameterResource::gpu_binding, kViewParameterResourceName, ViewParameterResource::projection()
+        ));
+        GraphImageDesc image;
+        image.extent.source = EImageExtentSource::TARGET;
+        const auto source = take(context.declareResource({"view color", image}));
+        const auto color = take(context.declareResource({"output", image}));
+        ComputeWork work;
+        work.interface.program = take(context.addProgram(GraphProgram{kSceneViewColor.load(context.shaderTarget())}));
+        work.interface.resources = {{"scene_view", {row}}, {"generated", {{source, 0}, {}, EGraphAccess::WRITE}}};
+        work.dispatch = ImageDispatchArguments{source};
+        const auto drawn = take(context.addComputePass("read view row", std::move(work)));
+        const auto copied = take(context.addTransferPass(
+            "copy view color", TransferWork{{lux::render::CopyImage{{drawn.written.front()}, {{color, 0}}}}}
+        ));
+        return context.publish(ToneMappingPorts::color.semantic, {{ToneMappingPorts::color.semantic, copied.written.front()}});
     }
 
     void registerOutputNodes(RenderServer& server)
     {
         const auto add = [&server](
-            const EffectNodeDefinition& definition, std::string_view name, graph::PinSemanticId output,
-            EffectImplementation::Build build
+            const EffectCapability& definition, std::string_view name, graph::PinSemanticId output,
+            ImplementationEntry::Create create
         )
         {
-            EffectImplementation implementation;
-            implementation.capability = definition.identity.id;
+            ImplementationEntry implementation;
+            implementation.capability = definition.id;
             implementation.identity = {std::string{name}, 1};
             implementation.supported_outputs = {output};
-            implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept
-                -> RenderResult<void> { return {}; };
-            implementation.build = build;
+            implementation.create = create;
             CHECK(server.registerEffectImplementation(std::move(implementation)));
         };
         const auto display = outputSource(false);
         const auto hdr = outputSource(true);
         CHECK(server.registerEffectCapability(display));
         CHECK(server.registerEffectCapability(hdr));
-        add(display, display_clear_name, ToneMapping::color, buildOutputClear<false>);
-        add(hdr, hdr_source_name, ToneMapping::color, buildOutputClear<true>);
-        add(hdr, hdr_import_name, ToneMapping::color, buildOutputImport);
+        add(display, display_clear_name, ToneMappingPorts::color.semantic, fixture::Effect<buildOutputClear<false>>::create);
+        add(display, "test.output.view", ToneMappingPorts::color.semantic, fixture::Effect<buildViewColor>::create);
+        add(hdr, hdr_source_name, ToneMappingPorts::color.semantic, fixture::Effect<buildOutputClear<true>>::create);
+        add(hdr, hdr_import_name, ToneMappingPorts::color.semantic, fixture::Effect<buildOutputImport>::create);
         ColorCapture::registerWith(server);
     }
 
@@ -592,8 +609,8 @@ namespace
         request.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*request.graph};
         const auto source = outputSource(hdr);
-        const auto node = take(edit.addNode(source, {source.identity.canonical_name, 1}));
-        CHECK(edit.setOutput("color", edit.pinId(node, ToneMapping::color), true));
+        const auto node = take(edit.addNode(source, {std::string{source.canonical_name}, 1}));
+        CHECK(edit.setOutput("color", edit.pinId(node, ToneMappingPorts::color.semantic), true));
         CHECK(edit.commit());
         return request;
     }
@@ -601,7 +618,8 @@ namespace
     enum class EExpectedEncoding
     {
         LINEAR,
-        SRGB
+        SRGB,
+        HDR_LINEAR
     };
 
     graph::NodeId addOutputTone(EffectGraphEdit& edit, bool imported, EExpectedEncoding encoding, std::string exposure)
@@ -609,13 +627,15 @@ namespace
         const auto hdr = take(edit.addNode(
             outputSource(true), {std::string{imported ? hdr_import_name : hdr_source_name}, 1}
         ));
-        const auto implementation = encoding == EExpectedEncoding::SRGB ? ToneMapping::srgb : ToneMapping::linear;
-        const auto tone = take(edit.addNode(ToneMapping::definition(), {std::string{implementation}, 1},
+        const char* implementation = "lux.render.tone_mapping.linear";
+        if (encoding == EExpectedEncoding::SRGB) implementation = "lux.render.tone_mapping.srgb";
+        if (encoding == EExpectedEncoding::HDR_LINEAR) implementation = "lux.render.tone_mapping.hdr_linear";
+        const auto tone = take(edit.addNode(capabilities::ToneMapping, {std::string{implementation}, 1},
             "exposure=" + exposure));
         const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
-        CHECK(edit.connect(edit.pinId(hdr, ToneMapping::color), edit.pinId(tone, ToneMapping::hdr_color)));
-        CHECK(edit.connect(edit.pinId(tone, ToneMapping::color), edit.pinId(capture, ColorCapture::color)));
-        CHECK(edit.setOutput("color", edit.pinId(tone, ToneMapping::color), true));
+        CHECK(edit.connect(edit.pinId(hdr, ToneMappingPorts::color.semantic), edit.pinId(tone, ToneMappingPorts::hdr_color.semantic)));
+        CHECK(edit.connect(edit.pinId(tone, ToneMappingPorts::color.semantic), edit.pinId(capture, ColorCapture::color)));
+        CHECK(edit.setOutput("color", edit.pinId(tone, ToneMappingPorts::color.semantic), true));
         CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
         return tone;
     }
@@ -700,6 +720,14 @@ static void verifyTonemapOutput(
     constexpr std::array hdr{.25, .5, .75};
     const auto matches = [&](const auto& frame, double gain)
     {
+        if (encoding == EExpectedEncoding::HDR_LINEAR)
+        {
+            // Binary16 encodes the exposed RGB exactly: (1, 2, 3) or (1/8, 1/4, 3/8).
+            const std::array<std::uint16_t, 4> bright{0x3c00, 0x4000, 0x4200, 0x3c00};
+            const std::array<std::uint16_t, 4> dim{0x3000, 0x3400, 0x3600, 0x3c00};
+            const auto& expected = gain == 4 ? bright : dim;
+            return frame.size() >= sizeof(expected) && std::memcmp(frame.data(), expected.data(), sizeof(expected)) == 0;
+        }
         if (frame[3] != std::byte{255}) return false;
         for (std::size_t channel = 0; channel < hdr.size(); ++channel)
         {
@@ -763,7 +791,7 @@ static void verifyTargetInput(
         {client, commands, session}, {scene, consumer_view}, {&pixels, ldr_format}
     );
     start.binding.resources.push_back({std::string{ColorCapture::name}, readback});
-    start.binding.target_images.push_back({source, "unknown"});
+    start.binding.target_images.push_back({source, "unknown", EProductRead::LATEST_PUBLISHED});
     CHECK(call<StartRenderJob>(client, commands, start, false).error.type == kRuntimeIdentity);
     start.binding.target_images.front().binding = hdr_binding;
     if (!foreign_device.isNull())
@@ -778,8 +806,6 @@ static void verifyTargetInput(
         std::puts("DEVICE IMPORT PASS: rejected a sampled Target from the peer physical adapter");
     }
     call<StartRenderJob>(client, commands, std::move(start));
-    const auto reverse = call<SetRenderJobDependencies>(client, commands, {writer, {reader}, {}}, false);
-    CHECK(reverse.error.type == kJobCycle);
     CHECK(call<RequestRenderJob>(client, commands, {reader}, false).error.type == kRuntimeState);
     const auto published = call<RequestRenderJob>(client, commands, {writer});
     const auto submitted = call<RequestRenderJob>(client, commands, {reader});
@@ -854,11 +880,11 @@ namespace
         result = {};
     }
 
-    RenderResult<void> initializeNodeTest(EffectInitializationContext& context, std::string_view args) noexcept
+    template <auto Build> EffectCreateResult createNodeTest(graph::NodeId, std::string_view args) noexcept
     {
         if (args != "producer" && args != "forward" && args != "dim" && args != "tone input")
             return lux::cxx::unexpected(RenderError{kFrameContract});
-        return context.initializeState<int>(args == "producer" ? 5 : 10);
+        return std::make_unique<fixture::StatefulEffect<Build, int>>(args, args == "producer" ? 5 : 10);
     }
 
     std::atomic_uint target_graph_builds{};
@@ -960,7 +986,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             CHECK(records.release(id) && !records.contains(id));
             auto future = key;
             ++future.gen;
-            CHECK(!records.contains(Identity::make<TransformId>(records.owner(), future)));
+            CHECK(!records.contains(Identity::make<TransformRef>(records.owner(), future)));
             collect(active);
         }
     }
@@ -1194,12 +1220,26 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 auto submitted = desc;
 #ifdef _WIN32
                 std::vector<nri::FenceSubmitDesc> waits;
+                auto* gpu_gate = commands.empty() ? nullptr : next_product_wait.exchange(nullptr);
+                if (gpu_gate)
+                {
+                    CHECK(desc.signalFenceNum == 1);
+                    product_signal = desc.signalFences[0];
+                }
                 if (held && gate_texture_gpu.exchange(false))
                 {
-                    const auto* recorded = old_pool_command.load();
-                    CHECK(recorded && std::ranges::find(commands, recorded) != commands.end());
+                    CHECK(!commands.empty());
+                    if (watch_texture_pool)
+                    {
+                        const auto* recorded = old_pool_command.load();
+                        CHECK(recorded && std::ranges::find(commands, recorded) != commands.end());
+                    }
+                    gpu_gate = texture_retirement_fence;
+                }
+                if (gpu_gate)
+                {
                     if (desc.waitFenceNum) waits.assign(desc.waitFences, desc.waitFences + desc.waitFenceNum);
-                    waits.push_back({texture_retirement_fence, 1, nri::StageBits::ALL});
+                    waits.push_back({gpu_gate, 1, nri::StageBits::ALL});
                     submitted.waitFences = waits.data();
                     submitted.waitFenceNum = static_cast<std::uint32_t>(waits.size());
                 }
@@ -1210,9 +1250,24 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 {
                     ++compute_submissions;
                     if (active_fault == EFault::REJECT_SUFFIX) suffix_ready.store(true);
+                    if (active_fault == EFault::HOLD_UPLOAD && held_upload_signal.fence)
+                    {
+                        const auto waits = std::span{desc.waitFences, desc.waitFenceNum};
+                        CHECK(std::ranges::count_if(waits, [](const auto& wait)
+                        {
+                            return wait.fence == held_upload_signal.fence && wait.value >= held_upload_signal.value &&
+                                wait.stages == nri::StageBits::ALL;
+                        }) == 1);
+                        checked_upload_wait = true;
+                    }
                 }
                 if (is_upload)
                 {
+                    if (active_fault == EFault::HOLD_UPLOAD)
+                    {
+                        CHECK(desc.signalFenceNum == 1);
+                        held_upload_signal = desc.signalFences[0];
+                    }
                     if (active_fault == EFault::UNKNOWN_UPLOAD)
                     {
                         unknown_submitted.store(true);
@@ -1236,14 +1291,18 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 if (held) pipeline_gate.wait(EPipelineGate::HELD);
                 const auto result = original_pipeline(device, desc, pipeline);
                 if (held && result == nri::Result::SUCCESS) held_pipeline.store(pipeline);
+                if (result == nri::Result::SUCCESS && watch_cold_prefix.exchange(false)) cold_prefix = pipeline;
                 return result;
             };
             core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
             {
                 auto* expected = pipeline;
-                if (pipeline && held_pipeline.compare_exchange_strong(expected, nullptr))
-                    held_pipeline_destroyed.store(true);
+                const bool held = pipeline && held_pipeline.compare_exchange_strong(expected, nullptr);
+                expected = pipeline;
+                const bool prefix = pipeline && cold_prefix.compare_exchange_strong(expected, nullptr);
                 original_destroy_pipeline(pipeline);
+                if (held) held_pipeline_destroyed = true;
+                if (prefix) cold_prefix_destroyed = true;
             };
             core.CreateDescriptorPool = [](
                 nri::Device& device, const nri::DescriptorPoolDesc& desc, nri::DescriptorPool*& pool
@@ -1317,11 +1376,15 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static inline std::atomic_uint copies{};
         static inline std::atomic_uint backings{};
         static inline std::atomic_uint compute_submissions{};
+        static inline nri::FenceSubmitDesc held_upload_signal{};
+        static inline std::atomic_bool checked_upload_wait{};
         static inline std::atomic_uint accepted_uploads{};
         static inline std::atomic_uint reject_submission_countdown{};
         static inline std::atomic<EFault> fault{EFault::NONE};
         static inline std::atomic pipeline_gate{EPipelineGate::OPEN};
         static inline std::atomic_bool held_pipeline_destroyed{};
+        static inline std::atomic_bool watch_cold_prefix{}, cold_prefix_destroyed{};
+        static inline std::atomic<nri::Pipeline*> cold_prefix{};
         static inline std::atomic submission_gate{EPipelineGate::OPEN};
         static inline std::atomic_bool upload_held{}, release_upload{};
         static inline std::atomic_bool suffix_rejected{}, unknown_retired{};
@@ -1340,8 +1403,11 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static inline std::array<TexturePool, 4> texture_pools{};
         static inline std::atomic<const nri::CommandBuffer*> old_pool_command{};
 #ifdef _WIN32
+        static inline bool test_unpublished_retirement = false;
         static inline nri::Fence* texture_retirement_fence = nullptr;
         static inline std::atomic_bool gate_texture_gpu{};
+        static inline std::atomic<nri::Fence*> next_product_wait{};
+        static inline nri::FenceSubmitDesc product_signal{};
 #endif
         static bool hasSeparateComputeQueue() noexcept { return compute_queue != nullptr; }
 
@@ -1371,29 +1437,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static inline const nri::Queue* compute_queue = nullptr;
     };
 
-    struct ReadPagedDependencies final
-    {
-        static constexpr std::string_view name = "test.effect.read_paged_dependencies";
-        struct Request final
-        {
-            ResourceInstanceId capture;
-            ResourceInstanceId instances;
-        };
-        using Data = Request;
-        struct Response final
-        {
-            RenderError error;
-            std::array<std::uint32_t, 3> counts{};
-        };
-        static ResourceInstanceId resourceId(const Request& input) noexcept { return input.capture; }
-    };
-
     struct EffectCaptureDescriptor final
     {
         using Config = void;
 
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.effect.readback"}, 0, 0, {},
+            ResourceNameView{"test.effect.readback"}, {}, {}, {},
             "View-owned EffectGraph buffer readback.", EResourceDomain::VIEW
         };
     };
@@ -1402,12 +1451,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
     public:
         using Descriptor = EffectCaptureDescriptor;
-
-        static std::span<const CommandBinding> commandBindings() noexcept
-        {
-            static const std::array commands{CommandBinding::declare<ReadPagedDependencies, &readPagedDependencies>()};
-            return commands;
-        }
 
         static ResourceRegistration factory() noexcept
         {
@@ -1421,18 +1464,17 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         }
 
         EffectCaptureBuffer(ResourceCreateContext& context, CapturedPixels& pixels) noexcept
-            : capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes},
-              resources_(context.resources)
+            : device_(context.device), capture_(context), config_{.result = &pixels, .bytes = effect_capture_bytes}
         {
 #ifdef _WIN32
             const bool descriptor_probe = UniformUploadProbe::watch_texture_pool &&
                 context.device.enabledFeatures().variable_descriptor_count;
-            if (descriptor_probe || UploadAcquireProbe::enabled)
+            const bool graph_gate = descriptor_probe || UniformUploadProbe::test_unpublished_retirement;
+            if (graph_gate || UploadAcquireProbe::enabled)
             {
-                retirement_device_ = &context.device;
                 texture_retirement_ = std::make_unique<RetirementFence>(context.device);
                 test_texture_retirement = texture_retirement_.get();
-                if (descriptor_probe) UniformUploadProbe::texture_retirement_fence = texture_retirement_->fence;
+                if (graph_gate) UniformUploadProbe::texture_retirement_fence = texture_retirement_->fence;
                 if (UploadAcquireProbe::enabled) UploadAcquireProbe::attach(context.device, *texture_retirement_->fence);
             }
 #endif
@@ -1440,10 +1482,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
         ~EffectCaptureBuffer() noexcept
         {
+            if (product_)
+                device_.deferRelease([&core = device_.nriCore(), buffer = product_]() noexcept { core.DestroyBuffer(buffer); });
 #ifdef _WIN32
             if (texture_retirement_)
             {
-                retirement_device_->deferRelease([retirement = std::move(texture_retirement_)]() noexcept {});
+                device_.deferRelease([retirement = std::move(texture_retirement_)]() noexcept {});
             }
 #endif
         }
@@ -1459,14 +1503,16 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
 #ifdef _WIN32
         static inline const RetirementFence* test_texture_retirement = nullptr;
+        static inline DeviceSession* product_device = nullptr;
 #endif
         static inline std::array<CapturedPixels, 14> pixels;
 
     private:
-        static RenderResult<StorageGraphImport> describe(const void*, std::uint32_t projection) noexcept
+        static RenderResult<ResourceProjection> describe(const void*, std::uint32_t projection) noexcept
         {
+            if (projection == 1) return ResourceProjection::bufferOutput(16, EGraphUse::TRANSFER_SOURCE);
             if (projection != 0) return lux::cxx::unexpected(RenderError{kStorageContract});
-            return StorageGraphImport::bufferOutput(effect_capture_bytes, EGraphUse::TRANSFER_DESTINATION);
+            return ResourceProjection::bufferOutput(effect_capture_bytes, EGraphUse::TRANSFER_DESTINATION);
         }
 
         static RenderResult<void> resolve(
@@ -1474,44 +1520,34 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             std::span<ResourceInput> output
         ) noexcept
         {
-            CHECK(projection == 0);
             auto& owner = *static_cast<EffectCaptureBuffer*>(object);
-            return CaptureBuffer::resolve(&owner.capture_, description, &owner.config_, output);
-        }
-
-        static void readPagedDependencies(
-            EffectCaptureBuffer& capture,
-            const ReadPagedDependencies::Request& request,
-            ReadPagedDependencies::Response& out
-        ) noexcept
-        {
-            const auto& registry = capture.resources_;
-            const auto* factory = registry.factory(registry.declarationOf(request.instances));
-            if (!factory || factory->descriptor->type != kInstanceResourceName)
+            if (projection == 1)
             {
-                out.error = {kStorageIdentity};
-                return;
+                if (!owner.product_)
+                {
+                    const nri::BufferDesc desc{16, 4, nri::BufferUsageBits::SHADER_RESOURCE_STORAGE};
+                    auto& device = owner.device_;
+                    CHECK(device.nriCore().CreatePlacedBuffer(device.device(), NriDeviceHeap, desc, owner.product_) ==
+                        nri::Result::SUCCESS);
+#ifdef _WIN32
+                    product_device = &device;
+#endif
+                }
+                std::ranges::fill(output, ResourceInput{owner.product_, 0, 16});
+                return {};
             }
-            constexpr auto role = EMeshInstanceBinding::PAGED_ROOT;
-            std::array<ResourceInput, 3> slices;
-            auto resolved = factory->storage()->bindings()->resolveGraphImport(
-                registry.resourceInstance(request.instances), static_cast<std::uint32_t>(role),
-                GraphBufferDesc{meshInstanceProjectionBytes(role)}, slices
-            );
-            if (!resolved) { out.error = resolved.error(); return; }
-            out.error = {};
-            for (std::size_t i = 0; i < slices.size(); ++i)
-                out.counts[i] = static_cast<std::uint32_t>(slices[i].addressed_buffers.size());
+            CHECK(projection == 0);
+            return CaptureBuffer::resolve(&owner.capture_, description, &owner.config_, output);
         }
 
         static inline std::size_t created_ = 0;
 #ifdef _WIN32
-        DeviceSession* retirement_device_ = nullptr;
         std::unique_ptr<RetirementFence> texture_retirement_;
 #endif
+        DeviceSession& device_;
+        nri::Buffer* product_ = nullptr;
         CaptureBuffer capture_;
         CaptureConfig config_;
-        ResourceRegistry& resources_;
     };
 
     constexpr auto node_bytes = effectPortSemantic("bytes");
@@ -1519,14 +1555,42 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     RenderResult<void> buildImportedStorageNode(EffectCompileContext& context, std::string_view args) noexcept
     {
+        if (args == "publish" || args == "consume")
+        {
+            const auto type = EffectCaptureDescriptor::descriptor.type;
+            constexpr GraphBufferRange range{0, 16};
+            TransferWork work;
+            if (args == "publish")
+            {
+                const auto output = take(context.importFinalBuffer("words", type, {
+                    "", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_SOURCE, range
+                }, 1));
+                work = TransferWork{{FillBuffer{{output, range}, 0xc3c3c3c3}}};
+            }
+            else
+            {
+                const auto input = take(context.importResource("words", type, {
+                    GraphBufferDesc{16}, {range}, EGraphUse::TRANSFER_SOURCE
+                }, 1));
+                const auto output = take(context.importFinalBuffer("capture", GraphCaptureDescriptor::descriptor.type, {
+                    "", GraphBufferDesc{16}, EGraphOrigin::IMPORTED, {},
+                    EGraphUse::TRANSFER_DESTINATION, range
+                }));
+                work = TransferWork{{CopyBuffer{{input, range}, {output, range}}}};
+            }
+            const auto pass = take(context.addTransferPass("product words", std::move(work)));
+            return context.publish(node_bytes, {{node_bytes, pass.written.front()}});
+        }
         const auto type = args == "wrong-type" ?
             CaptureDescriptor::descriptor.type.name() : EffectCaptureDescriptor::descriptor.type.name();
         const auto bytes = args == "wrong-shape" ? effect_capture_bytes + sizeof(std::uint32_t) : effect_capture_bytes;
-        const ResourceRequirement requirement{ResourceName{type}};
+        const ResourceNameView requirement{type};
         const GraphResource declaration{
             "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         };
-        auto first = args == "shared-write" ? context.importResource("first", requirement, declaration) :
+        auto first = args == "shared-write" ? context.importResource(
+            "first", requirement, {declaration.description, {}, declaration.initial_use}
+        ) :
             context.importFinalBuffer("first", requirement, declaration);
         if (!first) return lux::cxx::unexpected(first.error());
         auto second = context.importFinalBuffer("second", requirement, declaration);
@@ -1576,12 +1640,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     }
 
     std::atomic_bool reject_value_preparation{}, reject_staged_constants{};
-    std::atomic_uint source_links{}, sink_links{}, source_instances{}, sink_preparations{};
+    std::atomic_uint source_links{}, source_instances{}, view_preparations{};
     std::atomic_uint source_workspaces_destroyed{};
     std::atomic<const void*> source_linked_inputs{};
-    std::atomic_bool reject_sink_workspace{};
+    std::atomic_bool reject_view_workspace{};
     std::weak_ptr<const int> producer_source_lifetime;
-    std::atomic_bool reject_sink_after_link{};
+    std::atomic_bool reject_view_link{};
 
     class TestValueProducer final
     {
@@ -1593,7 +1657,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         resolve(const Configuration& config, std::span<const RasterOperands, 0>) noexcept
         {
             ++source_links;
-            if (!config.lifetime) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+            if (!config.lifetime || reject_view_link.exchange(false))
+                return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return static_cast<LinkedData>(*config.lifetime);
         }
 
@@ -1605,75 +1670,30 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         };
 
         static RenderResult<std::unique_ptr<Workspace>>
-        createWorkspace(const LinkedData& linked, const TargetDesc&) noexcept
+        createWorkspace(const LinkedData& linked, const TargetDesc&, const InstalledDrawSources&) noexcept
         {
             const auto* previous = source_linked_inputs.exchange(&linked);
             CHECK(!previous || previous == &linked);
             CHECK(producer_source_lifetime.expired());
             ++source_instances;
-            return std::make_unique<Workspace>();
+            auto workspace = std::make_unique<Workspace>();
+            if (reject_view_workspace.exchange(false)) return lux::cxx::unexpected(RenderError{kDeviceCapacity});
+            return workspace;
         }
 
-        static RenderResult<std::tuple<std::uint32_t>>
-        prepare(
-            const LinkedData& channel, const CpuFrameInputs<const ViewGpuParameters&>& inputs, Workspace& workspace
+        static RenderResult<std::tuple<RevisionedValue<ProducerConstants>>>
+        onFrame(
+            const LinkedData& channel, const EffectFrameInputs<ViewGpuParameters>& inputs, EffectFrameWriter&, Workspace& workspace
         ) noexcept
         {
             if (reject_value_preparation.exchange(false)) return lux::cxx::unexpected(RenderError{kFrameContract});
             const auto& view = std::get<0>(inputs.values);
             CHECK(view.revision >= workspace.view_revision && view.revision != 0);
             workspace.view_revision = view.revision;
-            return std::tuple{std::bit_cast<std::uint32_t>(view.value.get().background[channel])};
-        }
-    };
-
-    class TestInlineProducer final
-    {
-    public:
-        using Configuration = std::monostate;
-        using LinkedData = Configuration;
-
-        static RenderResult<LinkedData> resolve(const Configuration&, std::span<const RasterOperands, 0>) noexcept
-        {
-            ++sink_links;
-            if (reject_sink_after_link.exchange(false)) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return LinkedData{};
-        }
-
-        struct Workspace final
-        {
-            std::uint64_t revision = 0;
-        };
-
-        static RenderResult<std::unique_ptr<Workspace>>
-        createWorkspace(const LinkedData&, const TargetDesc&) noexcept
-        {
-            if (reject_sink_workspace.exchange(false)) return lux::cxx::unexpected(RenderError{kDeviceCapacity});
-            return std::make_unique<Workspace>();
-        }
-
-        static RenderResult<std::tuple<std::uint32_t, RevisionedValue<ProducerConstants>>>
-        prepare(const LinkedData&, const CpuFrameInputs<std::uint32_t>& inputs, Workspace& workspace) noexcept
-        {
-            const auto& [value] = inputs.values;
-            CHECK(value.revision > workspace.revision);
-            workspace.revision = value.revision;
-            ++sink_preparations;
-            const RevisionedValue<ProducerConstants> block{{value.value}, value.revision};
-            return std::tuple{value.value, block};
-        }
-    };
-
-    struct CheckStagedConstants final
-    {
-        using Configuration = std::monostate;
-        using LinkedData = Configuration;
-
-        static RenderResult<void> prepare(const LinkedData&, const CpuFrameInputs<std::uint32_t>& inputs) noexcept
-        {
-            CHECK(std::get<0>(inputs.values).value != 0);
+            ++view_preparations;
             if (reject_staged_constants.exchange(false)) return lux::cxx::unexpected(RenderError{kFrameContract});
-            return {};
+            const ProducerConstants block{std::bit_cast<std::uint32_t>(view.value.get().background[channel])};
+            return std::tuple{RevisionedValue{block, view.revision}};
         }
     };
 
@@ -1714,7 +1734,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     RenderResult<void> buildUniformOutput(EffectCompileContext& context, std::string_view arguments) noexcept
     {
-        const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
+        const ResourceNameView requirement{EffectCaptureDescriptor::descriptor.type.name()};
         auto external = context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         });
@@ -1755,15 +1775,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
     RenderResult<void> buildPreparedOutput(EffectCompileContext& context, std::string_view args) noexcept
     {
-        const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
+        const ResourceNameView requirement{EffectCaptureDescriptor::descriptor.type.name()};
         auto imported = context.importFinalBuffer("readback", requirement, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         });
         if (!imported) return lux::cxx::unexpected(imported.error());
 
-        const auto slot = args == "type" ?
-            take(context.declareCpuData<float>()) : take(context.declareCpuData<std::uint32_t>());
-        const auto dead = take(context.declareCpuData<std::uint32_t>());
         const auto gpu = take(context.declareResource({"prepared values", GraphBufferDesc{effect_capture_bytes}}));
         ComputeWork compute;
         compute.interface.program = take(context.addProgram(GraphProgram{kEffectGraphProducer.load(context.shaderTarget())}));
@@ -1779,17 +1796,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             ProducerConstants constants;
             TestSharedTextureIndices texture_indices;
         };
-        if (args == "inline-result-type")
-        {
-            const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
-                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}}
-            ));
-            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-                ProducerSourceConfig{std::make_shared<const int>(0)},
-                {.inline_blocks = {produced.pass}, .storage_inputs = {camera}}
-            )));
-            return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
-        }
         if (args == "copy-type")
             CHECK((context.copyInlineBlock<TestSharedTextureIndices, BlockSource, &BlockSource::texture_indices>(
                 produced.pass
@@ -1811,45 +1817,25 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             "dormant undefined read", TransferWork{{CopyBuffer{{{undefined, 0}}, {{unused, 0}}}}}
         ));
 
-        const auto staged = take(context.declareCpuData<std::uint32_t>());
-        CHECK(context.addCpuCall<CheckStagedConstants>({}, {.inputs = {staged}, .passes = {produced.pass}}));
-        CHECK((context.addCpuCall<TestInlineProducer, &TestInlineProducer::createWorkspace>(
-            {},
-            {.inputs = args == "input-count" ? std::vector<GraphCpuDataId>{} : std::vector{slot},
-             .outputs = {staged}, .inline_blocks = {produced.pass}}
+        const auto camera = take(context.readResourceView<ViewGpuParameters>(
+            kViewParameters, kViewParameters.binding
+        ));
+        auto lifetime = std::make_shared<const int>(0);
+        if (args.empty()) producer_source_lifetime = lifetime;
+        FrameAlgorithmUses uses{
+            .inline_blocks = {produced.pass}, .passes = {companion.pass}, .resource_views = {camera}
+        };
+        if (args == "output-count") uses.inline_blocks.clear();
+        if (args == "input-count") uses.resource_views.clear();
+        // Keep the compute pass live when testing a missing inline destination.
+        uses.passes.push_back(produced.pass);
+        CHECK((context.onFrame<&TestValueProducer::onFrame, &TestValueProducer::resolve, &TestValueProducer::createWorkspace>(
+            ProducerSourceConfig{std::move(lifetime)}, std::move(uses)
         )));
-        if (args != "missing")
-        {
-            const auto camera = take(context.importStorageSnapshot<ViewGpuParameters>(
-                ViewParameterResource::snapshot_binding, {ResourceName{kViewParameterResourceName.name()}},
-                ESnapshotScope::JOB_LOCAL
-            ));
-            auto lifetime = std::make_shared<const int>(0);
-            if (args.empty()) producer_source_lifetime = lifetime;
-            std::vector outputs{slot};
-            if (args == "output-count") outputs.push_back(take(context.declareCpuData<float>()));
-            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-                ProducerSourceConfig{std::move(lifetime)},
-                {.outputs = std::move(outputs), .passes = {companion.pass}, .storage_inputs = {camera}}
-            )));
-        }
-        // The unused preparation has an unlinkable configuration. Even a dead cycle has to be rejected.
-        std::vector<GraphCpuDataId> dead_inputs;
-        if (args == "cycle")
-        {
-            const auto second_dead = take(context.declareCpuData<std::uint32_t>());
-            dead_inputs.push_back(second_dead);
-            CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-                ProducerSourceConfig{},
-                {{dead}, {second_dead}, {}}
-            )));
-        }
-        // The companion's RAW predecessor activates this second group only when they are associated.
         const auto dormant_passes = args == "joint-closure" ?
             std::vector{seeded.pass, dormant.pass} : std::vector{dormant.pass};
-        CHECK((context.addCpuCall<TestValueProducer, &TestValueProducer::createWorkspace>(
-            ProducerSourceConfig{},
-            {std::move(dead_inputs), {args == "duplicate" ? slot : dead}, {}, dormant_passes}
+        CHECK((context.onFrame<&TestValueProducer::onFrame, &TestValueProducer::resolve, &TestValueProducer::createWorkspace>(
+            ProducerSourceConfig{}, {.passes = dormant_passes}
         )));
         return context.publish(node_bytes, {{node_bytes, copy.written.front()}});
     }
@@ -1858,13 +1844,13 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
         VALID, BAD_INDEX, BAD_CONSTANTS, BAD_BINDING, BAD_IMAGE, BAD_SAMPLER, DUPLICATE_ELEMENT,
         FOREIGN_BUFFER, FOREIGN_IMAGE, PARTIAL_IMAGE_GROUP,
-        DUPLICATE_LAYER, MISSING_LAYER, UNCOVERED_DRAW, EMPTY, SWAP_TILES, MANY_DRAWS,
+        DUPLICATE_LAYER, MISSING_LAYER, UNCOVERED_DRAW, EMPTY, SWAP_TILES, SHARED_BINDINGS, DISTINCT_BINDINGS,
         BAD_INDIRECT_STRIDE, SHORT_INDIRECT_ARGS, BAD_COUNT, WRONG_INDIRECT_USE, NO_COUNT, OLD_PROGRAM_SLOT
     };
     std::atomic<ETestStreamMode> stream_mode{ETestStreamMode::VALID};
     enum class ETestStreamPrograms : std::uint8_t
     {
-        INITIAL, INVALID, BAD_GEOMETRY, PENDING, REVERSED, REUSED, EQUIVALENT
+        INITIAL, INVALID, BAD_GEOMETRY, PENDING, REVERSED, EQUIVALENT
     };
     struct SetStreamPrograms final
     {
@@ -1879,16 +1865,36 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
     };
 
+    rdesc::ShaderProgramArtifact streamShader(
+        rdesc::EShaderTarget target, const rdesc::EmbeddedShader& fragment,
+        const rdesc::EmbeddedShader& vertex_shader = kEffectStreamVertex
+    ) noexcept;
+
+    std::vector<RasterPassTemplate::Input> streamArguments()
+    {
+        return {
+            {"tint", rdesc::EDescriptorType::UNIFORM_BUFFER, EGraphUse::STORAGE_READ, 2},
+            {"tiles", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2},
+            {"sampler_state", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2}
+        };
+    }
+
     class StreamProgramStorage final
     {
     public:
         using Descriptor = StreamProgramStorage;
         using Config = void;
-
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.effect.stream_programs"}, 0, 0, {}, "Raster stream program selection.",
-            EResourceDomain::VIEW
+            ResourceNameView{"test.effect.stream_programs"}, {}, {}, {}, "Raster stream programs.", EResourceDomain::VIEW
         };
+
+        static constexpr ResourceRequirement requirement{
+            "stream_programs", ResourceNameView{"test.effect.stream_programs"}, EResourceDomain::VIEW,
+            EResourceContentLifetime::PERSISTENT, true
+        };
+
+        explicit StreamProgramStorage(ResourceCreateContext& context) noexcept
+            : programs(context), target_(context.device.enabledFeatures().shader_target) {}
 
         static std::span<const CommandBinding> commandBindings() noexcept
         {
@@ -1898,59 +1904,73 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
         static ResourceRegistration factory() noexcept
         {
-            static constexpr auto snapshot = StorageSnapshotOps::make<
-                StreamProgramStorage, ETestStreamPrograms,
-                &StreamProgramStorage::selectPrograms, &StreamProgramStorage::revision_
-            >();
-            static const StorageBindingOps bindings{.cpu_snapshot = &snapshot};
+            static const StorageBindingOps bindings{
+                .cpu_view = ResourceViewOps::make<StreamProgramStorage, ETestStreamPrograms, &selectedMode>(),
+                .rasterPrograms = [](const void* owner) noexcept -> const RasterProgramSet&
+                {
+                    return static_cast<const StreamProgramStorage*>(owner)->programs;
+                }
+            };
             return makeResourceRegistration<Descriptor, StreamProgramStorage, &create>(&bindings);
         }
 
+        RasterProgramSet programs;
+        ETestStreamPrograms mode = ETestStreamPrograms::INITIAL;
+
     private:
+        std::uint64_t revision_ = 0;
+        RenderResult<ResourceViewValue<ETestStreamPrograms>> selectedMode() noexcept
+        {
+            return ResourceViewValue<ETestStreamPrograms>{std::cref(mode), revision_};
+        }
+
         static RenderResult<std::unique_ptr<StreamProgramStorage>>
-        create(ResourceCreateContext&, ResourceInstanceId) noexcept
+        create(ResourceCreateContext& context, ResourceInstanceId) noexcept
         {
-            return std::make_unique<StreamProgramStorage>();
+            return std::make_unique<StreamProgramStorage>(context);
         }
 
-        RenderResult<SnapshotValue<ETestStreamPrograms>> selectPrograms() const noexcept
+        static exec::task<AckResponse> set(StreamProgramStorage& storage, SetStreamPrograms::Request&& request) noexcept
         {
-            return SnapshotValue<ETestStreamPrograms>{mode_, revision_.value()};
-        }
-
-        static void
-        set(StreamProgramStorage& storage, const SetStreamPrograms::Request& request, AckResponse& out) noexcept
-        {
-            if (storage.mode_ != request.mode)
+            const auto mode = request.mode;
+            RasterProgramSet::Description description;
+            description.arguments = streamArguments();
+            description.colors = {rdesc::ETextureFormat::RGBA8_UNORM};
+            description.shaders.push_back(streamShader(storage.target_, kEffectStreamInline));
+            description.shaders.push_back(streamShader(storage.target_, kEffectStreamUniform));
+            if (mode == ETestStreamPrograms::INVALID)
+                description.shaders.back().target = storage.target_ == rdesc::EShaderTarget::SPIRV ?
+                    rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
+            ParameterBinding parameters;
+            parameters.setInlineConstant(ProducerConstants{0});
+            description.programs = {{0, {}, std::move(parameters)}, {1, {}, {}}};
+            if (mode == ETestStreamPrograms::BAD_GEOMETRY) description.programs.front().geometry_locations = {0};
+            if (mode == ETestStreamPrograms::PENDING) description.programs.front().graphics.blend.enabled = true;
+            if (mode == ETestStreamPrograms::REVERSED || mode == ETestStreamPrograms::EQUIVALENT)
             {
-                storage.mode_ = request.mode;
-                storage.revision_.advance();
+                for (auto& program : description.programs) program.graphics.front_counter_clockwise = false;
+                std::swap(description.programs[0], description.programs[1]);
             }
-            out = {};
+            const auto prepared = co_await storage.programs.replace(std::move(description));
+            if (!prepared) co_return AckResponse{prepared.error()};
+            storage.mode = mode;
+            ++storage.revision_;
+            co_return AckResponse{};
         }
 
-        ETestStreamPrograms mode_ = ETestStreamPrograms::INITIAL;
-        ProgramInputRevision revision_;
+        rdesc::EShaderTarget target_;
     };
-
-    rdesc::ShaderProgramArtifact streamShader(
-        rdesc::EShaderTarget target, const rdesc::EmbeddedShader& fragment,
-        const rdesc::EmbeddedShader& vertex_shader = kEffectStreamVertex
-    ) noexcept;
 
     constexpr GraphBufferRange stream_linear_arguments{4, 32};
     constexpr GraphBufferRange stream_indexed_arguments{40, 44};
     constexpr GraphBufferRange stream_count_word{8, 4};
     constexpr std::uint32_t stream_indexed_stride = 24;
 
-    std::array<std::atomic_uint, 7> retired_draw_mappings{};
-
     class TestRasterProducer final
     {
     public:
         struct Configuration final
         {
-            rdesc::EShaderTarget target;
             GraphResourceId indices, uniform, image, arguments, count;
             std::uint32_t sampler, comparison_sampler;
         };
@@ -1958,7 +1978,6 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            rdesc::EShaderTarget target;
             RasterBufferSlot indices, uniform, arguments, count;
             RasterImageSlot image;
             RasterSamplerSlot sampler, comparison_sampler;
@@ -1984,7 +2003,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             if (missing_buffer || missing_texture_binding || missing_argument)
                 return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             return LinkedData{
-                streams.front().stream(), input.target, *index, *uniform, *arguments, *count, *image,
+                streams.front().stream(), *index, *uniform, *arguments, *count, *image,
                 *sampler, *comparison, *tint_argument, *tiles_argument, *sampler_argument
             };
         }
@@ -1995,76 +2014,20 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             std::uint64_t reversed_revision = 0;
         };
 
-        struct DrawMapping final
-        {
-            ETestStreamPrograms mode;
-            std::uint64_t revision;
-            ~DrawMapping() noexcept { ++retired_draw_mappings[static_cast<std::size_t>(mode)]; }
-        };
-
-        static RenderResult<std::unique_ptr<DrawMapping>>
-        buildPrograms(
-            const LinkedData& linked,
-            RasterProgramBuildContext& selection, const SnapshotValues<ETestStreamPrograms>& sources,
-            const DrawMapping* previous
+        static RenderResult<void> onFrame(
+            const LinkedData& linked, const EffectFrameInputs<ETestStreamPrograms>& inputs,
+            EffectFrameWriter& frame, Workspace& workspace
         ) noexcept
         {
-            const auto& snapshot = std::get<0>(sources);
-            const auto mode = snapshot.value.get();
-            if (mode == ETestStreamPrograms::REUSED)
-            {
-                CHECK(previous && previous->mode == ETestStreamPrograms::REVERSED);
-                auto reused = selection.reusePrograms(linked.stream);
-                if (!reused) return lux::cxx::unexpected(reused.error());
-                return std::make_unique<DrawMapping>(mode, snapshot.revision);
-            }
-            if (mode == ETestStreamPrograms::EQUIVALENT)
-                CHECK(previous && previous->mode == ETestStreamPrograms::REUSED);
-            else if (previous) CHECK(previous->mode == ETestStreamPrograms::INITIAL);
-            ParameterBinding parameters;
-            parameters.setInlineConstant(ProducerConstants{0});
-            auto uniform = streamShader(linked.target, kEffectStreamUniform);
-            if (mode == ETestStreamPrograms::INVALID)
-                uniform.target = linked.target == rdesc::EShaderTarget::SPIRV ?
-                    rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-            std::vector<rdesc::ShaderProgramArtifact> shaders;
-            shaders.push_back(streamShader(linked.target, kEffectStreamInline));
-            shaders.push_back(std::move(uniform));
-            std::array programs{
-                RuntimeRasterProgram{{0}, {}, std::move(parameters)},
-                RuntimeRasterProgram{{1}, {}, {}}
-            };
-            if (mode == ETestStreamPrograms::BAD_GEOMETRY) programs[0].geometry_locations = {0};
-            if (mode == ETestStreamPrograms::PENDING) programs[0].graphics.blend.enabled = true;
-            if (mode == ETestStreamPrograms::REVERSED || mode == ETestStreamPrograms::EQUIVALENT)
-            {
-                for (auto& program : programs) program.graphics.front_counter_clockwise = false;
-                std::swap(programs[0], programs[1]);
-            }
-            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
-            if (!built) return lux::cxx::unexpected(built.error());
-            return std::make_unique<DrawMapping>(mode, snapshot.revision);
-        }
-
-        static RenderResult<void>
-        prepare(
-            const LinkedData& linked,
-            const CpuFrameInputs<const ETestStreamPrograms&>& inputs,
-            Workspace& workspace,
-            const DrawMapping* mapping
-        ) noexcept
-        {
-            auto& frame = inputs.frame;
+            const auto program_mode = std::get<0>(inputs.values).value.get();
             const auto mode = stream_mode.exchange(ETestStreamMode::VALID);
             if (mode == ETestStreamMode::EMPTY) return frame.setRasterStream(linked.stream, {});
-            const auto& snapshot = std::get<0>(inputs.values);
-            CHECK(mapping && mapping->revision == snapshot.revision && mapping->mode == snapshot.value.get());
-            const bool reversed = mapping->mode != ETestStreamPrograms::INITIAL;
+            const bool reversed = program_mode == ETestStreamPrograms::REVERSED || program_mode == ETestStreamPrograms::EQUIVALENT;
             auto first_program = frame.rasterProgram(linked.stream, reversed ? 1 : 0);
             auto second_program = frame.rasterProgram(linked.stream, reversed ? 0 : 1);
             if (!first_program || !second_program) return lux::cxx::unexpected(RenderError{kFrameContract});
-            if (mapping->mode == ETestStreamPrograms::REVERSED) workspace.reversed_revision = first_program->revision;
-            if (mapping->mode == ETestStreamPrograms::REUSED || mapping->mode == ETestStreamPrograms::EQUIVALENT)
+            if (program_mode == ETestStreamPrograms::REVERSED) workspace.reversed_revision = first_program->revision;
+            if (program_mode == ETestStreamPrograms::EQUIVALENT)
                 CHECK(first_program->revision == workspace.reversed_revision);
             if (!workspace.first_slot) workspace.first_slot = *first_program;
             if (mode == ETestStreamMode::OLD_PROGRAM_SLOT) first_program = *workspace.first_slot;
@@ -2138,7 +2101,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                     mode == ETestStreamMode::BAD_INDIRECT_STRIDE ? 18u : stream_indexed_stride
                 };
             }
-            const float viewport_width = 64.0f / frame.target().width;
+            const float viewport_width = 64.0f / inputs.target.width;
             std::array sections{
                 RasterStreamSection{{0, 1}, 1, RasterViewport{viewport_width / 2, 0, viewport_width / 2, 0.5f}},
                 RasterStreamSection{
@@ -2147,12 +2110,25 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                     RasterViewport{0, 0, viewport_width, 1}
                 }
             };
-            if (mode == ETestStreamMode::MANY_DRAWS)
+            if (mode == ETestStreamMode::SHARED_BINDINGS || mode == ETestStreamMode::DISTINCT_BINDINGS)
             {
                 std::array<RasterStreamDraw, 67> repeated;
                 std::ranges::copy(draws, repeated.begin());
                 std::ranges::fill(std::span{repeated}.subspan(draws.size()), draws.back());
                 sections.back().draws.count = static_cast<std::uint32_t>(repeated.size() - 1);
+                if (mode == ETestStreamMode::DISTINCT_BINDINGS)
+                {
+                    std::vector<RasterStreamBinding> slices;
+                    for (auto& draw : repeated)
+                    {
+                        if (!draw.bindings.count) continue;
+                        draw.bindings.first = static_cast<std::uint32_t>(slices.size());
+                        slices.insert(slices.end(), bindings.begin(), bindings.end());
+                    }
+                    return frame.setRasterStream(linked.stream, {
+                        repeated, slices, {}, std::as_bytes(std::span{values}), sections
+                    });
+                }
                 return frame.setRasterStream(linked.stream, {
                     repeated, bindings, {}, std::as_bytes(std::span{values}), sections
                 });
@@ -2191,11 +2167,53 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         return take(context.addProgram(GraphProgram{streamShader(context.shaderTarget(), fragment)}));
     }
 
+    RenderResult<void> buildTargetLists(EffectCompileContext& context, std::string_view) noexcept
+    {
+        const auto output = take(context.importFinalBuffer("capture", GraphCaptureDescriptor::descriptor.type, {
+            "", GraphBufferDesc{256}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
+        }));
+        const auto color = take(context.declareResource({"sampled row", GraphImageDesc{64, 1}}));
+        const auto program = addEffectRasterProgram(context, kEffectStreamTarget);
+        const auto raster = [&](ResourceVersion image, bool first)
+        {
+            RasterPassTemplate stream;
+            stream.purpose = "sample Target";
+            stream.draw_list = first ? "samples" : "overlay";
+            stream.inputs = {{
+                .name = "source_color", .kind = rdesc::EDescriptorType::SAMPLED_IMAGE, .usage = EGraphUse::SAMPLED,
+                .stages = 2, .target_format = rdesc::ETextureFormat::RGBA16_SFLOAT
+            }};
+            stream.programs = std::vector{RasterPassTemplate::StreamProgram{program}};
+            RasterWork work;
+            work.program = std::move(stream);
+            work.colors.push_back({{image}, first ? EAttachmentLoad::CLEAR : EAttachmentLoad::LOAD});
+            return take(context.addRasterPass(first ? "first sample" : "second sample", std::move(work),
+                {.estimated_gpu_ns = 80000}));
+        };
+        const auto first = raster({color, 0}, true);
+        const auto scratch = take(context.declareResource({"async scratch",
+            GraphImageDesc{8, 8, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT}}));
+        ComputeWork compute;
+        compute.allow_async_compute = true;
+        auto shader = kEffectGraphColor.load(context.shaderTarget());
+        compute.interface.program = take(context.addProgram(GraphProgram{std::move(shader)}));
+        compute.interface.resources = {{"generated", {{scratch, 0}, {}, EGraphAccess::WRITE}}};
+        compute.dispatch = DispatchArguments{{1, 1, 1}};
+        const auto middle = take(context.addComputePass("independent compute", std::move(compute),
+            {.side_effect = true, .estimated_gpu_ns = 80000}));
+        const auto second = raster(first.written.front(), false);
+        CHECK(context.dependsOn(middle.pass, second.pass));
+        const auto copied = take(context.addTransferPass("capture sample", TransferWork{{CopyImageBuffer{
+            {second.written.front()}, {output}, 256, 256, ImageCopyRegion{0, 0, 64, 1}
+        }}}, {.estimated_gpu_ns = 100}));
+        return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
+    }
+
     RenderResult<void> buildRasterStreamOutput(EffectCompileContext& context, std::string_view) noexcept
     {
         auto imported = context.importFinalBuffer(
             "readback",
-            {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
+            EffectCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
@@ -2249,11 +2267,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
 
         RasterPassTemplate stage;
         stage.purpose = "effect-stream";
-        stage.inputs = {
-            {"tint", rdesc::EDescriptorType::UNIFORM_BUFFER, EGraphUse::STORAGE_READ, 2},
-            {"tiles", rdesc::EDescriptorType::SAMPLED_IMAGE, EGraphUse::SAMPLED, 2},
-            {"sampler_state", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2}
-        };
+        stage.inputs = streamArguments();
         stage.resources = {
             {.version = index_data, .usage = EGraphUse::INDEX},
             {.version = arguments_ready, .range = stream_linear_arguments, .usage = EGraphUse::INDIRECT},
@@ -2264,13 +2278,8 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             {.version = mipped.written.front(), .range = second_tile, .usage = EGraphUse::SAMPLED}
         };
         stage.stream_samplers = {sampler, comparison_sampler};
-        const auto programs = context.importStorageSnapshot<ETestStreamPrograms>(
-            "stream_programs", {ResourceName{StreamProgramStorage::descriptor.type.name()}}
-        );
-        if (!programs) return lux::cxx::unexpected(programs.error());
-        stage.programs = RasterProgramSource{
-            RasterProgramBuilder::make<TestRasterProducer, &TestRasterProducer::buildPrograms>(), {*programs}
-        };
+        const auto mode = take(context.readResourceView<ETestStreamPrograms>(StreamProgramStorage::requirement, "program_mode"));
+        stage.programs = RasterPassTemplate::ReadyPrograms{"stream_programs"};
         RasterWork raster;
         raster.colors.push_back({{{color, 0}}});
         raster.program = std::move(stage);
@@ -2291,12 +2300,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
                 256, layer_bytes, ImageCopyRegion{0, 0, 64, 32}
             }}}
         ));
-        CHECK(context.addCpuCall<TestRasterProducer>({
-            context.shaderTarget(), indices, uniform, tiles, arguments, count, sampler,
+        CHECK((context.onFrame<&TestRasterProducer::onFrame, &TestRasterProducer::resolve>({
+            indices, uniform, tiles, arguments, count, sampler,
             comparison_sampler
         }, {
-            .storage_inputs = {*programs}, .draw_streams = {drawn.pass}
-        }));
+            .resource_views = {mode}, .draw_streams = {drawn.pass}
+        })));
         return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
     }
 
@@ -2308,11 +2317,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     class RuntimeLayerProducer final
     {
     public:
-        struct Configuration final
-        {
-            std::uint32_t program;
-            bool preserve;
-        };
+        using Configuration = bool;
 
         struct LinkedData final
         {
@@ -2324,12 +2329,12 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         static RenderResult<LinkedData>
         resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            auto program = streams.front().program(input.program);
+            auto program = streams.front().programAt(0);
             if (!program) return lux::cxx::unexpected(program.error());
-            return LinkedData{streams.front().stream(), *program, input.preserve};
+            return LinkedData{streams.front().stream(), *program, input};
         }
 
-        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
+        static RenderResult<void> onFrame(const LinkedData& linked, const EffectFrameInputs<>& inputs, EffectFrameWriter& frame) noexcept
         {
             const auto requested = runtime_layer_count.load();
             const auto count = linked.preserve && runtime_layer_conflict.load() ? requested % 3 + 1 : requested;
@@ -2368,7 +2373,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     {
         auto imported = context.importFinalBuffer(
             "readback",
-            {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
+            EffectCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
@@ -2395,10 +2400,10 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
             work.program = std::move(stage);
             const auto pass = take(context.addRasterPass(preserve ? "load dynamic layers" : "draw dynamic layers",
                 std::move(work)));
-            CHECK(context.addCpuCall<RuntimeLayerProducer>(
-                RuntimeLayerProducer::Configuration{graphics, preserve},
+            CHECK((context.onFrame<&RuntimeLayerProducer::onFrame, &RuntimeLayerProducer::resolve>(
+                preserve,
                 {.draw_streams = {pass.pass}}
-            ));
+            )));
             return std::array{pass.written[0], pass.written[1]};
         };
         const auto drawn = raster({layers, 0}, {depth, 0}, false);
@@ -2433,7 +2438,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
         CHECK(right.size() == 1 && right.front().size() == 1);
         auto imported = context.importFinalBuffer(
             "readback",
-            {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
+            EffectCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         );
         if (!imported) return lux::cxx::unexpected(imported.error());
@@ -2497,7 +2502,7 @@ static int transformRetirementBacklog(EGraphicsBackend backend)
     }
 }
 
-static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_faults)
+static void effectGraphOutput(bool d3d12, bool async_uniform)
 {
     RenderServerConfig config;
     config.channel_name = "lux.render.test.effect-graph";
@@ -2526,34 +2531,42 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     take(server->registerResource<CaptureBuffer>());
     registerOutputNodes(*server);
     take(server->registerResource<StreamProgramStorage>(StreamProgramStorage::commandBindings()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    take(server->registerResource<EffectCaptureBuffer>());
+    take(server->registerResource<TargetDrawList>());
     constexpr std::string_view storage_schema = "test.render.effect.storage";
-    EffectNodeDefinition storage_capability;
-    storage_capability.identity = {graph::nodeTypeId(storage_schema), std::string{storage_schema}, 1};
-    storage_capability.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    EffectCapability storage_capability;
+    storage_capability.id = graph::nodeTypeId(storage_schema);
+    storage_capability.canonical_name = storage_schema;
+    const EffectPortDefinition storage_capability_ports[]{{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    storage_capability.ports = storage_capability_ports;
+    const ResourceRequirement storage_requirements[]{StreamProgramStorage::requirement,
+        {"samples", TargetDrawList::descriptor.type, EResourceDomain::JOB, EResourceContentLifetime::PER_RUN},
+        {"overlay", TargetDrawList::descriptor.type, EResourceDomain::JOB, EResourceContentLifetime::PER_RUN}};
+    storage_capability.resources = storage_requirements;
     CHECK(server->registerEffectCapability(storage_capability));
-    EffectImplementation storage_implementation;
-    storage_implementation.capability = storage_capability.identity.id;
+    ImplementationEntry storage_implementation;
+    storage_implementation.capability = storage_capability.id;
     storage_implementation.identity = {"test.node.storage_import", 1};
     storage_implementation.supported_outputs = {node_bytes};
-    storage_implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    storage_implementation.build = buildImportedStorageNode;
+    storage_implementation.create = fixture::Effect<buildImportedStorageNode>::create;
     const auto storage_selection = storage_implementation.identity;
+    auto lists = storage_implementation;
+    lists.identity = {"test.dynamic.target_lists", 1};
+    lists.create = fixture::Effect<buildTargetLists>::create;
+    const auto list_selection = lists.identity;
+    CHECK(server->registerEffectImplementation(std::move(lists)));
     auto producer_implementation = storage_implementation;
     producer_implementation.identity = {"test.node.preparation", 1};
-    producer_implementation.build = buildPreparedOutput;
+    producer_implementation.create = fixture::Effect<buildPreparedOutput>::create;
     const auto producer_selection = producer_implementation.identity;
     auto stream_implementation = storage_implementation;
     stream_implementation.identity = {"test.node.raster_stream", 1};
-    stream_implementation.build = buildRasterStreamOutput;
+    stream_implementation.create = fixture::Effect<buildRasterStreamOutput>::create;
     const auto stream_selection = stream_implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(stream_implementation)));
     auto runtime_layers = storage_implementation;
     runtime_layers.identity = {"test.node.runtime_raster_layers", 1};
-    runtime_layers.build = buildRuntimeLayersOutput;
+    runtime_layers.create = fixture::Effect<buildRuntimeLayersOutput>::create;
     const auto runtime_selection = runtime_layers.identity;
     CHECK(server->registerEffectImplementation(std::move(runtime_layers)));
     CHECK(server->registerEffectImplementation(std::move(storage_implementation)));
@@ -2564,17 +2577,17 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     ));
     auto uniform_capability = storage_capability;
     constexpr std::string_view uniform_schema = "test.render.effect.uniform";
-    uniform_capability.identity = {graph::nodeTypeId(uniform_schema), std::string{uniform_schema}, 1};
+    uniform_capability.id = graph::nodeTypeId(uniform_schema);
+    uniform_capability.canonical_name = uniform_schema;
     CHECK(server->registerEffectCapability(uniform_capability, {uniform_command.command}));
-    EffectImplementation uniform_implementation;
-    uniform_implementation.capability = uniform_capability.identity.id;
+    ImplementationEntry uniform_implementation;
+    uniform_implementation.capability = uniform_capability.id;
     uniform_implementation.identity = {"test.node.uniform", 1};
     uniform_implementation.supported_outputs = {node_bytes};
-    uniform_implementation.initialize = [](EffectInitializationContext& context, std::string_view) noexcept
+    uniform_implementation.create = [](graph::NodeId, std::string_view args) noexcept -> EffectCreateResult
     {
-        return context.initializeState<UniformNodeState>();
+        return std::make_unique<fixture::StatefulEffect<buildUniformOutput, UniformNodeState>>(args, UniformNodeState{});
     };
-    uniform_implementation.build = buildUniformOutput;
     const auto uniform_selection = uniform_implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(uniform_implementation), {uniform_command}));
 
@@ -2582,45 +2595,47 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         CommandBinding::declareForEffect<SetNodeTestValue, int, setNodeTestValue>()
     ));
     constexpr std::string_view schema = "test.render.effect.color";
-    EffectNodeDefinition capability;
-    capability.identity = {graph::nodeTypeId(schema), std::string{schema}, 1};
-    capability.ports = {
-        {node_input, "source", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::INPUT},
-        {node_color, "color", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::OUTPUT, 2}
+    EffectCapability capability;
+    capability.id = graph::nodeTypeId(schema);
+    capability.canonical_name = schema;
+    const EffectPortDefinition capability_ports[]{
+        {node_input, "source", {HdrColorBundle::type, HdrColorBundle::version}, graph::EPinDirection::INPUT},
+        {node_color, "color", {HdrColorBundle::type, HdrColorBundle::version}, graph::EPinDirection::OUTPUT, 2}
     };
+    capability.ports = capability_ports;
     CHECK(server->registerEffectCapability(capability, {command.command}));
 
-    EffectImplementation implementation;
-    implementation.capability = capability.identity.id;
+    ImplementationEntry implementation;
+    implementation.capability = capability.id;
     implementation.identity = {"test.node.clear_or_forward", 1};
     implementation.supported_outputs = {node_color};
-    implementation.initialize = initializeNodeTest;
-    implementation.build = buildNodeTest;
+    implementation.create = createNodeTest<buildNodeTest>;
     auto selected = implementation.identity;
     auto import_implementation = implementation;
     import_implementation.identity = {"test.node.target_import", 1};
-    import_implementation.build = buildImportedTargetNode;
+    import_implementation.create = createNodeTest<buildImportedTargetNode>;
     const auto imported_selection = import_implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(implementation), {command}));
     CHECK(server->registerEffectImplementation(std::move(import_implementation), {command}));
 
-    const auto tone_node = ToneMapping::definition();
-    const EffectValueType display_type{std::string{ToneMapping::display_type}, 1};
-    EffectNodeDefinition tone_capture;
+    const auto tone_node = capabilities::ToneMapping;
+    const EffectValueType display_type{kDisplayColorType, 1};
+    EffectCapability tone_capture;
     constexpr std::string_view tone_capture_name = "test.render.effect.tone_capture";
-    tone_capture.identity = {graph::nodeTypeId(tone_capture_name), std::string{tone_capture_name}, 1};
-    tone_capture.ports = {
+    tone_capture.id = graph::nodeTypeId(tone_capture_name);
+    tone_capture.canonical_name = tone_capture_name;
+    const EffectPortDefinition tone_capture_ports[]{
         {tone_left, "tone_left", display_type, graph::EPinDirection::INPUT, 1, true},
         {tone_right, "tone_right", display_type, graph::EPinDirection::INPUT, 1, true},
         {node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
     };
+    tone_capture.ports = tone_capture_ports;
     CHECK(server->registerEffectCapability(tone_capture));
-    EffectImplementation tone_copy;
-    tone_copy.capability = tone_capture.identity.id;
+    ImplementationEntry tone_copy;
+    tone_copy.capability = tone_capture.id;
     tone_copy.identity = {std::string{tone_capture_name}, 1};
     tone_copy.supported_outputs = {node_bytes};
-    tone_copy.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void> { return {}; };
-    tone_copy.build = buildToneCapture;
+    tone_copy.create = fixture::Effect<buildToneCapture>::create;
     const auto tone_capture_selection = tone_copy.identity;
     CHECK(server->registerEffectImplementation(std::move(tone_copy)));
     graph::NodeId tone_left_node, tone_right_node;
@@ -2629,15 +2644,15 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     {
         EffectGraphEdit tone_edit{*tone_request.graph};
         const auto hdr_input = take(tone_edit.addNode(capability, selected, "tone input"));
-        const auto left_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::linear}, 1}, "exposure=-1"));
-        const auto right_tone = take(tone_edit.addNode(tone_node, {std::string{ToneMapping::srgb}, 1}, "exposure=1"));
+        const auto left_tone = take(tone_edit.addNode(tone_node, {std::string{"lux.render.tone_mapping.linear"}, 1}, "exposure=-1"));
+        const auto right_tone = take(tone_edit.addNode(tone_node, {std::string{"lux.render.tone_mapping.srgb"}, 1}, "exposure=1"));
         tone_left_node = left_tone;
         tone_right_node = right_tone;
         const auto sink = take(tone_edit.addNode(tone_capture, tone_capture_selection, ""));
         for (const auto [node, port] : {std::pair{left_tone, tone_left}, std::pair{right_tone, tone_right}})
         {
-            CHECK(tone_edit.connect(tone_edit.pinId(hdr_input, node_color), tone_edit.pinId(node, ToneMapping::hdr_color)));
-            CHECK(tone_edit.connect(tone_edit.pinId(node, ToneMapping::color), tone_edit.pinId(sink, port)));
+            CHECK(tone_edit.connect(tone_edit.pinId(hdr_input, node_color), tone_edit.pinId(node, ToneMappingPorts::hdr_color.semantic)));
+            CHECK(tone_edit.connect(tone_edit.pinId(node, ToneMappingPorts::color.semantic), tone_edit.pinId(sink, port)));
         }
         CHECK(tone_edit.setOutput("bytes", tone_edit.pinId(sink, node_bytes)));
         CHECK(tone_edit.commit());
@@ -2658,7 +2673,11 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     RenderResult<void> server_result;
     std::thread render([&] { server_result = server->run(); });
     const auto commands = queryCommands(*client);
-    const auto requestRound = [&](std::span<const RenderJobId> jobs)
+    enum class ERoundRequest { SEPARATE, WINDOW, WINDOW_THEN_STOP };
+    const auto requestRound = [&](
+        std::span<const RenderJobId> jobs, ERoundRequest mode = ERoundRequest::SEPARATE,
+        WindowUpdates updates = {}, lux::error::ErrorId expected_error = {}
+    )
     {
         const auto stats_command = std::ranges::find(commands.commands, QueryRenderStats::name, &CommandInfo::name);
         CHECK(stats_command != commands.commands.end());
@@ -2673,18 +2692,35 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         const auto request_command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
         CHECK(request_command != commands.commands.end());
         std::vector<std::uint64_t> request_ids;
-        for (auto job : jobs)
+        std::optional<std::uint64_t> stop_reply;
+        if (mode != ERoundRequest::SEPARATE)
         {
+            RequestRenderJob::Request window{jobs.front(), std::move(updates)};
+            for (auto job : jobs.subspan(1)) window.additional_runs.push_back({job, {nextSceneRequest()}});
+            const auto lead = nextSceneRequest();
+            window.forEachRun({lead}, [&](const auto& run) { request_ids.push_back(run.reply.value); });
             ipc::IpcMessage message;
-            message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job});
-            request_ids.push_back(nextSceneRequest());
-            CHECK(client->trySend(commandTag(request_command->id), request_ids.back(), message));
+            message.emplace<RequestRenderJob::Request>(std::move(window));
+            CHECK(client->trySend(commandTag(request_command->id), lead, message));
+            if (mode == ERoundRequest::WINDOW_THEN_STOP) stop_reply = sendSceneRequest<Stop>(*client, commands, {});
+        }
+        else
+        {
+            for (auto job : jobs)
+            {
+                ipc::IpcMessage message;
+                RequestRenderJob::Request request{job};
+                if (job == jobs.front()) request.updates = std::move(updates);
+                message.emplace<RequestRenderJob::Request>(std::move(request));
+                request_ids.push_back(nextSceneRequest());
+                CHECK(client->trySend(commandTag(request_command->id), request_ids.back(), message));
+            }
         }
         response_gate.store(EResponseGate::OPEN);
         response_gate.notify_all();
         std::vector<JobSubmitted> paired(jobs.size());
         std::optional<std::uint64_t> paired_before;
-        for (std::size_t received = 0; received < paired.size() || !paired_before;)
+        for (std::size_t received = 0; received < paired.size() || !paired_before || stop_reply;)
         {
             ipc::IpcMessage message;
             std::uint64_t correlation = 0;
@@ -2701,13 +2737,19 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
                 paired_before = stats.submissions;
                 continue;
             }
-            const auto reply = message.get<JobSubmitted>();
-            CHECK(!reply.error.type);
+            if (stop_reply == correlation)
+            {
+                CHECK(!message.get<Stop::Response>().error.type);
+                stop_reply.reset();
+                continue;
+            }
+            auto& reply = message.get<JobSubmitted>();
+            CHECK(reply.error.type == expected_error);
             const auto job = std::ranges::find(jobs, reply.job);
             CHECK(job != jobs.end());
             const auto index = static_cast<std::size_t>(job - jobs.begin());
             CHECK(correlation == request_ids[index] && paired[index].job.isNull());
-            paired[index] = reply;
+            paired[index] = std::move(reply);
             ++received;
         }
         for (std::size_t i = 0; i < jobs.size(); ++i)
@@ -2808,11 +2850,11 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto imported_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto imported_job =
         call<CreateRenderJob>(*client, commands, {scene, view, imported_effect, EJobCadence::REQUESTED}).job;
-    const auto bound = [](TargetId a, TargetId b)
+    const auto bound = [](TargetId a, TargetId b, EProductRead read = EProductRead::LATEST_PUBLISHED)
     {
         JobBinding binding;
         // Deliberately out of name order.
-        binding.target_images = {{b, "second"}, {a, "first"}};
+        binding.target_images = {{b, "second", read}, {a, "first", read}};
         return binding;
     };
     CHECK(call<StartRenderJob>(*client, commands, {device, imported_job, imported_target}, false).error.type ==
@@ -2834,9 +2876,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<RemoveTarget>(*client, commands, wrong_format);
 
     CHECK(call<StartRenderJob>(
-        *client, commands, {device, imported_job, imported_target, bound(imported_target, target)}, false
+        *client, commands, {device, imported_job, imported_target, bound(imported_target, target, EProductRead::CURRENT_RUN)}, false
     ).error.type == kCommandContract);
-    call<StartRenderJob>(*client, commands, {device, imported_job, imported_target, bound(target, target)});
+    call<StartRenderJob>(*client, commands, {device, imported_job, imported_target, bound(target, target, EProductRead::CURRENT_RUN)});
     const auto imported_builds = target_graph_builds.load();
     CHECK(call<RemoveTarget>(*client, commands, target, false).error.type == kDeviceBusy);
     const TargetDesc resized_desc{128, 64, hdr, 1, ETargetKind::OFFSCREEN, true};
@@ -2861,19 +2903,41 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         {*client, commands, device}, {scene, fanout_view}, {&fanout_pixels, rdesc::ETextureFormat::RGBA8_UNORM}
     );
     JobBinding fanout_binding;
-    fanout_binding.target_images.push_back({target, std::string{hdr_binding}});
+    fanout_binding.target_images.push_back({target, std::string{hdr_binding}, EProductRead::CURRENT_RUN});
     fanout_binding.resources.push_back({std::string{ColorCapture::name}, capture});
-    call<StartRenderJob>(*client, commands, {device, fanout_job, fanout_target, std::move(fanout_binding)});
+    call<StartRenderJob>(*client, commands, {device, fanout_job, fanout_target, fanout_binding});
+    // A -> B -> C: B and C request this round, but A has no demand. C must leave its setter untouched.
+    auto chained = fanout_binding;
+    chained.target_images.front().target = imported_target;
+    call<RebindRenderJobEffect>(*client, commands, {device, fanout_job, fanout_effect, fanout_target, chained});
+    WindowUpdates chain_updates;
+    const auto chain_setter = std::ranges::find(commands.commands, SetNodeTestValue::name, &CommandInfo::name);
+    CHECK(chain_setter != commands.commands.end());
+    chain_updates.append<SetNodeTestValue>(chain_setter->id, {effect, forward, 13, 14});
+    const auto rejected_chain = requestRound(
+        std::array{fanout_job, imported_job}, ERoundRequest::SEPARATE, std::move(chain_updates), kRuntimeState
+    ).second;
+    CHECK(!rejected_chain.front().updates.empty() && rejected_chain.back().updates.empty());
+    WindowUpdates complete_chain;
+    complete_chain.append<SetNodeTestValue>(chain_setter->id, {effect, forward, 13, 14});
+    requestRound(std::array{fanout_job, imported_job, first}, ERoundRequest::WINDOW, std::move(complete_chain));
+    call<SetNodeTestValue>(*client, commands, {effect, forward, 14, 13});
+    call<RebindRenderJobEffect>(*client, commands, {device, fanout_job, fanout_effect, fanout_target, fanout_binding});
     // A resized Target has no publication. Both readers must select this writer's new FIF slot.
     const auto fanout = requestRound(std::array{imported_job, fanout_job, first}).second;
-    const auto before_published = server->developmentStats();
+    CHECK(call<RequestRenderJob>(*client, commands, {fanout_job}, false).error.type == kRuntimeState);
+    fanout_binding.target_images.front().read = EProductRead::LATEST_PUBLISHED;
+    call<RebindRenderJobEffect>(*client, commands, {device, fanout_job, fanout_effect, fanout_target, fanout_binding});
     const auto later = call<RequestRenderJob>(*client, commands, {fanout_job});
     CHECK(later.slot_index != fanout[1].slot_index);
     if (const auto after = server->developmentStats())
     {
-        CHECK(before_published && after->input_rebuilds == before_published->input_rebuilds);
-        CHECK(after->job_selection_growths == before_published->job_selection_growths);
-        CHECK(after->job_topology_growths == before_published->job_topology_growths);
+        const auto stable = call<RequestRenderJob>(*client, commands, {fanout_job});
+        CHECK(stable.frame_index > later.frame_index);
+        const auto counters = server->developmentStats();
+        CHECK(counters->input_rebuilds == after->input_rebuilds);
+        CHECK(counters->job_selection_growths == after->job_selection_growths);
+        CHECK(counters->job_topology_growths == after->job_topology_growths);
     }
     stopAndRemoveJob(*client, commands, fanout_job);
     call<RemoveView>(*client, commands, {scene, fanout_view});
@@ -2903,20 +2967,38 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(dim_edit.commit());
     dim_request.output = {rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN, true};
     const auto dim_effect = createPreparedEffect(*client, commands, device, std::move(dim_request));
+    auto mixed = bound(target, target);
+    mixed.target_images.front().read = EProductRead::CURRENT_RUN;
+    call<RebindRenderJobEffect>(*client, commands, {device, imported_job, imported_effect, imported_target, mixed});
+    call<RebindRenderJobEffect>(*client, commands, {device, first, dim_effect, target, {}});
+    requestRound(std::array{imported_job, first});
+    verifyTargetInput(*client, commands, device, scene, {}, imported_effect,
+        bound(imported_target, imported_target), {.1875, .4375, .6875});
+    call<RebindRenderJobEffect>(*client, commands, {device, first, effect, target, {}});
+    renderFrame(*client, commands, first);
+    std::puts("PRODUCT VERSIONS PASS: both bindings of one Target sampled its old and new pixels in one round");
+
     const auto dim_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
     const auto dim_job = startRenderJob(*client, commands, device, scene, view, dim_target, dim_effect);
     renderFrame(*client, commands, dim_job);
-
+    stopAndRemoveJob(*client, commands, dim_job);
+    call<RebindRenderJobEffect>(*client, commands, {
+        device, imported_job, imported_effect, imported_target, bound(dim_target, dim_target)
+    });
+    auto incompatible = peer_desc;
+    incompatible.format = rdesc::ETextureFormat::RGBA8_UNORM;
+    const auto rejected = call<ResizeTarget>(*client, commands, {dim_target, incompatible}, false);
+    CHECK(rejected.error.type == kDeviceArgument && rejected.description == peer_desc);
+    renderFrame(*client, commands, imported_job);
     verifyTargetInput(*client, commands, device, scene, {}, imported_effect,
-        bound(dim_target, dim_target), {.125, .375, .625});
+        bound(imported_target, imported_target), {.125, .375, .625});
     CHECK(target_graph_builds.load() == imported_builds);
     verifyTargetInput(*client, commands, device, scene, {}, imported_effect,
         bound(target, dim_target), {.1875, .4375, .6875});
     CHECK(target_graph_builds.load() == imported_builds);
-    stopAndRemoveJob(*client, commands, dim_job);
+    stopAndRemoveJob(*client, commands, imported_job);
     call<RemoveTarget>(*client, commands, dim_target);
     call<RemoveEffect>(*client, commands, {dim_effect});
-    stopAndRemoveJob(*client, commands, imported_job);
     call<RemoveTarget>(*client, commands, imported_target);
     call<RemoveEffect>(*client, commands, {imported_effect});
     std::puts("NAMED TARGET IMPORT PASS: native readback, alias key, binding checks and source resize");
@@ -2973,6 +3055,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     ).error.type == kCommandContract);
     CHECK(call<StartRenderJob>(
         *client, commands, {device, storage_job, storage_output, storage_binding(legacy_owner, legacy_owner)}, false
+    ).error.type == kStorageMismatch);
+    // This Effect names the actual Resource type. Its factory supplies no graph projection.
+    CHECK(call<StartRenderJob>(
+        *client, commands, {device, wrong_type_job, storage_output, storage_binding(legacy_owner, legacy_owner)}, false
     ).error.type == kStorageContract);
     for (auto rejected : {wrong_shape_job, wrong_type_job})
     {
@@ -2988,6 +3074,12 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(call<StartRenderJob>(
         *client, commands, {device, other_storage_job, other_storage_output, storage_binding(owner, owner)}, false
     ).error.type == kJobBusy);
+    const auto owner_address = call<QueryResource>(*client, commands, {
+        device, ViewScope{scene, owner_view}, EffectCaptureDescriptor::descriptor.type
+    }).address();
+    const auto users = call<ListResourceJobs>(*client, commands, owner_address).jobs;
+    CHECK(users.size() == 1 && users.front() == storage_job);
+    CHECK(call<RemoveResource>(*client, commands, owner_address, false).error.type == kDeviceBusy);
     call<StartRenderJob>(
         *client, commands, {device, other_storage_job, other_storage_output, storage_binding(other_owner, other_owner)}
     );
@@ -3002,6 +3094,144 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(storage_node_builds.load() == before_valid_storage);
     const auto distinct_receipt = call<RequestRenderJob>(*client, commands, {storage_job});
     stopAndRemoveJob(*client, commands, storage_job);
+#ifdef _WIN32
+    if (async_uniform && UniformUploadProbe::hasSeparateComputeQueue())
+    {
+        const auto list_effect = make_storage_effect(list_selection, "");
+        call<PrepareEffect>(*client, commands, {list_effect, device});
+        TargetId source{}, suffix_source{};
+        for (const bool reject_suffix : {false, true})
+        {
+            CapturedPixels pixels;
+            const auto capture_view = call<CreateView>(*client, commands, {scene}).view;
+            const CaptureDevice capture_device{*client, commands, device};
+            const auto capture = GraphCaptureBuffer::bind(capture_device, {scene, capture_view}, {&pixels});
+            const auto reader = make_storage_job(list_effect);
+            JobBinding binding;
+            binding.resources.push_back({"capture", capture});
+            call<StartRenderJob>(*client, commands, {device, reader, other_storage_output, binding});
+            RenderJobId writer{};
+            if (!reject_suffix)
+            {
+                const auto create_source = [&](TargetReadProbe::Images& bank)
+                {
+                    TargetReadProbe::capturing = &bank;
+                    const auto target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
+                    TargetReadProbe::capturing = nullptr;
+                    CHECK(bank.created == config.frames_in_flight + 1);
+                    return target;
+                };
+                source = create_source(TargetReadProbe::banks[0]);
+                suffix_source = create_source(TargetReadProbe::banks[1]);
+                const auto peer_writer = startRenderJob(*client, commands, device, scene, view, suffix_source, effect);
+                renderFrame(*client, commands, peer_writer);
+                stopAndRemoveJob(*client, commands, peer_writer);
+                writer = startRenderJob(*client, commands, device, scene, view, source, effect);
+            }
+            const auto mode = reject_suffix ? EProductRead::LATEST_PUBLISHED : EProductRead::CURRENT_RUN;
+            WindowUpdates updates;
+            for (const std::string name : {"samples", "overlay"})
+            {
+                const auto address = call<QueryResource>(*client, commands, {
+                    device, reader, TargetDrawList::descriptor.type, name
+                }).address();
+                auto packet = take(FrameData::create<std::tuple<TargetDrawList>>({address}));
+                CHECK(packet.addData<TargetDrawList>(RasterTargetImage{source, mode}));
+                const bool suffix_only = name == "overlay" && reject_suffix;
+                CHECK(packet.addData<TargetDrawList>(RasterTargetImage{suffix_only ? suffix_source : source, mode}));
+                updates.append(std::move(packet));
+            }
+            std::uint32_t sampled_slot = kGraphInvalidIndex;
+            std::optional<RetirementFence> gate;
+            if (!reject_suffix)
+            {
+                const auto before = server->developmentStats();
+                const auto paired = requestRound(std::array{reader, writer}, ERoundRequest::WINDOW, std::move(updates));
+                sampled_slot = paired.second.front().slot_index;
+                if (before) CHECK(server->developmentStats()->dependency_edges == before->dependency_edges + 1);
+                stopAndRemoveJob(*client, commands, writer);
+            }
+            else
+            {
+                gate.emplace(*TargetDrawList::session);
+                TargetReadProbe::gate = gate->fence;
+                const auto reply = call<RequestRenderJob>(*client, commands, {reader, std::move(updates)}, false);
+                TargetReadProbe::gate = nullptr;
+                CHECK(reply.error.type == kDeviceFailure);
+                CHECK(TargetReadProbe::draws == 2 && TargetReadProbe::submissions == 2);
+                const auto& point = TargetReadProbe::first_read;
+                CHECK(point.fence && gate->core.GetFenceValue(*point.fence) < point.value);
+                call<RemoveTarget>(*client, commands, source);
+                call<RemoveTarget>(*client, commands, suffix_source);
+                const auto deadline = Clock::now() + 10s;
+                const auto& suffix = TargetReadProbe::banks[1];
+                while (suffix.destroyed != suffix.created) CHECK(Clock::now() < deadline);
+                CHECK(!TargetReadProbe::banks[0].destroyed && gate->core.GetFenceValue(*point.fence) < point.value);
+                gate->signal();
+            }
+            stopAndRemoveJob(*client, commands, reader);
+            call<RemoveView>(*client, commands, {scene, capture_view});
+            const auto deadline = Clock::now() + 10s;
+            while (!pixels.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < deadline);
+            if (!reject_suffix)
+            {
+                CHECK(sampled_slot < pixels.frames.size());
+                const auto& bytes = pixels.frames[sampled_slot];
+                CHECK(bytes[0] != std::byte{} && bytes[1] != std::byte{} && bytes[3] == std::byte{255});
+            }
+            else
+            {
+                const auto& prefix = TargetReadProbe::banks[0];
+                while (prefix.destroyed != prefix.created) CHECK(Clock::now() < deadline);
+            }
+        }
+        call<RemoveEffect>(*client, commands, {list_effect});
+        std::puts("DYNAMIC TARGET PREFIX PASS: one current-run edge; suffix-only images retired before the held read");
+    }
+    if (!async_uniform)
+    {
+        const auto writer_effect = make_storage_effect(storage_selection, "publish");
+        const auto reader_effect = make_storage_effect(storage_selection, "consume");
+        for (const auto id : {writer_effect, reader_effect}) call<PrepareEffect>(*client, commands, {id, device});
+        const auto writer = make_storage_job(writer_effect);
+        const auto reader = make_storage_job(reader_effect);
+        CapturedPixels words;
+        const auto capture_view = call<CreateView>(*client, commands, {scene}).view;
+        const auto destination = GraphCaptureBuffer::bind({*client, commands, device}, {scene, capture_view}, {&words});
+        JobBinding writer_binding;
+        writer_binding.resources.push_back({"words", owner, 1});
+        call<StartRenderJob>(*client, commands, {device, writer, storage_output, writer_binding});
+        RetirementFence gate{*EffectCaptureBuffer::product_device};
+        UniformUploadProbe::next_product_wait = gate.fence;
+        const auto published = call<RequestRenderJob>(*client, commands, {writer});
+        const auto& signal = UniformUploadProbe::product_signal;
+        CHECK(!UniformUploadProbe::next_product_wait && signal.fence);
+        CHECK(gate.core.GetFenceValue(*signal.fence) < signal.value);
+        JobBinding reader_binding;
+        reader_binding.resources = {{"words", owner, 1, published.bufferVersion({0, 16})}, {"capture", destination}};
+        auto reading = std::async(std::launch::async, [&]
+        {
+            stopAndRemoveJob(*client, commands, writer);
+            call<StartRenderJob>(*client, commands, {device, reader, other_storage_output, reader_binding});
+            return call<RequestRenderJob>(*client, commands, {reader});
+        });
+        const bool admitted = reading.wait_for(5s) == std::future_status::ready;
+        const bool producer_pending = gate.core.GetFenceValue(*signal.fence) < signal.value;
+        gate.signal();
+        const auto consumed = reading.get();
+        CHECK(admitted && producer_pending && consumed.slot_index != published.slot_index);
+        stopAndRemoveJob(*client, commands, reader);
+        call<RemoveView>(*client, commands, {scene, capture_view});
+        const auto deadline = Clock::now() + 10s;
+        while (!words.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < deadline);
+        CHECK(consumed.slot_index < words.frames.size());
+        const auto& captured = words.frames[consumed.slot_index];
+        CHECK(captured.size() >= 16);
+        CHECK(std::ranges::all_of(std::span{captured}.first(16), [](auto b) { return b == std::byte{0xc3}; }));
+        for (const auto id : {reader_effect, writer_effect}) call<RemoveEffect>(*client, commands, {id});
+        std::puts("IN-FLIGHT BUFFER PASS: writer removed and reader submitted before fence completion, 16 bytes matched");
+    }
+#endif
     const auto shared_write = make_storage_effect(storage_selection, "shared-write");
     CHECK(call<PrepareEffect>(*client, commands, {shared_write, device}, false).error.type == kGraphInvalidDescriptor);
     call<RemoveEffect>(*client, commands, {shared_write});
@@ -3016,6 +3246,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         call<RemoveRenderJob>(*client, commands, {ambiguous_job});
         call<RemoveEffect>(*client, commands, {ambiguous});
     }
+    CHECK(call<ListResourceJobs>(*client, commands, owner_address).jobs.empty());
+    call<RemoveResource>(*client, commands, owner_address);
     call<RemoveView>(*client, commands, {scene, owner_view});
     const auto stale_job = make_storage_job(storage_effect);
     CHECK(call<StartRenderJob>(
@@ -3024,8 +3256,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     call<RemoveRenderJob>(*client, commands, {stale_job});
     call<RemoveView>(*client, commands, {scene, other_view});
     const auto deadline = Clock::now() + 10s;
-    const std::array receipts{storage_receipt, other_receipt};
-    for (std::size_t i = 0; i < receipts.size(); ++i)
+    const std::array receipt_slots{storage_receipt.slot_index, other_receipt.slot_index};
+    for (std::size_t i = 0; i < receipt_slots.size(); ++i)
     {
         auto& capture = EffectCaptureBuffer::pixels[i];
         while (!capture.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < deadline);
@@ -3035,8 +3267,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
             const auto frame = std::span{capture.frames[slot]}.first(effect_capture_bytes);
             CHECK(std::ranges::all_of(frame, [expected](std::byte byte) noexcept { return byte == expected; }));
         };
-        if (receipts[i].slot_index != distinct_receipt.slot_index)
-            check_capture(receipts[i].slot_index, std::byte{0x5a});
+        if (receipt_slots[i] != distinct_receipt.slot_index)
+            check_capture(receipt_slots[i], std::byte{0x5a});
         check_capture(distinct_receipt.slot_index, std::byte{0x6b});
     }
     call<RemoveTarget>(*client, commands, storage_output);
@@ -3060,14 +3292,9 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         return binding;
     };
     const std::pair<std::string_view, lux::error::ErrorId> invalid_preparations[]{
-        {"missing", kGraphUndefinedRead},
-        {"cycle", kGraphDependencyCycle},
-        {"type", kGraphInvalidDescriptor},
         {"input-count", kGraphInvalidDescriptor},
         {"output-count", kGraphInvalidDescriptor},
-        {"duplicate", kGraphAmbiguousProducer},
         {"copy-type", kGraphInvalidDescriptor},
-        {"inline-result-type", kGraphInvalidDescriptor},
         {"copy-source", kGraphInvalidDescriptor},
         {"copy-and-producer", kGraphAmbiguousProducer},
         {"joint-closure", kGraphUndefinedRead}
@@ -3079,37 +3306,36 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         call<RemoveEffect>(*client, commands, {invalid});
     }
     const auto source_before = source_links.load();
-    const auto sink_before = sink_links.load();
     const auto prepared_job = call<CreateRenderJob>(
         *client, commands, {scene, producer_view, producer_effect, EJobCadence::REQUESTED}
     ).job;
     const auto prepared_peer = call<CreateRenderJob>(
         *client, commands, {scene, producer_peer_view, producer_effect, EJobCadence::REQUESTED}
     ).job;
+    ViewGpuParameters first_view_parameters, peer_view_parameters;
+    first_view_parameters.background[0] = std::bit_cast<float>(0x3c3c3c3cu);
+    peer_view_parameters.background[0] = std::bit_cast<float>(0x5b5b5b5bu);
+    call<UpdateView>(*client, commands, {{scene, producer_view}, first_view_parameters});
+    call<UpdateView>(*client, commands, {{scene, producer_peer_view}, peer_view_parameters});
     const auto first_view_data = make_resource(producer_view, kViewParameterResourceName);
     const auto peer_view_data = make_resource(producer_peer_view, kViewParameterResourceName);
     auto first_binding = producer_binding(first_data);
     first_binding.resources.push_back({
-        std::string{ViewParameterResource::snapshot_binding}, first_view_data, 0, EJobResourceUse::CPU_SNAPSHOT
+        std::string{kViewParameters.binding}, first_view_data, 0
     });
     auto peer_binding = producer_binding(peer_data);
     peer_binding.resources.push_back({
-        std::string{ViewParameterResource::snapshot_binding}, peer_view_data, 0, EJobResourceUse::CPU_SNAPSHOT
+        std::string{kViewParameters.binding}, peer_view_data, 0
     });
-    ViewGpuParameters first_view_parameters, peer_view_parameters;
-    first_view_parameters.background[0] = std::bit_cast<float>(0x3c3c3c3cu);
-    peer_view_parameters.background[0] = std::bit_cast<float>(0x5b5b5b5bu);
-    call<ViewParameterCommands::Update>(*client, commands, {first_view_data, std::span{&first_view_parameters, 1}});
-    call<ViewParameterCommands::Update>(*client, commands, {peer_view_data, std::span{&peer_view_parameters, 1}});
-    reject_sink_after_link = true;
+    reject_view_link = true;
     const auto failed_link = call<PrepareEffect>(*client, commands, {producer_effect, device}, false);
-    CHECK(failed_link.error.type == kGraphInvalidDescriptor && !reject_sink_after_link.load());
-    CHECK(source_links.load() == source_before + 1 && sink_links.load() == sink_before + 1);
+    CHECK(failed_link.error.type == kGraphInvalidDescriptor && !reject_view_link.load());
+    CHECK(source_links.load() == source_before + 1);
     CHECK(!source_instances.load() && producer_source_lifetime.expired());
     call<PrepareEffect>(*client, commands, {producer_effect, device});
-    auto missing_camera = first_binding;
-    missing_camera.resources.pop_back();
-    CHECK(call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, missing_camera}, false)
+    JobBinding missing_readback;
+    missing_readback.resources.push_back(first_binding.resources.back());
+    CHECK(call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, missing_readback}, false)
         .error.type == kStorageIdentity);
     first_binding.resources.back().resource = peer_view_data;
     const auto mismatched = call<StartRenderJob>(
@@ -3117,27 +3343,26 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     );
     CHECK(mismatched.error.type == kStorageMismatch);
     first_binding.resources.back().resource = first_view_data;
-    call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, first_binding});
-    reject_sink_workspace = true;
+    call<StartRenderJob>(*client, commands, {device, prepared_job, producer_target, producer_binding(first_data)});
+    reject_view_workspace = true;
     const auto rejected_workspace = call<StartRenderJob>(
         *client, commands, {device, prepared_peer, producer_peer_target, peer_binding}, false
     );
-    CHECK(rejected_workspace.error.type == kDeviceCapacity && !reject_sink_workspace.load());
+    CHECK(rejected_workspace.error.type == kDeviceCapacity && !reject_view_workspace.load());
     CHECK(source_instances.load() == 2 && source_workspaces_destroyed.load() == 1);
     call<StartRenderJob>(*client, commands, {device, prepared_peer, producer_peer_target, peer_binding});
-    CHECK(source_links.load() == source_before + 2 && sink_links.load() == sink_before + 2);
+    CHECK(source_links.load() == source_before + 2);
     CHECK(source_instances.load() == 3 && source_workspaces_destroyed.load() == 1);
-    const auto view_schema = call<QueryRenderJobInputLayout>(*client, commands, prepared_job).layout;
-    auto packet = take(FrameData::create<std::tuple<ViewParameterResource>>(view_schema));
+    auto packet = framePacket<ViewParameterResource>(*client, commands, device, ViewScope{scene, producer_view});
     auto changed_view = first_view_parameters;
     changed_view.background[0] = std::bit_cast<float>(0x4d4d4d4du);
     auto invalid_view = changed_view;
     invalid_view.direction_far[3] = 0;
     CHECK(packet.addData<ViewParameterResource>(changed_view));
     CHECK(packet.addData<ViewParameterResource>(invalid_view));
-    CHECK(packet.seal());
-    CHECK(call<UpdateFrameData>(*client, commands, {prepared_job, &packet}, false).error.type == kFrameContract);
-    packet.release();
+    auto rejected_packet = call<UpdateFrameData>(*client, commands, {std::move(packet)}, false);
+    CHECK(rejected_packet.error.type == kFrameContract);
+    packet = std::move(rejected_packet.data);
     auto wrong_camera = first_binding;
     wrong_camera.resources.back().resource = peer_view_data;
     const auto rejected_camera = call<RebindRenderJobEffect>(
@@ -3158,23 +3383,21 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         CHECK(Clock::now() < freeze_deadline);
         std::this_thread::yield();
     }
-    call<ViewParameterCommands::Update>(*client, commands, {first_view_data, std::span{&changed_view, 1}});
+    call<UpdateView>(*client, commands, {{scene, producer_view}, changed_view});
     UniformUploadProbe::submission_gate = SubmitGate::OPEN;
     UniformUploadProbe::submission_gate.notify_all();
     const auto prepared_first = frozen_view.get();
     reject_value_preparation = true;
     CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kFrameContract);
-    CHECK(sink_preparations.load() == 1);
+    CHECK(view_preparations.load() == 1);
     reject_staged_constants = true;
     CHECK(call<RequestRenderJob>(*client, commands, {prepared_job}, false).error.type == kFrameContract);
-    CHECK(!reject_staged_constants.load() && sink_preparations.load() == 2);
-    packet = take(FrameData::create<std::tuple<ViewParameterResource>>(view_schema));
+    CHECK(!reject_staged_constants.load() && view_preparations.load() == 2);
+    packet.reset();
     CHECK(packet.addData<ViewParameterResource>(changed_view));
-    CHECK(packet.seal());
-    const auto prepared_recovered = call<RequestRenderJob>(*client, commands, {prepared_job, &packet});
-    packet.release();
+    const auto prepared_recovered = call<RequestRenderJob>(*client, commands, {prepared_job, std::move(packet)});
     const auto prepared_peer_first = call<RequestRenderJob>(*client, commands, {prepared_peer});
-    CHECK(sink_preparations.load() == 4);
+    CHECK(view_preparations.load() == 4);
     stopAndRemoveJob(*client, commands, prepared_job);
     stopAndRemoveJob(*client, commands, prepared_peer);
     CHECK(source_workspaces_destroyed.load() == source_instances.load());
@@ -3204,10 +3427,10 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto stream_view = call<CreateView>(*client, commands, {scene}).view;
     const auto stream_data = make_resource(stream_view, EffectCaptureDescriptor::descriptor.type);
     const auto stream_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
-    const auto stream_job = make_storage_job(stream_effect);
+    const auto stream_job = call<CreateRenderJob>(*client, commands, {scene, stream_view, stream_effect, EJobCadence::REQUESTED}).job;
     const auto stream_source = make_resource(stream_view, StreamProgramStorage::descriptor.type);
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::INITIAL});
     auto stream_binding = producer_binding(stream_data);
-    stream_binding.resources.push_back({"stream_programs", stream_source, 0, EJobResourceUse::CPU_SNAPSHOT});
     call<StartRenderJob>(*client, commands, {device, stream_job, stream_target, std::move(stream_binding)});
     stream_mode = ETestStreamMode::BAD_CONSTANTS;
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
@@ -3238,27 +3461,17 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto empty_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     const auto rendered_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     const auto before_bad_program = call<QueryRenderStats>(*client, commands, {}).submissions;
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::INVALID});
-    CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kDeviceUnsupported);
+    CHECK(call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::INVALID}, false).error.type == kDeviceUnsupported);
+    CHECK(call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::BAD_GEOMETRY}, false).error.type == kGraphInvalidDescriptor);
     CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program);
 
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::BAD_GEOMETRY});
-    CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kGraphInvalidDescriptor);
-    const auto failed_selection = server->developmentStats();
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::BAD_GEOMETRY});
-    CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kGraphInvalidDescriptor);
-    if (failed_selection)
-        CHECK(server->developmentStats()->program_preparations == failed_selection->program_preparations);
-    CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program);
-
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::PENDING});
     using PipelineGate = UniformUploadProbe::EPipelineGate;
     UniformUploadProbe::pipeline_gate = PipelineGate::ARMED;
     auto requester = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(requester);
     auto preparing = std::async(std::launch::async, [&]
     {
-        return call<RequestRenderJob>(*requester, commands, {stream_job});
+        return call<SetStreamPrograms>(*requester, commands, {stream_source, ETestStreamPrograms::PENDING});
     });
     const auto replacement_deadline = Clock::now() + 10s;
     while (UniformUploadProbe::pipeline_gate != PipelineGate::HELD)
@@ -3266,13 +3479,12 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         CHECK(Clock::now() < replacement_deadline);
         std::this_thread::yield();
     }
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REVERSED});
+    CHECK(call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REVERSED}, false).error.type == kDeviceBusy);
+    call<RequestRenderJob>(*client, commands, {stream_job});
     UniformUploadProbe::pipeline_gate = PipelineGate::OPEN;
     UniformUploadProbe::pipeline_gate.notify_all();
     preparing.get();
-    CHECK(call<QueryRenderStats>(*client, commands, {}).submissions == before_bad_program + 1);
-
-    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REUSED});
+    call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::REVERSED});
     stream_mode = ETestStreamMode::OLD_PROGRAM_SLOT;
     CHECK(call<RequestRenderJob>(*client, commands, {stream_job}, false).error.type == kFrameContract);
     call<SetStreamPrograms>(*client, commands, {stream_source, ETestStreamPrograms::EQUIVALENT});
@@ -3284,9 +3496,6 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto swapped_stream = call<RequestRenderJob>(*client, commands, {stream_job});
     stopAndRemoveJob(*client, commands, stream_job);
     call<RemoveView>(*client, commands, {scene, stream_view});
-    for (const auto& retired : retired_draw_mappings) CHECK(retired.load() == 1);
-    std::puts("DRAW MAPPING PASS: failed and stale candidates isolated; "
-              "reuse and equal PSOs adopted new mappings; seven retired");
     const auto stream_deadline = Clock::now() + 10s;
     const auto& stream_capture = EffectCaptureBuffer::pixels[4];
     while (!stream_capture.ready.load(std::memory_order_acquire)) CHECK(Clock::now() < stream_deadline);
@@ -3386,19 +3595,23 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     const auto uncounted_view = call<CreateView>(*client, commands, {scene}).view;
     const auto uncounted_data = make_resource(uncounted_view, EffectCaptureDescriptor::descriptor.type);
     const auto uncounted_target = call<CreateTarget>(*client, commands, {device, peer_desc}).target;
-    const auto uncounted_job = make_storage_job(stream_effect);
+    const auto uncounted_job = call<CreateRenderJob>(*client, commands, {scene, uncounted_view, stream_effect, EJobCadence::REQUESTED}).job;
     const auto uncounted_source = make_resource(uncounted_view, StreamProgramStorage::descriptor.type);
     auto uncounted_binding = producer_binding(uncounted_data);
-    uncounted_binding.resources.push_back({"stream_programs", uncounted_source, 0, EJobResourceUse::CPU_SNAPSHOT});
     call<SetStreamPrograms>(*client, commands, {uncounted_source, ETestStreamPrograms::REVERSED});
     call<StartRenderJob>(*client, commands, {device, uncounted_job, uncounted_target, std::move(uncounted_binding)});
     for (unsigned i = 0; i < config.frames_in_flight; ++i) call<RequestRenderJob>(*client, commands, {uncounted_job});
+    const auto warmed_sets = UniformUploadProbe::set_allocations.load();
+    const auto warmed_pools = UniformUploadProbe::pool_creations.load();
+    stream_mode = ETestStreamMode::SHARED_BINDINGS;
+    call<RequestRenderJob>(*client, commands, {uncounted_job});
+    CHECK(UniformUploadProbe::set_allocations == warmed_sets && UniformUploadProbe::pool_creations == warmed_pools);
     UniformUploadProbe::reject_raster_pool = true;
-    stream_mode = ETestStreamMode::MANY_DRAWS;
+    stream_mode = ETestStreamMode::DISTINCT_BINDINGS;
     const auto rejected_pool = call<RequestRenderJob>(*client, commands, {uncounted_job}, false);
     CHECK(rejected_pool.error.type == kDeviceFailure && !UniformUploadProbe::reject_raster_pool.load());
     UniformUploadProbe::reject_raster_set_countdown = 2;
-    stream_mode = ETestStreamMode::MANY_DRAWS;
+    stream_mode = ETestStreamMode::DISTINCT_BINDINGS;
     const auto rejected_set = call<RequestRenderJob>(*client, commands, {uncounted_job}, false);
     CHECK(rejected_set.error.type == kDeviceFailure && UniformUploadProbe::reject_raster_set_countdown.load() == 0);
     const auto previous_sets = UniformUploadProbe::set_allocations.load();
@@ -3409,7 +3622,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     {
         const auto pools = UniformUploadProbe::pool_creations.load();
         const auto sets = UniformUploadProbe::set_allocations.load();
-        stream_mode = ETestStreamMode::MANY_DRAWS;
+        stream_mode = ETestStreamMode::DISTINCT_BINDINGS;
         large_slot = call<RequestRenderJob>(*client, commands, {uncounted_job}).slot_index;
         const auto grown = UniformUploadProbe::pool_creations.load() - pools;
         const auto allocated = UniformUploadProbe::set_allocations.load() - sets;
@@ -3562,7 +3775,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(recycled_slot != paired_slot);
     verify_prepared(10, paired_slot, std::byte{0x73});
     verify_prepared(10, recycled_slot, std::byte{0x84});
-    if (uniform_faults && UniformUploadProbe::hasSeparateComputeQueue())
+    if (async_uniform && UniformUploadProbe::hasSeparateComputeQueue())
     {
         using Fault = UniformUploadProbe::EFault;
         const auto start_uniform = [&](ViewId owner)
@@ -3601,6 +3814,7 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         UniformUploadProbe::release_upload.notify_all();
         const auto frozen = held.get();
         UniformUploadProbe::fault = Fault::NONE;
+        CHECK(UniformUploadProbe::checked_upload_wait);
         CHECK(UniformUploadProbe::accepted_uploads == accepted_before + 1);
         const auto next = call<RequestRenderJob>(*client, commands, {fault_job});
         CHECK(UniformUploadProbe::accepted_uploads == accepted_before + 2);
@@ -3632,7 +3846,8 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
         UniformUploadProbe::fault = Fault::UNKNOWN_UPLOAD;
         const auto unknown = call<RequestRenderJob>(*client, commands, {unknown_job}, false);
         CHECK(unknown.error.type == kOutcomeUnknown && UniformUploadProbe::unknown_retired.load());
-        CHECK(unknown.job.isNull() && unknown.frame_index == 0 && unknown.slot_index == 0);
+        CHECK(unknown.job == unknown_job && unknown.frame_index == 0 && unknown.slot_index == 0);
+        CHECK(unknown.bufferVersion({0, 4}).writer.isNull());
         render.join();
         CHECK(!server_result && server_result.error() == unknown.error);
         CHECK(server->stats().submissions == before_unknown);
@@ -3647,8 +3862,6 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     std::puts("UNIFORM BLOCK PASS: one native copy per revision, same-round reuse and bounded backing");
 
     call<SetNodeTestValue>(*client, commands, {effect, forward, 13, 17});
-    stopAndRemoveJob(*client, commands, first);
-    stopAndRemoveJob(*client, commands, peer);
 
     CreateEffectRequest shutdown_request{std::make_unique<EffectGraph>()};
     EffectGraphEdit shutdown_edit{*shutdown_request.graph};
@@ -3657,7 +3870,15 @@ static void effectGraphOutput(bool d3d12, bool async_uniform, bool uniform_fault
     CHECK(shutdown_edit.commit());
     const auto shutdown_effect = call<CreateEffect>(*client, commands, std::move(shutdown_request)).effect;
     auto shutdown = begin_prepare(shutdown_effect, device);
-    server->stop();
+    WindowUpdates cancelled_updates;
+    const auto setter = std::ranges::find(commands.commands, SetNodeTestValue::name, &CommandInfo::name);
+    CHECK(setter != commands.commands.end());
+    cancelled_updates.append<SetNodeTestValue>(setter->id, {effect, forward, 17, 18});
+    const auto [before_stop, cancelled] = requestRound(
+        std::array{first, peer}, ERoundRequest::WINDOW_THEN_STOP, std::move(cancelled_updates), kCommandCancelled
+    );
+    CHECK(!cancelled.front().updates.empty() && cancelled.back().updates.empty());
+    CHECK(server->stats().submissions == before_stop);
     release_prepare(ENodeBuildGate::PASS);
     CHECK(shutdown.get().error.type == kCommandCancelled);
     render.join();
@@ -3679,15 +3900,23 @@ static void preparedBuffers(bool d3d12)
         using LinkedData = Configuration;
 
         static RenderResult<void>
-        prepare(const LinkedData& scratch_bytes, const CpuFrameInputs<const ShadowLightSnapshot&>& inputs) noexcept
+        onFrame(const LinkedData& scratch_bytes, const EffectFrameInputs<ShadowLightSnapshot>& inputs, EffectFrameWriter& frame) noexcept
         {
-            auto& frame = inputs.frame;
             const auto selected = phase.load();
-            const auto outside = frame.sizeBuffer(1, scratch_bytes);
-            CHECK(!outside && outside.error().type == kGraphUnknownResource);
-            if (auto sized = frame.sizeBuffer(0, scratch_bytes); !sized) return sized;
-            const auto duplicate = frame.sizeBuffer(0, scratch_bytes);
-            CHECK(!duplicate && duplicate.error().type == kFrameContract);
+            const std::array extents{scratch_bytes};
+            const auto incomplete = frame.publishBuffers({}, extents);
+            CHECK(!incomplete && incomplete.error().type == kGraphUnknownResource);
+            const auto publish = [&](std::span<const std::byte> bytes, std::uint64_t revision = 0) noexcept
+            {
+                const std::array uploads{FrameBufferUpload{bytes, revision}};
+                auto result = frame.publishBuffers(uploads, extents);
+                if (result)
+                {
+                    const auto duplicate = frame.publishBuffers(uploads, extents);
+                    CHECK(!duplicate && duplicate.error().type == kFrameContract);
+                }
+                return result;
+            };
             if (selected == EPhase::OMIT) return {};
             const auto& lights = std::get<0>(inputs.values);
             const auto& snapshot = lights.value.get();
@@ -3703,9 +3932,9 @@ static void preparedBuffers(bool d3d12)
             grown.back() = marker;
             std::array<std::uint32_t, 257> oversized{};
             if (selected == EPhase::OVERSIZED)
-                return frame.writeBuffer(0, std::as_bytes(std::span{oversized}));
+                return publish(std::as_bytes(std::span{oversized}));
             if (selected == EPhase::SMALL)
-                return frame.writeBuffer(0, std::as_bytes(std::span{initial}), lights.revision);
+                return publish(std::as_bytes(std::span{initial}), lights.revision);
             const bool replacement = selected == EPhase::REPLACEMENT || selected == EPhase::PREFIX_EXTENT;
             const auto revision = lights.revision * 2 + replacement;
             if (selected == EPhase::PREFIX_EXTENT)
@@ -3713,12 +3942,12 @@ static void preparedBuffers(bool d3d12)
                 std::array<std::uint32_t, 128> half{};
                 half.front() = 128;
                 half[1] = half.back() = 0x71717171u;
-                return frame.writeBuffer(0, std::as_bytes(std::span{half}), revision);
+                return publish(std::as_bytes(std::span{half}), revision);
             }
             if (selected == EPhase::SHRUNK)
-                return frame.writeBuffer(0, std::as_bytes(std::span{initial}), revision);
+                return publish(std::as_bytes(std::span{initial}), revision);
             const auto selected_revision = selected == EPhase::UNVERSIONED ? 0 : revision;
-            auto written = frame.writeBuffer(0, std::as_bytes(std::span{grown}), selected_revision);
+            auto written = publish(std::as_bytes(std::span{grown}), selected_revision);
             if (selected == EPhase::FAIL_AFTER_WRITE && written)
                 return lux::cxx::unexpected(RenderError{kFrameContract});
             return written;
@@ -3736,45 +3965,42 @@ static void preparedBuffers(bool d3d12)
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    take(server->registerResource<EffectCaptureBuffer>());
 
-    EffectNodeDefinition definition;
+    EffectCapability definition;
     constexpr std::string_view node_name = "test.prepared_buffers";
-    definition.identity = {graph::nodeTypeId(node_name), std::string{node_name}, 1};
-    definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.id = graph::nodeTypeId(node_name);
+    definition.canonical_name = node_name;
+    const EffectPortDefinition definition_ports[]{{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.ports = definition_ports;
     CHECK(server->registerEffectCapability(definition));
-    EffectImplementation implementation;
-    implementation.capability = definition.identity.id;
+    ImplementationEntry implementation;
+    implementation.capability = definition.id;
     implementation.identity = {"test.prepared_buffers.compute", 1};
     implementation.supported_outputs = {node_bytes};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
+    static constexpr auto build_implementation = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
         ++graph_builds;
         auto selected = context.declarePreparedBuffer("selection", 16, 1024);
         if (!selected) return lux::cxx::unexpected(selected.error());
         const auto scratch = context.declareFrameBuffer("scratch", 16, 16);
         if (!scratch) return lux::cxx::unexpected(scratch.error());
-        const ResourceRequirement light_owner{ResourceName{kLightResourceName.name()}};
-        auto lights = mode == "wrong-type" ? context.importStorageSnapshot<std::uint32_t>("lights", light_owner) :
-            context.importStorageSnapshot<ShadowLightSnapshot>("lights", light_owner);
+        auto lights = mode == "wrong-type" ? context.readResourceView<std::uint32_t>(kSceneLights, "lights") :
+            context.readResourceView<ShadowLightSnapshot>(kSceneLights, "lights");
         if (!lights) return lux::cxx::unexpected(lights.error());
         const auto add_producer = [&]() noexcept -> RenderResult<void>
         {
-            CpuCallDependencies uses{
-                .uploads = {selected->resource}, .frame_sizes = {scratch->resource}, .storage_inputs = {*lights}
+            FrameAlgorithmUses uses{
+                .uploads = {selected->resource}, .frame_sizes = {scratch->resource}, .resource_views = {*lights}
             };
             if (mode == "wrong-upload") std::swap(uses.uploads, uses.frame_sizes);
             if (mode == "wrong-size") uses.frame_sizes = {selected->resource};
             if (mode == "repeated-size") uses.frame_sizes.push_back(scratch->resource);
-            return context.addCpuCall<Producer>(16, std::move(uses));
+            return context.onFrame<&Producer::onFrame>(16, std::move(uses));
         };
         if (mode != "missing") CHECK(add_producer());
         if (mode == "duplicate") CHECK(add_producer());
-        const ResourceRequirement owner{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
+        const ResourceNameView owner{EffectCaptureDescriptor::descriptor.type.name()};
         const auto readback = take(context.importFinalBuffer("readback", owner, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
@@ -3792,6 +4018,7 @@ static void preparedBuffers(bool d3d12)
         ));
         return context.publish(node_bytes, {{node_bytes, result.written.front()}});
     };
+    implementation.create = fixture::Effect<build_implementation>::create;
     const auto selection = implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(implementation)));
 
@@ -3824,7 +4051,7 @@ static void preparedBuffers(bool d3d12)
     std::array settings{LightShadowSettings{.enabled = true, .depth_bias_constant = 54}};
     const auto light = call<LightingCommands::CreateLights>(*client, commands, {light_owner, {1, values, settings}})
         .lights.front();
-    binding.resources.push_back({"lights", light_owner, 0, EJobResourceUse::CPU_SNAPSHOT});
+    binding.resources.push_back({"lights", light_owner, 0});
     const auto start = [&](EffectId effect)
     {
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
@@ -3851,7 +4078,10 @@ static void preparedBuffers(bool d3d12)
     const auto before = submissions();
     call<RequestRenderJob>(*client, commands, {job});
     const auto other_initial = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(submissions() - before == 4);
+    const auto initial_submits = submissions() - before;
+    if (initial_submits != 4) std::fprintf(stderr, "Prepared buffers used %llu submissions to initialize two FIF slots\n",
+        static_cast<unsigned long long>(initial_submits));
+    CHECK(initial_submits == 4);
     const auto initial = call<RequestRenderJob>(*client, commands, {job});
     CHECK(submissions() - before == 5);
     CHECK(initial.slot_index != other_initial.slot_index);
@@ -3968,107 +4198,107 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
 {
     static std::array<TextureId, 2> textures;
     static std::array<MaterialId, 2> materials;
-    static MaterialProgramId selected_material_program;
     static MaterialId stale_second_texture;
     static std::atomic_uint selected_texture{};
     class Producer final
     {
     public:
-        struct Configuration final { rdesc::EShaderTarget target; bool materials, declares_texture; };
+        struct Configuration final { bool materials, declares_texture; std::uint32_t first_program; };
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            rdesc::EShaderTarget target;
-            std::optional<MaterialDrawSources> materials;
-            std::optional<DrawResourceSlot<TextureResource::DrawStorage>> textures;
+            std::array<RasterProgramSlot, 3> programs;
+            std::optional<RasterResourceSlot> materials;
+            std::optional<RasterResourceSlot> textures;
         };
 
         static RenderResult<LinkedData>
         resolve(const Configuration& input, std::span<const RasterOperands, 1> streams) noexcept
         {
-            LinkedData linked{streams.front().stream(), input.target, {}, {}};
+            LinkedData linked{streams.front().stream(), {}, {}, {}};
+            const auto count = input.materials ? linked.programs.size() : 1;
+            for (std::uint32_t i = 0; i < count; ++i)
+            {
+                auto slot = streams.front().programAt(input.first_program + i);
+                if (!slot) return lux::cxx::unexpected(slot.error());
+                linked.programs[i] = *slot;
+            }
             if (input.declares_texture)
             {
-                const auto slot = streams.front().resource<TextureResource::DrawStorage>("textures");
+                const auto slot = streams.front().resource("textures", TextureResource::descriptor.type);
                 if (!slot) return lux::cxx::unexpected(slot.error());
                 linked.textures = *slot;
             }
             if (input.materials)
             {
-                const auto records = streams.front().resource<MaterialResource::DrawStorage>("materials");
+                const auto records = streams.front().resource("materials", MaterialResource::descriptor.type);
                 if (!records) return lux::cxx::unexpected(records.error());
-                linked.materials = MaterialDrawSources{*records, linked.textures};
+                linked.materials = *records;
             }
             return linked;
         }
 
-        struct Workspace final { MaterialRecordReader records; };
-
-        static RenderResult<void>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const SnapshotValues<>&) noexcept
+        struct Workspace final
         {
-            RuntimeRasterProgram program{{0}};
-            std::vector<rdesc::ShaderProgramArtifact> shaders;
+            std::optional<MaterialDrawBinding> material;
+            std::optional<TextureDrawBinding> texture;
+        };
+
+        static RenderResult<std::unique_ptr<Workspace>>
+        install(const LinkedData& linked, const TargetDesc&, const InstalledDrawSources& sources) noexcept
+        {
+            auto result = std::make_unique<Workspace>();
             if (linked.materials)
             {
-                auto selected = readMaterialProgram(selection, linked.stream, selected_material_program);
-                if (!selected) return lux::cxx::unexpected(selected.error());
-                program.source = selected->source;
-                const auto* shader = selected->definition.find(rdesc::EMaterialPurpose::FORWARD);
-                CHECK(shader);
-                shaders.push_back(prependStreamVertex(shader->shader, kEffectStreamVertex));
-                shaders.push_back(streamShader(linked.target, kEffectRecordTable));
-                program.parameters.setInlineConstant(rdesc::MaterialGpuReference{});
-                shaders.push_back(streamShader(linked.target, kEffectRecordOnly));
-                std::array programs{program, program, program};
-                programs[1].shader = {1};
-                programs[2].shader = {2};
-                return selection.setPrograms(linked.stream, std::move(shaders), programs);
+                auto binding = MaterialDrawBinding::bind(sources, *linked.materials, linked.textures);
+                if (!binding) return lux::cxx::unexpected(binding.error());
+                result->material.emplace(*binding);
             }
-            shaders.push_back(streamShader(linked.target, kEffectStreamSharedTexture));
-            program.parameters.setInlineConstant(TestSharedTextureIndices{});
-            return selection.setPrograms(linked.stream, std::move(shaders), std::span{&program, 1});
+            else if (linked.textures)
+            {
+                auto binding = TextureDrawBinding::bind(sources, *linked.textures);
+                if (!binding) return lux::cxx::unexpected(binding.error());
+                result->texture.emplace(*binding);
+            }
+            return result;
         }
 
         static RenderResult<void>
-        prepare(const LinkedData& linked, CpuCallFrame& frame, Workspace& workspace) noexcept
+        onFrame(const LinkedData& linked, const EffectFrameInputs<>&, EffectFrameWriter& frame, Workspace& workspace) noexcept
         {
             const auto index = selected_texture.load();
-            auto program = frame.rasterProgram(linked.stream, linked.materials ? index : 0);
-            if (!program) return lux::cxx::unexpected(program.error());
+            const auto program = linked.programs[linked.materials ? index : 0];
             if (linked.materials)
             {
-                auto value = workspace.records.select(frame, *linked.materials, *program, materials[index]);
+                auto value = workspace.material->record(program, materials[index]);
                 if (!value) return lux::cxx::unexpected(value.error());
-                auto repeated = workspace.records.select(frame, *linked.materials, *program, materials[index]);
+                auto repeated = workspace.material->record(program, materials[index]);
                 if (!repeated) return lux::cxx::unexpected(repeated.error());
                 std::array references{*value, *value};
-                const RasterStreamDraw textured{*program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
+                const RasterStreamDraw textured{program, {}, {}, {0, sizeof(*value)}, DrawVertices{12}};
                 std::array draws{textured, textured};
                 std::uint32_t count = 1;
                 if (index == 0)
                 {
-                    const auto unused = frame.rasterProgram(linked.stream, 1);
-                    CHECK(unused);
+                    const auto unused = linked.programs[1];
                     // This other material has a distinct record and texture. No draw uses its Program.
-                    const auto ignored = workspace.records.select(frame, *linked.materials, *unused, materials[1]);
+                    const auto ignored = workspace.material->record(unused, materials[1]);
                     CHECK(ignored);
-                    auto stale = *program;
+                    auto stale = program;
                     ++stale.revision;
-                    const auto rejected = frame.rasterRecord(linked.materials->records, stale);
+                    const auto rejected = workspace.material->record(stale, materials[index]);
                     CHECK(!rejected && rejected.error().type == kFrameContract);
                 }
                 else
                 {
-                    const auto rejected = workspace.records.select(frame, *linked.materials, *program, stale_second_texture);
+                    const auto rejected = workspace.material->record(program, stale_second_texture);
                     CHECK(!rejected && rejected.error().type == kStorageIdentity);
-                    const auto plain = frame.rasterProgram(linked.stream, 2);
-                    CHECK(plain);
+                    const auto plain = linked.programs[2];
                     // Its texture has been released. This Program reads only the tint in the same record.
-                    const auto overlay = workspace.records.select(frame, *linked.materials, *plain, materials[0]);
+                    const auto overlay = workspace.material->record(plain, materials[0]);
                     CHECK(overlay);
                     references[1] = *overlay;
-                    draws[1].program = *plain;
+                    draws[1].program = plain;
                     draws[1].constants.first = sizeof(*overlay);
                     count = 2;
                 }
@@ -4076,14 +4306,14 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                     std::span{draws}.first(count), {}, {}, std::as_bytes(std::span{references}.first(count))
                 });
             }
-            CHECK(linked.textures);
+            CHECK(workspace.texture);
             const auto id = textures[index];
-            auto texture = TextureResource::sample(frame, *linked.textures, id);
+            auto texture = workspace.texture->sample(id);
             if (!texture) return lux::cxx::unexpected(texture.error());
-            auto repeated = TextureResource::sample(frame, *linked.textures, id);
+            auto repeated = workspace.texture->sample(id);
             if (!repeated) return lux::cxx::unexpected(repeated.error());
             const TestSharedTextureIndices indices{texture->image_index, texture->sampler_index};
-            const RasterStreamDraw draw{*program, {}, {}, {0, sizeof(indices)}, DrawVertices{12}};
+            const RasterStreamDraw draw{program, {}, {}, {0, sizeof(indices)}, DrawVertices{12}};
             return frame.setRasterStream(linked.stream, {
                 std::span{&draw, 1}, {}, {}, std::as_bytes(std::span{&indices, 1})
             });
@@ -4105,34 +4335,31 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
 #endif
     }
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
-    EffectNodeDefinition definition;
+    take(server->registerResource<EffectCaptureBuffer>());
+    EffectCapability definition;
     constexpr std::string_view name = "test.shared_raster_texture";
-    definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
-    definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.id = graph::nodeTypeId(name);
+    definition.canonical_name = name;
+    const EffectPortDefinition definition_ports[]{{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.ports = definition_ports;
     CHECK(server->registerEffectCapability(definition));
-    EffectImplementation implementation;
-    implementation.capability = definition.identity.id;
+    ImplementationEntry implementation;
+    implementation.capability = definition.id;
     implementation.identity = {"test.shared_raster_texture.draw", 1};
     implementation.supported_outputs = {node_bytes};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
+    static constexpr auto build_implementation = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
     {
         const auto readback = take(context.importFinalBuffer(
-            "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
+            "readback", EffectCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
         RasterPassTemplate stage;
         stage.purpose = "shared-texture";
-        stage.programs = RasterProgramSource{RasterProgramBuilder::make<Producer, &Producer::buildPrograms>(), {}};
         if (mode != "undeclared")
         {
             stage.draw_resources.push_back({
-                "textures", TextureResource::drawResourceType(),
-                static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY)
+                "textures", ResourceName{TextureResource::descriptor.type.name()},
+                EDrawResourceRead::SAMPLED_IMAGES
             });
         }
         stage.inputs = {
@@ -4140,12 +4367,13 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             {"uTexSamplers", rdesc::EDescriptorType::SAMPLER, EGraphUse::SAMPLED, 2}
         };
         const bool misplaced_table = mode == "misplaced-table";
-        const bool material = mode == "material" || misplaced_table;
+        const bool cold_failure = mode == "failed-layout" || mode == "failed-link";
+        const bool material = mode == "material" || misplaced_table || cold_failure;
         if (material)
         {
-            constexpr auto records = static_cast<std::uint32_t>(EStorageCapability::STORAGE_BUFFER_ARRAY);
-            if (misplaced_table) stage.draw_resources.front().required_capabilities |= records;
-            stage.draw_resources.push_back({"materials", MaterialResource::drawResourceType(), misplaced_table ? 0u : records});
+            constexpr DrawResourceReads records{EDrawResourceRead::STORAGE_RECORDS};
+            if (misplaced_table) stage.draw_resources.front().reads |= records;
+            stage.draw_resources.push_back({"materials", ResourceName{MaterialResource::descriptor.type.name()}, misplaced_table ? DrawResourceReads{} : records});
             for (const auto name : {rdesc::kMaterialTableName, std::string_view{"surfacePages"}})
             {
                 stage.inputs.push_back({
@@ -4154,22 +4382,45 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
                 });
             }
         }
+        std::vector<RasterPassTemplate::StreamProgram> programs;
+        const auto add = [&](rdesc::ShaderProgramArtifact shader, ParameterBinding parameters)
+        {
+            const auto id = take(context.addProgram(GraphProgram{std::move(shader)}));
+            programs.push_back({id, {}, std::move(parameters)});
+        };
+        ParameterBinding parameters;
+        if (material)
+        {
+            parameters.setInlineConstant(rdesc::MaterialGpuReference{});
+            add(streamShader(context.shaderTarget(), kEffectStreamMaterial), parameters);
+            add(streamShader(context.shaderTarget(), kEffectRecordTable), parameters);
+            add(streamShader(context.shaderTarget(), kEffectRecordOnly), std::move(parameters));
+            if (cold_failure) programs[0].graphics.blend.enabled = true;
+            if (mode == "failed-layout") programs[1].geometry_locations = {0};
+        }
+        else
+        {
+            parameters.setInlineConstant(TestSharedTextureIndices{});
+            add(streamShader(context.shaderTarget(), kEffectStreamSharedTexture), std::move(parameters));
+        }
+        stage.programs = std::move(programs);
         const auto color = take(context.declareResource({"shared texture output", GraphImageDesc{64, 64}}));
         RasterWork raster;
         raster.program = std::move(stage);
         raster.colors.push_back({{{color, 0}}});
         const auto drawn = take(context.addRasterPass("sample a shared texture", std::move(raster)));
         auto producer = Producer::Configuration{
-            context.shaderTarget(), material, mode != "undeclared"
+            material, mode != "undeclared", mode == "failed-link" ? 3u : 0u
         };
-        CHECK(context.addCpuCall<Producer>(std::move(producer), {
+        CHECK((context.onFrame<&Producer::onFrame, &Producer::resolve, &Producer::install>(std::move(producer), {
             .draw_streams = {drawn.pass}
-        }));
+        })));
         const auto captured = take(context.addTransferPass("copy texture pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
         return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
     };
+    implementation.create = fixture::Effect<build_implementation>::create;
     const auto selection = implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(implementation)));
 
@@ -4181,6 +4432,9 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     options.texture_descriptors = true;
     if (use_materials) options.cached_unused_programs = 0;
     UniformUploadProbe::watch_texture_pool = !use_materials && !d3d12 && !upload_fault;
+#ifdef _WIN32
+    UniformUploadProbe::test_unpublished_retirement = use_materials;
+#endif
     options.descriptor_initial_counts[0] = UniformUploadProbe::watch_texture_pool ? 1 : 2;
     options.multiple_queues = upload_fault;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
@@ -4257,8 +4511,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         textures[i] = call<TextureCommands::Upload>(*client, commands, {owner, {info, colors[i]}}).texture;
 
     ResourceInstanceId material_owner;
-    MaterialProgramId material_program, replacement_program;
-    rdesc::MaterialProgramSet replacement_code;
+    MaterialProgramId material_program;
     std::uint32_t material_bytes = 0;
     TextureId unused_texture;
     if (use_materials)
@@ -4290,10 +4543,6 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         }
         CHECK(!registered.error.type);
         material_program = registered.program;
-        replacement_code = program;
-        selected_material_program = call<MaterialCommands::RegisterProgram>(*client, commands, {
-            material_owner, std::move(program)
-        }).program;
         for (std::size_t i = 0; i < materials.size(); ++i)
         {
             materials[i] = call<MaterialCommands::CreateInstance>(*client, commands, {
@@ -4310,7 +4559,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         call<MaterialCommands::UpdateColor>(*client, commands, {material_owner, updates});
     }
 
-    const auto create_job = [&](std::string mode)
+    const auto create_effect = [&](std::string mode)
     {
         CreateEffectRequest request;
         request.graph = std::make_unique<EffectGraph>();
@@ -4318,32 +4567,58 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         const auto node = take(edit.addNode(definition, selection, std::move(mode)));
         CHECK(edit.setOutput("bytes", edit.pinId(node, node_bytes)));
         CHECK(edit.commit());
-        const auto effect = createPreparedEffect(*client, commands, device, std::move(request));
+        return call<CreateEffect>(*client, commands, std::move(request)).effect;
+    };
+    const auto new_job = [&](EffectId effect)
+    {
         return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     };
     JobBinding binding;
     binding.resources.push_back({"readback", readback});
-    const auto undeclared = create_job("undeclared");
-    call<StartRenderJob>(*client, commands, {device, undeclared, target, binding});
-    CHECK(call<RequestRenderJob>(*client, commands, {undeclared}, false).error.type == kRuntimeUnsupported);
-    stopAndRemoveJob(*client, commands, undeclared);
+    const auto undeclared = create_effect("undeclared");
+    CHECK(call<PrepareEffect>(*client, commands, {undeclared, device}, false).error.type == kRuntimeUnsupported);
+    call<RemoveEffect>(*client, commands, {undeclared});
 
-    const auto job = create_job(use_materials ? "material" : "");
+    using Gate = UniformUploadProbe::EPipelineGate;
+    const auto effect = create_effect(use_materials ? "material" : "");
+    if (use_materials)
+    {
+        UniformUploadProbe::pipeline_gate = Gate::ARMED;
+        auto compiler = ipc::IpcCore::instance().createRequester(config.channel_name);
+        CHECK(compiler);
+        auto preparing = std::async(std::launch::async, [&]
+        {
+            return call<PrepareEffect>(*compiler, commands, {effect, device});
+        });
+        const auto deadline = Clock::now() + 10s;
+        while (UniformUploadProbe::pipeline_gate != Gate::HELD)
+        {
+            CHECK(Clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        CHECK(call<ListEffectJobs>(*client, commands, {effect}).jobs.empty());
+        CHECK(call<RemoveEffect>(*client, commands, {effect}, false).error.type == kDeviceBusy);
+        CHECK(call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program}, false).error.type == kDeviceBusy);
+        UniformUploadProbe::pipeline_gate = Gate::OPEN;
+        UniformUploadProbe::pipeline_gate.notify_all();
+        preparing.get();
+    }
+    else call<PrepareEffect>(*client, commands, {effect, device});
+    const auto job = new_job(effect);
+    if (use_materials) binding.resources.push_back({"materials", material_owner, 0});
     CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageIdentity);
-    binding.resources.push_back({"textures", readback, 0, EJobResourceUse::DRAW_RESOURCE});
+    binding.resources.push_back({"textures", readback, 0});
     CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageMismatch);
     binding.resources.back().resource = owner;
     if (use_materials)
     {
-        binding.resources.push_back({"materials", owner, 0, EJobResourceUse::DRAW_RESOURCE});
-        CHECK(call<StartRenderJob>(*client, commands, {device, job, target, binding}, false).error.type == kStorageMismatch);
-        binding.resources.back().resource = material_owner;
+        auto wrong_material = binding;
+        std::ranges::find(wrong_material.resources, "materials", &JobResourceInput::binding)->resource = owner;
+        CHECK(call<StartRenderJob>(*client, commands, {device, job, target, wrong_material}, false).error.type == kStorageMismatch);
     }
     call<StartRenderJob>(*client, commands, {device, job, target, binding});
 
     const auto before = server->developmentStats();
-    using Gate = UniformUploadProbe::EPipelineGate;
-    if (use_materials) UniformUploadProbe::pipeline_gate = Gate::ARMED;
 #ifdef _WIN32
     UniformUploadProbe::gate_texture_gpu = UniformUploadProbe::texture_retirement_fence != nullptr;
 #endif
@@ -4355,27 +4630,6 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
         return call<RequestRenderJob>(*held_client, commands, {job});
     });
     const auto deadline = Clock::now() + 10s;
-    if (use_materials)
-    {
-        while (UniformUploadProbe::pipeline_gate != Gate::HELD)
-        {
-            CHECK(Clock::now() < deadline);
-            std::this_thread::yield();
-        }
-        const auto in_use = call<MaterialCommands::UnregisterProgram>(*client, commands, {material_program}, false);
-        const auto removed = call<MaterialCommands::UnregisterProgram>(
-            *client, commands, {selected_material_program}, false
-        );
-        CHECK(in_use.error.type == kDeviceBusy && !removed.error.type);
-        replacement_program = call<MaterialCommands::RegisterProgram>(*client, commands, {
-            material_owner, std::move(replacement_code)
-        }).program;
-        using Identity = extension_detail::ResourceIdentity;
-        CHECK(Identity::local(replacement_program).index == Identity::local(selected_material_program).index);
-        CHECK(replacement_program != selected_material_program);
-        UniformUploadProbe::pipeline_gate = Gate::OPEN;
-        UniformUploadProbe::pipeline_gate.notify_all();
-    }
     while (UniformUploadProbe::submission_gate != Gate::HELD)
     {
         CHECK(Clock::now() < deadline);
@@ -4416,6 +4670,30 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     UniformUploadProbe::submission_gate.notify_all();
     CHECK(busy.error.type == kDeviceBusy);
     const auto first = held.get();
+#ifdef _WIN32
+    if (use_materials)
+    {
+        CHECK(EffectCaptureBuffer::test_texture_retirement);
+        for (const auto* mode : {"failed-layout", "failed-link"})
+        {
+            const auto invalid = create_effect(mode);
+            UniformUploadProbe::cold_prefix_destroyed = false;
+            UniformUploadProbe::watch_cold_prefix = true;
+            const auto failed = call<PrepareEffect>(*client, commands, {invalid, device}, false);
+            CHECK(failed.error.type == kGraphInvalidDescriptor && !UniformUploadProbe::watch_cold_prefix);
+            const auto retired = Clock::now() + 10s;
+            while (!UniformUploadProbe::cold_prefix_destroyed)
+            {
+                CHECK(Clock::now() < retired);
+                std::this_thread::yield();
+            }
+            CHECK(!UniformUploadProbe::held_pipeline_destroyed);
+            call<RemoveEffect>(*client, commands, {invalid});
+        }
+        EffectCaptureBuffer::test_texture_retirement->signal();
+        std::puts("COLD PREFIX PASS: native preparation and CPU link failures released unpublished PSOs behind a held GPU fence");
+    }
+#endif
     if (exercise_growth)
     {
 #ifdef _WIN32
@@ -4477,15 +4755,17 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
     CHECK(first.slot_index != second.slot_index);
 
     stopAndRemoveJob(*client, commands, job);
+    call<RemoveEffect>(*client, commands, {effect});
     if (use_materials)
     {
-        selected_material_program = replacement_program;
         selected_texture = 1;
-        const auto wrong_grant = create_job("misplaced-table");
-        call<StartRenderJob>(*client, commands, {device, wrong_grant, target, binding});
-        const auto rejected = call<RequestRenderJob>(*client, commands, {wrong_grant}, false);
+        const auto misplaced = create_effect("misplaced-table");
+        call<PrepareEffect>(*client, commands, {misplaced, device});
+        const auto wrong_grant = new_job(misplaced);
+        const auto rejected = call<StartRenderJob>(*client, commands, {device, wrong_grant, target, binding}, false);
         CHECK(rejected.error.type == kStorageMismatch && server->stats().submissions == after.submissions);
-        stopAndRemoveJob(*client, commands, wrong_grant);
+        call<RemoveRenderJob>(*client, commands, {wrong_grant});
+        call<RemoveEffect>(*client, commands, {misplaced});
     }
     call<RemoveView>(*client, commands, {scene, view});
     if (use_materials)
@@ -4496,8 +4776,7 @@ static int sharedRasterTextures(bool d3d12, bool use_materials = false, bool upl
             CHECK(Clock::now() < retirement_deadline);
             std::this_thread::yield();
         }
-        std::puts("MATERIAL GENERATION PASS: old PSO retired with replacement asset still registered");
-        call<MaterialCommands::UnregisterProgram>(*client, commands, {replacement_program});
+        std::puts("MATERIAL EFFECT PASS: compiled PSO retired after Effect removal while material records remained live");
         call<MaterialCommands::ReleaseInstance>(*client, commands, {stale_second_texture});
         call<TextureCommands::Release>(*client, commands, {unused_texture});
         for (auto material : materials) call<MaterialCommands::ReleaseInstance>(*client, commands, {material});
@@ -4554,17 +4833,18 @@ static void meshRasterStream(bool d3d12)
     constexpr std::uint64_t maximum_argument_bytes = 168;
     constexpr std::uint64_t tail_indirect_offset = 120;
     static std::atomic draw_mode{EDraw::DIRECT};
-    static std::atomic_uint32_t program_selections;
     // Only numeric identities escape the synchronous call. Rebuilding a nonempty table while the
     // previous revision is still published necessarily allocates different backing.
-    static const auto observe_selection = [](const SnapshotValue<MeshInstanceSnapshot>& selected) noexcept
+    static const auto observe_selection = [](const ResourceViewValue<MeshDrawTopology>& selected) noexcept
     {
         const auto& mesh = selected.value.get();
-        CHECK(!mesh.instances.empty() && !mesh.sections.empty());
+        CHECK(mesh.draw_groups.size() == 1 && mesh.surfaces.size() == 1);
+        CHECK(mesh.group_sources.size() == 1 && mesh.camera_dispatch[0] == 1 && mesh.meshes.size() == 1);
+        CHECK(mesh.draw_groups.front().candidate_count == 1 && mesh.group_sources.front() == mesh.surfaces.front().source);
         const std::array identity{
             reinterpret_cast<std::uintptr_t>(&mesh),
-            reinterpret_cast<std::uintptr_t>(mesh.instances.data()),
-            reinterpret_cast<std::uintptr_t>(mesh.sections.data())
+            reinterpret_cast<std::uintptr_t>(mesh.meshes.data()),
+            reinterpret_cast<std::uintptr_t>(mesh.draw_groups.data())
         };
         static std::uint64_t revision = 0;
         static std::array<std::uintptr_t, 3> previous{};
@@ -4578,6 +4858,7 @@ static void meshRasterStream(bool d3d12)
     };
     static std::array<MeshId, 2> meshes;
     static std::uint32_t vertex_stride;
+    static GeometryAttribute position;
     class Producer final
     {
     public:
@@ -4590,9 +4871,10 @@ static void meshRasterStream(bool d3d12)
         struct LinkedData final
         {
             DrawStreamSlot stream;
-            DrawResourceSlot<MeshResource::DrawStorage> meshes;
+            RasterResourceSlot meshes;
             RasterBufferSlot arguments;
             RasterBufferSlot arena_arguments;
+            std::array<RasterProgramSlot, 2> programs;
         };
 
         static RenderResult<LinkedData>
@@ -4600,77 +4882,41 @@ static void meshRasterStream(bool d3d12)
         {
             return LinkedData{
                 streams.front().stream(),
-                take(streams.front().resource<MeshResource::DrawStorage>("meshes")),
+                take(streams.front().resource("meshes", MeshResource::descriptor.type)),
                 take(streams.front().buffer(input.arguments)),
-                take(streams.front().buffer(input.arena_arguments))
+                take(streams.front().buffer(input.arena_arguments)),
+                {take(streams.front().programAt(0)), take(streams.front().programAt(1))}
             };
         }
 
         struct Workspace final
         {
+            MeshDrawBinding meshes;
             std::optional<RasterIndexedGeometry> original;
         };
 
-        using DrawMapping = std::uint64_t;
-
-        static RenderResult<std::unique_ptr<DrawMapping>>
-        buildPrograms(const LinkedData& linked, RasterProgramBuildContext& selection, const SnapshotValues<MeshInstanceSnapshot>& sources, const DrawMapping*) noexcept
+        static RenderResult<std::unique_ptr<Workspace>>
+        install(const LinkedData& linked, const TargetDesc&, const InstalledDrawSources& sources) noexcept
         {
-            const auto& snapshot = std::get<0>(sources);
-            observe_selection(snapshot);
-            const auto& instances = snapshot.value.get().instances;
-            CHECK(instances.size() == 1);
-            const auto& selected = instances.front();
-            auto layout = readMeshLayout(selection, linked.stream, selected.mesh);
-            if (!layout) return lux::cxx::unexpected(layout.error());
-            const auto material_program = readMaterialProgram(selection, linked.stream, selected.material);
-            if (!material_program) return lux::cxx::unexpected(material_program.error());
-            const auto* fragment = material_program->definition.find(rdesc::EMaterialPurpose::FORWARD);
-            CHECK(fragment);
-            const auto& position = layout->attributes.front();
-            GraphicsState graphics;
-            graphics.vertex_bindings = {{0, layout->vertex_stride}};
-            std::vector<rdesc::ShaderProgramArtifact> shaders;
-            shaders.push_back(prependStreamVertex(fragment->shader, kEffectStreamMesh));
-            const auto& vertex_inputs = shaders.front().interface.vertex_inputs;
-            CHECK(vertex_inputs.size() == 1);
-            const auto& attribute = vertex_inputs.front();
-            if (fragment->shader.target == rdesc::EShaderTarget::DXIL)
-                CHECK(attribute.semantic == "POSITION" && attribute.semantic_index == 7);
-            else CHECK(attribute.location == 3);
-            graphics.vertex_attributes = {{attribute.location, 0, position.offset, position.format}};
-            ParameterBinding parameters;
-            parameters.setInlineConstant(ProducerConstants{});
-            std::array programs{
-                RuntimeRasterProgram{{0}, graphics, parameters, material_program->source},
-                RuntimeRasterProgram{{0}, graphics, parameters, material_program->source}
-            };
-            for (auto& candidate : programs) candidate.geometry_locations = {position.location};
-            programs.back().graphics.vertex_attributes.front().offset += sizeof(float);
-            ++program_selections;
-            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
-            if (!built) return lux::cxx::unexpected(built.error());
-            return std::make_unique<DrawMapping>(snapshot.revision);
+            auto binding = MeshDrawBinding::bind(sources, linked.meshes);
+            if (!binding) return lux::cxx::unexpected(binding.error());
+            return std::make_unique<Workspace>(*binding);
         }
 
         static RenderResult<void>
-        prepare(
+        onFrame(
             const LinkedData& linked,
-            const CpuFrameInputs<const MeshInstanceSnapshot&>& inputs,
-            Workspace& workspace,
-            const DrawMapping* mapping
+            const EffectFrameInputs<MeshDrawTopology>& inputs,
+            EffectFrameWriter& frame,
+            Workspace& workspace
         ) noexcept
         {
-            auto& frame = inputs.frame;
             const auto& snapshot = std::get<0>(inputs.values);
             observe_selection(snapshot);
-            CHECK(mapping && snapshot.revision == *mapping);
             const auto mode = draw_mode.load();
             const auto bytes = mode == EDraw::INDIRECT ? maximum_argument_bytes : minimum_argument_bytes;
-            auto sized = frame.sizeBuffer(0, bytes);
-            if (!sized) return sized;
-            auto program = frame.rasterProgram(linked.stream, mode == EDraw::VERTEX_LAYOUT ? 1 : 0);
-            if (!program) return lux::cxx::unexpected(program.error());
+            const std::array<std::uint64_t, 1> extents{bytes};
+            const auto program = linked.programs[mode == EDraw::VERTEX_LAYOUT ? 1 : 0];
             std::array<nri::DrawIndexedDesc, 2> commands{};
             if (mode == EDraw::ARENA)
             {
@@ -4679,33 +4925,36 @@ static void meshRasterStream(bool d3d12)
                 std::array<RasterStreamDraw, 2> draws;
                 for (std::uint32_t i = 0; i < draws.size(); ++i)
                 {
-                    auto mesh = MeshResource::geometry(frame, linked.meshes, meshes[i]);
+                    auto mesh = workspace.meshes.geometry(meshes[i]);
                     if (!mesh) return lux::cxx::unexpected(mesh.error());
                     commands[i] = {6, 1, mesh->arena_first_index, mesh->arena_vertex_offset, 0};
                     vertices[i] = {0, mesh->vertices};
                     draws[i] = {
-                        *program, {}, {i, 1}, {0, sizeof(constants)}, RasterStreamIndirect{
+                        program, {}, {i, 1}, {0, sizeof(constants)}, RasterStreamIndirect{
                             {linked.arena_arguments, i * sizeof(nri::DrawIndexedDesc), sizeof(nri::DrawIndexedDesc)},
                             {},
                             RasterStreamIndexBinding{mesh->indices, mesh->index_type, ERasterIndexOrigin::BUFFER_BASE}
                         }
                     };
                 }
-                auto written = frame.writeBuffer(0, std::as_bytes(std::span{commands}), 2);
+                const std::array uploads{FrameBufferUpload{std::as_bytes(std::span{commands}), 2}};
+                auto written = frame.publishBuffers(uploads, extents);
                 if (!written) return written;
                 return frame.setRasterStream(linked.stream, {
                     draws, {}, vertices, std::as_bytes(std::span{&constants, 1})
                 });
             }
-            auto written = frame.writeBuffer(0, std::as_bytes(std::span{commands}), 1);
+            const std::array uploads{FrameBufferUpload{std::as_bytes(std::span{commands}), 1}};
+            auto written = frame.publishBuffers(uploads, extents);
             if (!written) return written;
-            const auto mesh = mode == EDraw::RELEASED ? meshes[0] : snapshot.value.get().instances.front().mesh;
-            auto geometry = MeshResource::geometry(frame, linked.meshes, mesh);
+            const auto& selection = snapshot.value.get();
+            const auto mesh = mode == EDraw::RELEASED ? meshes[0] : selection.meshes[selection.mesh_programs[selection.surfaces.front().source].mesh];
+            auto geometry = workspace.meshes.geometry(mesh);
             if (!geometry) return lux::cxx::unexpected(geometry.error());
             if (mode == EDraw::MIXED_GEOMETRY || mode == EDraw::DIRECT)
             {
                 const auto other = mode == EDraw::MIXED_GEOMETRY ? meshes[0] : mesh;
-                const auto second = MeshResource::geometry(frame, linked.meshes, other);
+                const auto second = workspace.meshes.geometry(other);
                 if (!second) return lux::cxx::unexpected(second.error());
                 geometry->indices = second->indices;
             }
@@ -4716,7 +4965,7 @@ static void meshRasterStream(bool d3d12)
             const RasterStreamVertex vertex{0, geometry->vertices};
             const ProducerConstants constants{191};
             RasterStreamDraw draw{
-                *program,
+                program,
                 {}, {0, 1}, {0, sizeof(constants)}, RasterStreamIndexed{geometry->indices, geometry->index_type, 6}
             };
             if (mode == EDraw::INDIRECT || mode == EDraw::SHORT_BUFFER)
@@ -4739,27 +4988,26 @@ static void meshRasterStream(bool d3d12)
     config.validation = nativeValidationEnabled();
     config.uploads.emplace();
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
-    EffectNodeDefinition definition;
+    take(server->registerResource<EffectCaptureBuffer>());
+    EffectCapability definition;
     constexpr std::string_view name = "test.mesh_raster_stream";
-    definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
-    definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.id = graph::nodeTypeId(name);
+    definition.canonical_name = name;
+    const EffectPortDefinition definition_ports[]{{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
+    definition.ports = definition_ports;
     CHECK(server->registerEffectCapability(definition));
-    EffectImplementation implementation;
-    implementation.capability = definition.identity.id;
+    ImplementationEntry implementation;
+    implementation.capability = definition.id;
     implementation.identity = {"test.mesh_raster_stream.draw", 1};
     implementation.supported_outputs = {node_bytes};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
+    static constexpr auto build_implementation = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
-        return {};
-    };
-    implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
-    {
-        const auto instances = take(context.importStorageSnapshot<MeshInstanceSnapshot>(
-            "instances", {ResourceName{kInstanceResourceName.name()}}
-        ));
+        constexpr ResourceRequirement instances_source{
+            .binding = "instances", .type = kInstanceResourceName, .domain = EResourceDomain::SCENE, .scope_default = true
+        };
+        const auto instances = take(context.readResourceView<MeshDrawTopology>(instances_source, "instances"));
         const auto readback = take(context.importFinalBuffer(
-            "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
+            "readback", EffectCaptureDescriptor::descriptor.type,
             {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
         ));
         const auto arguments = take(context.declareFrameBuffer(
@@ -4783,12 +5031,23 @@ static void meshRasterStream(bool d3d12)
         RasterPassTemplate stage;
         stage.purpose = "mesh-stream";
         stage.draw_resources = {
-            {.binding = "meshes", .source = MeshResource::drawResourceType(), .indexed_geometry = true},
-            {"materials", MaterialResource::drawResourceType()}
+            {.binding = "meshes", .source = ResourceName{MeshResource::descriptor.type.name()}, .reads = EDrawResourceRead::INDEXED_GEOMETRY}
         };
-        stage.programs = RasterProgramSource{
-            RasterProgramBuilder::make<Producer, &Producer::buildPrograms>(), {instances}
-        };
+        auto shader = streamShader(context.shaderTarget(), kEffectStreamInline, kEffectStreamMesh);
+        const auto& attribute = shader.interface.vertex_inputs.front();
+        if (context.shaderTarget() == rdesc::EShaderTarget::DXIL)
+            CHECK(attribute.semantic == "POSITION" && attribute.semantic_index == 7);
+        else CHECK(attribute.location == 3);
+        GraphicsState graphics;
+        graphics.vertex_bindings = {{0, vertex_stride}};
+        graphics.vertex_attributes = {{attribute.location, 0, position.offset, position.format}};
+        const auto id = take(context.addProgram(GraphProgram{std::move(shader)}));
+        ParameterBinding parameters;
+        parameters.setInlineConstant(ProducerConstants{});
+        RasterPassTemplate::StreamProgram normal{id, graphics, parameters, {position.location}};
+        auto wrong_layout = normal;
+        wrong_layout.graphics.vertex_attributes.front().offset += sizeof(float);
+        stage.programs = std::vector{std::move(normal), std::move(wrong_layout)};
         stage.resources = {
             {.version = generated.written.front(), .usage = EGraphUse::INDIRECT},
             {.version = arena, .usage = EGraphUse::INDIRECT}
@@ -4801,15 +5060,16 @@ static void meshRasterStream(bool d3d12)
         auto producer = Producer::Configuration{
             arguments.resource, arena.resource
         };
-        CHECK(context.addCpuCall<Producer>(std::move(producer), {
+        CHECK((context.onFrame<&Producer::onFrame, &Producer::resolve, &Producer::install>(std::move(producer), {
             .uploads = {arena.resource}, .frame_sizes = {arguments.resource},
-            .storage_inputs = {instances}, .draw_streams = {drawn.pass}
-        }));
+            .resource_views = {instances}, .draw_streams = {drawn.pass}
+        })));
         const auto captured = take(context.addTransferPass("copy mesh pixels", TransferWork{{CopyImageBuffer{
             {drawn.written.front()}, {readback}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
         }}}));
         return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
     };
+    implementation.create = fixture::Effect<build_implementation>::create;
     const auto implementation_id = implementation.identity;
     CHECK(server->registerEffectImplementation(std::move(implementation)));
 
@@ -4849,7 +5109,9 @@ static void meshRasterStream(bool d3d12)
         mesh.vertices[3].position = {x, 1, 0};
         meshes[i] = call<MeshCommands::UploadMesh>(*client, commands, {owner, &mesh}).mesh;
     }
-    vertex_stride = take(describeIndexedMesh(mesh)).vertex_stride;
+    const auto geometry = take(describeIndexedMesh(mesh));
+    vertex_stride = geometry.vertex_stride;
+    position = geometry.attributes.front();
     const auto instances = call<GetOrCreateResource>(*client, commands, {device, scene, kInstanceResourceName})
         .resource_id;
     const auto transforms = call<QueryResource>(*client, commands, {device, scene, kTransformResourceName})
@@ -4868,14 +5130,18 @@ static void meshRasterStream(bool d3d12)
     auto matrix = kIdentityTransform;
     const auto transform = call<TransformCommands::Create>(*client, commands, {transforms, std::span{&matrix, 1}})
         .transforms.front();
-    MeshInstanceData selected_instance{meshes[1], material, 0, transform, true, false};
+    MeshInstanceData selected_instance{meshes[1], material, 0, transform, false, false};
+    const auto disabled = call<InstanceCommands::CreateInstance>(*client, commands, {instances, selected_instance}).instance;
+    selected_instance.render_enabled = true;
     const auto instance = call<InstanceCommands::CreateInstance>(*client, commands, {instances, selected_instance})
         .instance;
     const auto select_mesh = [&](MeshId selected)
     {
         selected_instance.mesh = selected;
-        const MeshInstanceUpdate update{instance, selected_instance};
-        call<InstanceCommands::Update>(*client, commands, {instances, std::span{&update, 1}});
+        auto inactive = selected_instance;
+        inactive.render_enabled = false;
+        const std::array updates{MeshInstanceUpdate{disabled, inactive}, MeshInstanceUpdate{instance, selected_instance}};
+        call<InstanceCommands::Update>(*client, commands, {instances, updates});
     };
 
     CreateEffectRequest request;
@@ -4888,9 +5154,8 @@ static void meshRasterStream(bool d3d12)
     const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     JobBinding binding;
     binding.resources = {
-        {"readback", readback}, {"instances", instances, 0, EJobResourceUse::CPU_SNAPSHOT},
-        {"materials", materials, 0, EJobResourceUse::DRAW_RESOURCE},
-        {"meshes", readback, 0, EJobResourceUse::DRAW_RESOURCE}
+        {"readback", readback}, {"instances", instances, 0},
+        {"meshes", readback, 0}
     };
     const auto rejected = call<StartRenderJob>(*client, commands, {device, job, target, binding}, false);
     if (rejected.error.type != kStorageMismatch)
@@ -4901,7 +5166,7 @@ static void meshRasterStream(bool d3d12)
     CHECK(rejected.error.type == kStorageMismatch);
     binding.resources.back().resource = owner;
     using Gate = UniformUploadProbe::EPipelineGate;
-    UniformUploadProbe::pipeline_gate = Gate::ARMED;
+    select_mesh(meshes[0]);
     call<StartRenderJob>(*client, commands, {device, job, target, binding});
 
     const auto before = server->developmentStats();
@@ -4913,15 +5178,6 @@ static void meshRasterStream(bool d3d12)
         return call<RequestRenderJob>(*held_client, commands, {job});
     });
     const auto deadline = Clock::now() + 10s;
-    while (UniformUploadProbe::pipeline_gate != Gate::HELD)
-    {
-        CHECK(Clock::now() < deadline);
-        std::this_thread::yield();
-    }
-    CHECK(program_selections == 1);
-    select_mesh(meshes[0]);
-    UniformUploadProbe::pipeline_gate = Gate::OPEN;
-    UniformUploadProbe::pipeline_gate.notify_all();
     while (UniformUploadProbe::submission_gate != Gate::HELD)
     {
         CHECK(Clock::now() < deadline);
@@ -4932,7 +5188,6 @@ static void meshRasterStream(bool d3d12)
     UniformUploadProbe::submission_gate.notify_all();
     CHECK(busy.error.type == kDeviceBusy);
     const auto first = held.get();
-    CHECK(program_selections == 2);
     const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
     const auto peer_target = call<CreateTarget>(*client, commands, {
         device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
@@ -4946,7 +5201,13 @@ static void meshRasterStream(bool d3d12)
     select_mesh(meshes[1]);
     draw_mode = EDraw::INDIRECT;
     const auto second = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(program_selections == 3);
+    // A disabled member can change geometry without selecting new programs for the active mesh.
+    MeshInstanceUpdate inactive_change{disabled, selected_instance};
+    inactive_change.description.render_enabled = false;
+    inactive_change.description.mesh = meshes[0];
+    call<InstanceCommands::Update>(*client, commands, {instances, {&inactive_change, 1}});
+    inactive_change.description.mesh = selected_instance.mesh;
+    call<InstanceCommands::Update>(*client, commands, {instances, {&inactive_change, 1}});
     matrix[0] = 2;
     const TransformRecordUpdate transform_update{transform, matrix};
     call<TransformCommands::Update>(*client, commands, {transforms, std::span{&transform_update, 1}});
@@ -4954,7 +5215,6 @@ static void meshRasterStream(bool d3d12)
     const auto indirect_draws = UniformUploadProbe::indexed_indirect_draws.load();
     draw_mode = EDraw::ARENA;
     const auto third = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(program_selections == 3);
     const auto expected_calls = UniformUploadProbe::can_batch_indexed ? 1u : 2u;
     CHECK(UniformUploadProbe::indexed_indirect_calls == indirect_calls + expected_calls);
     CHECK(UniformUploadProbe::indexed_indirect_draws == indirect_draws + 2);
@@ -4996,11 +5256,11 @@ static void meshRasterStream(bool d3d12)
     }
     draw_mode = EDraw::DIRECT;
     const auto peer_frame = call<RequestRenderJob>(*client, commands, {peer});
-    CHECK(program_selections == 4);
     stopAndRemoveJob(*client, commands, peer);
     call<RemoveView>(*client, commands, {scene, peer_view});
     stopAndRemoveJob(*client, commands, job);
     call<RemoveView>(*client, commands, {scene, view});
+    call<InstanceCommands::ReleaseInstance>(*client, commands, {disabled});
     call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
     call<MeshCommands::ReleaseMesh>(*client, commands, {meshes[1]});
     server->stop();
@@ -5026,727 +5286,6 @@ static void meshRasterStream(bool d3d12)
         d3d12 ? "D3D12" : "Vulkan", expected_calls);
 }
 
-static int meshGraphImports(bool d3d12, bool paged, bool visibility, bool gbuffer_visibility)
-{
-    constexpr auto result_bytes = sizeof(std::uint32_t) * 5;
-    static std::atomic_uint64_t observed_revision{};
-    static MeshId expected_mesh;
-    class Producer final
-    {
-    public:
-        using Configuration = std::size_t;
-        using LinkedData = Configuration;
-
-        static RenderResult<void>
-        prepare(const LinkedData& maximum_instances, const CpuFrameInputs<const MeshInstanceSnapshot&>& inputs) noexcept
-        {
-            auto& frame = inputs.frame;
-            const auto& selected = std::get<0>(inputs.values);
-            const auto& snapshot = selected.value.get();
-            CHECK(snapshot.revision == selected.revision && snapshot.instances.size() <= maximum_instances);
-            if (!snapshot.instances.empty()) CHECK(snapshot.instances.front().mesh == expected_mesh);
-            observed_revision = selected.revision;
-            const auto count = static_cast<std::uint32_t>(snapshot.instances.size());
-            return frame.writeBuffer(0, std::as_bytes(std::span{&count, 1}), selected.revision);
-        }
-    };
-
-    RenderServerConfig config;
-    config.channel_name = "lux.render.test.mesh-imports";
-    config.frames_in_flight = 3;
-    config.validation = nativeValidationEnabled();
-    config.uploads.emplace();
-    auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
-    EffectNodeDefinition definition;
-    constexpr std::string_view name = "test.mesh_graph_imports";
-    definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
-    definition.ports = {{node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}};
-    if (visibility)
-    {
-        definition.ports.push_back({MeshVisibility::draws, "draws", {std::string{MeshVisibility::draws_type}, 1},
-            graph::EPinDirection::INPUT, 1, true});
-    }
-    CHECK(server->registerEffectCapability(definition));
-    EffectImplementation implementation;
-    implementation.capability = definition.identity.id;
-    implementation.identity = {"test.mesh_graph_imports.read", 1};
-    implementation.supported_outputs = {node_bytes};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    implementation.build = [](EffectCompileContext& context, std::string_view mode) noexcept -> RenderResult<void>
-    {
-        if (mode == "visibility")
-        {
-            const auto input = context.inputs(MeshVisibility::draws);
-            CHECK(input.size() == 1);
-            const auto visible = std::ranges::find(input.front(), MeshVisibility::commands, &EffectResourceValue::member);
-            CHECK(visible != input.front().end());
-            const auto readback = take(context.importFinalBuffer(
-                "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
-                {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
-            ));
-            constexpr auto bytes = 2 * sizeof(nri::DrawIndexedDesc);
-            const auto initialized = take(context.addTransferPass("initialize mesh command readback", TransferWork{{
-                FillBuffer{{readback}, 0}
-            }}));
-            const auto capture = take(context.addTransferPass("capture real mesh commands", TransferWork{{
-                CopyBuffer{{visible->version}, {initialized.written.front(), GraphBufferRange{0, bytes}}}
-            }}));
-            return context.publish(node_bytes, {{node_bytes, capture.written.front()}});
-        }
-        const bool paged = mode == "paged" || mode == "paged-write";
-        const bool writes = mode.ends_with("write");
-        const auto read = [&](std::string_view key, ResourceNameView resource, std::uint64_t bytes, auto projection)
-        {
-            return context.importResource(key, {ResourceName{resource.name()}}, {
-                "", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED,
-                {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ
-            }, static_cast<std::uint32_t>(projection));
-        };
-        const auto transform_role = paged ? ETransformGraphProjection::PAGE_ADDRESSES :
-            ETransformGraphProjection::RECORDS;
-        const auto transform_bytes = paged ? kTransformInitialPageAddresses * sizeof(std::uint64_t) :
-            sizeof(TransformMatrix);
-        auto transforms = read("transforms", kTransformResourceName, transform_bytes, transform_role);
-        if (!transforms) return lux::cxx::unexpected(transforms.error());
-        const auto properties_role = paged ? EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
-        auto properties = read("properties", kInstanceResourceName, meshInstanceProjectionBytes(properties_role),
-            properties_role);
-        if (!properties) return lux::cxx::unexpected(properties.error());
-        const auto alive_role = EMeshInstanceBinding::ALIVE;
-        auto alive = paged ? properties : read("alive", kInstanceResourceName, meshInstanceProjectionBytes(alive_role),
-            alive_role);
-        if (!alive) return lux::cxx::unexpected(alive.error());
-        if (writes)
-        {
-            take(context.addTransferPass("overwrite storage-owned transform", TransferWork{{
-                FillBuffer{{*transforms}, 0}
-            }}));
-        }
-        const auto storage = take(context.importStorageSnapshot<MeshInstanceSnapshot>(
-            "instances", {ResourceName{kInstanceResourceName.name()}}
-        ));
-        const auto snapshot = take(context.declarePreparedBuffer(
-            "mesh selection count", sizeof(std::uint32_t), sizeof(std::uint32_t)
-        ));
-        const auto result = take(context.declareResource({"verified instance fields", GraphBufferDesc{result_bytes}}));
-        const auto readback = take(context.importFinalBuffer(
-            "readback", {ResourceName{EffectCaptureDescriptor::descriptor.type.name()}},
-            {"", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
-        ));
-        ComputeWork work;
-        const auto& shader = paged ? kEffectMeshImportsPaged : kEffectMeshImports;
-        work.interface.program = take(context.addProgram(GraphProgram{shader.load(context.shaderTarget())}));
-        work.interface.resources = {
-            {"transforms", {*transforms}}, {"properties", {*properties}}, {"alive", {*alive}},
-            {"selections", {snapshot}}, {"result", {{result, 0}, {}, EGraphAccess::WRITE}}
-        };
-        work.dispatch = DispatchArguments{{1, 1, 1}};
-        const auto measured = take(context.addComputePass("load storage-owned mesh fields", std::move(work)));
-        CHECK(context.addCpuCall<Producer>(1, {.uploads = {snapshot.resource}, .storage_inputs = {storage}}));
-        const auto initialized = take(context.addTransferPass("initialize readback", TransferWork{{
-            FillBuffer{{readback}, 0}
-        }}));
-        const auto captured = take(context.addTransferPass("copy mesh fields", TransferWork{{CopyBuffer{
-            {measured.written.front()}, {initialized.written.front(), GraphBufferRange{0, result_bytes}}
-        }}}));
-        return context.publish(node_bytes, {{node_bytes, captured.written.front()}});
-    };
-    const auto implementation_id = implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(implementation)));
-
-    auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
-    CHECK(client);
-    std::thread worker([&] { CHECK(server->run()); });
-    const auto commands = queryCommands(*client);
-    DeviceOptions options;
-    options.buffer_device_address = paged;
-    if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    const auto opened = call<CreateDeviceSession>(*client, commands, options, false);
-    if (paged && opened.error.type == kDeviceUnsupported)
-    {
-        server->stop();
-        worker.join();
-        std::puts("Paged mesh imports unsupported on this adapter");
-        return 77;
-    }
-    CHECK(!opened.error.type);
-    const auto device = opened.device;
-    const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto view = call<CreateView>(*client, commands, {scene}).view;
-    const auto target = call<CreateTarget>(*client, commands, {
-        device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
-    }).target;
-    const auto instances = call<GetOrCreateResource>(*client, commands, {device, scene, kInstanceResourceName})
-        .resource_id;
-    const auto readback = call<GetOrCreateResource>(*client, commands, {
-        device, ViewScope{scene, view}, EffectCaptureDescriptor::descriptor.type
-    }).resource_id;
-    const auto transforms = call<QueryResource>(*client, commands, {device, scene, kTransformResourceName}).resource_id;
-    const auto meshes =
-        call<GetOrCreateResource>(*client, commands, {device, DeviceScope{}, kMeshResourceName}).resource_id;
-    const auto materials =
-        call<GetOrCreateResource>(*client, commands, {device, DeviceScope{}, kMaterialResourceName}).resource_id;
-    rdesc::Mesh mesh;
-    mesh.indices = {0, 1, 2};
-    mesh.vertices.resize(3);
-    for (auto& vertex : mesh.vertices)
-    {
-        vertex.position.setZero();
-        vertex.normal = {0, 0, 1};
-        vertex.tangent = {1, 0, 0};
-        vertex.bitangent = {0, 1, 0};
-        vertex.uv.setZero();
-    }
-    if (visibility)
-    {
-        mesh.vertices[0].position = {-.125F, -.125F, .5F};
-        mesh.vertices[1].position = {.125F, -.125F, .5F};
-        mesh.vertices[2].position = {0, .125F, .5F};
-        mesh.bounds = lux::math::AABB{{-.125F, -.125F, .5F}, {.125F, .125F, .5F}};
-        call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh});
-    }
-    expected_mesh = call<MeshCommands::UploadMesh>(*client, commands, {meshes, &mesh}).mesh;
-    rdesc::MaterialProgramSet program;
-    program.target = d3d12 ? rdesc::EShaderTarget::DXIL : rdesc::EShaderTarget::SPIRV;
-    program.programs.push_back({rdesc::EMaterialPurpose::FORWARD, "", kEffectStreamInline.load(program.target)});
-    const auto registered = call<MaterialCommands::RegisterProgram>(*client, commands, {materials, std::move(program)});
-    const auto material = call<MaterialCommands::CreateInstance>(*client, commands, {registered.program, {}, {}}).material;
-    if (!visibility)
-    {
-        const std::vector<TransformMatrix> prefix(kMeshInstancePageSlots - 1, kIdentityTransform);
-        const auto records = call<TransformCommands::Create>(*client, commands, {transforms, prefix});
-        CHECK(records.transforms.size() == prefix.size());
-    }
-    auto matrix = kIdentityTransform;
-    matrix[0] = 3;
-    const auto transform = call<TransformCommands::Create>(*client, commands, {
-        transforms, std::span{&matrix, 1}
-    }).transforms.front();
-    const auto instance = call<InstanceCommands::CreateInstance>(*client, commands, {
-        instances, {expected_mesh, material, 0, transform, true, false}
-    }).instance;
-
-    const auto create_effect = [&](std::string mode)
-    {
-        CreateEffectRequest request;
-        request.graph = std::make_unique<EffectGraph>();
-        EffectGraphEdit edit{*request.graph};
-        const auto node = take(edit.addNode(definition, implementation_id, std::move(mode)));
-        if (visibility)
-        {
-            const auto visibility_definition = gbuffer_visibility ? GBuffer::definition() : MeshVisibility::definition();
-            const auto selection = gbuffer_visibility ? ImplementationSelection{std::string{GBuffer::indexed}, GBuffer::version}
-                : ImplementationSelection{std::string{MeshVisibility::camera}, MeshVisibility::version};
-            const auto visible = take(edit.addNode(
-                visibility_definition, selection
-            ));
-            const auto output = gbuffer_visibility ? GBuffer::draws : MeshVisibility::draws;
-            CHECK(edit.connect(edit.pinId(visible, output), edit.pinId(node, MeshVisibility::draws)));
-        }
-        CHECK(edit.setOutput("bytes", edit.pinId(node, node_bytes)));
-        CHECK(edit.commit());
-        return call<CreateEffect>(*client, commands, std::move(request)).effect;
-    };
-    const auto create_job = [&](std::string mode)
-    {
-        const auto effect = create_effect(std::move(mode));
-        call<PrepareEffect>(*client, commands, {effect, device});
-        return call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    };
-    const auto transform_role = paged ? ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
-    const auto properties_role = paged ? EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
-    JobBinding binding;
-    if (visibility)
-    {
-        const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
-            device, ViewScope{scene, view}, kViewParameterResourceName
-        }).resource_id;
-        ViewGpuParameters parameters;
-        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
-        binding.resources = {
-            {"readback", readback},
-            {std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {std::string{MeshVisibility::transforms_binding}, transforms, static_cast<std::uint32_t>(transform_role)},
-            {std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties_role)}
-        };
-        if (!paged)
-        {
-            binding.resources.push_back({
-                std::string{MeshVisibility::alive_binding}, instances, static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)
-            });
-        }
-        const auto job = create_job("visibility");
-        auto mirrored_matrix = matrix;
-        mirrored_matrix[0] = -mirrored_matrix[0];
-        const auto mirrored_transform = call<TransformCommands::Create>(*client, commands, {
-            transforms, std::span{&mirrored_matrix, 1}
-        }).transforms.front();
-        const auto reflected = call<InstanceCommands::CreateInstance>(*client, commands, {
-            instances, {expected_mesh, material, 0, mirrored_transform, true, false}
-        }).instance;
-        call<StartRenderJob>(*client, commands, {device, job, target, binding});
-        const auto inside = call<RequestRenderJob>(*client, commands, {job});
-        parameters.view[12] = 5;
-        call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
-        const auto outside = call<RequestRenderJob>(*client, commands, {job});
-        call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
-        call<InstanceCommands::ReleaseInstance>(*client, commands, {reflected});
-        const auto empty = call<RequestRenderJob>(*client, commands, {job});
-        stopAndRemoveJob(*client, commands, job);
-        call<RemoveView>(*client, commands, {scene, view});
-        server->stop();
-        worker.join();
-        CHECK(server->stats().validation_errors == 0);
-        const auto& capture = EffectCaptureBuffer::pixels.front();
-        CHECK(capture.ready.load() == 1 && capture.frames.size() == 3);
-        const auto verify = [&](std::uint32_t slot, std::uint32_t indices, std::uint32_t direct, std::uint32_t mirrored)
-        {
-            std::array<nri::DrawIndexedDesc, 2> draws{};
-            std::memcpy(draws.data(), capture.frames[slot].data(), sizeof(draws));
-            CHECK(draws[0].indexNum == indices && draws[1].indexNum == indices);
-            CHECK((draws[0].baseIndex > 0) == (indices != 0) && draws[1].baseIndex == draws[0].baseIndex);
-            if (draws[0].instanceNum != direct || draws[1].instanceNum != mirrored)
-                std::fprintf(stderr, "Visibility slot %u expected %u/%u, got %u/%u\n",
-                    slot, direct, mirrored, draws[0].instanceNum, draws[1].instanceNum);
-            CHECK(draws[0].instanceNum == direct && draws[1].instanceNum == mirrored);
-        };
-        verify(inside.slot_index, 3, 1, 1);
-        verify(outside.slot_index, 3, 0, 0);
-        verify(empty.slot_index, 0, 0, 0);
-        return 0;
-    }
-    binding.resources = {
-        {"readback", readback}, {"instances", instances, 0, EJobResourceUse::CPU_SNAPSHOT},
-        {"transforms", transforms, static_cast<std::uint32_t>(transform_role)},
-        {"properties", instances, static_cast<std::uint32_t>(properties_role)}
-    };
-    if (!paged) binding.resources.push_back({"alive", instances, static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)});
-    const auto bad = create_effect(paged ? "paged-write" : "write");
-    CHECK(call<PrepareEffect>(*client, commands, {bad, device}, false).error.type == kGraphInvalidDescriptor);
-    call<RemoveEffect>(*client, commands, {bad});
-    const auto effect = create_effect(paged ? "paged" : "");
-    call<PrepareEffect>(*client, commands, {effect, device});
-    const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    auto wrong = binding;
-    wrong.resources[3].projection = static_cast<std::uint32_t>(
-        paged ? EMeshInstanceBinding::PROPERTIES : EMeshInstanceBinding::PAGED_ROOT
-    );
-    CHECK(call<StartRenderJob>(*client, commands, {device, job, target, wrong}, false).error.type == kStorageMismatch);
-    call<StartRenderJob>(*client, commands, {device, job, target, binding});
-    const auto peer_view = call<CreateView>(*client, commands, {scene}).view;
-    const auto peer_target = call<CreateTarget>(*client, commands, {
-        device, {64, 64, rdesc::ETextureFormat::RGBA8_UNORM}
-    }).target;
-    auto peer_binding = binding;
-    peer_binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewScope{scene, peer_view}, EffectCaptureDescriptor::descriptor.type
-    }).resource_id;
-    const auto peer = startRenderJob(*client, commands, device, scene, peer_view, peer_target, effect, peer_binding);
-    const auto first = call<RequestRenderJob>(*client, commands, {job});
-    const auto revision = observed_revision.load();
-    const auto first_key = extension_detail::ResourceIdentity::local(transform);
-    CHECK(revision != 0 && first_key.index == kMeshInstancePageSlots - 1);
-
-    auto next_matrix = kIdentityTransform;
-    next_matrix[0] = 5;
-    const auto next = call<TransformCommands::Create>(*client, commands, {
-        transforms, std::span{&next_matrix, 1}
-    }).transforms.front();
-    const auto next_key = extension_detail::ResourceIdentity::local(next);
-    CHECK(next_key.index == kMeshInstancePageSlots);
-    matrix[0] = 11;
-    const TransformRecordUpdate update{transform, matrix};
-    call<TransformCommands::Update>(*client, commands, {transforms, std::span{&update, 1}});
-    const auto after_growth = call<RequestRenderJob>(*client, commands, {peer});
-    CHECK(observed_revision == revision);
-    const auto rebind = [&](TransformId id)
-    {
-        const MeshInstanceUpdate change{instance, {expected_mesh, material, 0, id, true, false}};
-        call<InstanceCommands::Update>(*client, commands, {instances, std::span{&change, 1}});
-    };
-    rebind(next);
-    const auto next_page = call<RequestRenderJob>(*client, commands, {peer});
-    const auto next_fif = call<RequestRenderJob>(*client, commands, {peer});
-    rebind(transform);
-    const auto changed = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(observed_revision == revision); // Rebinding a Transform preserves the Mesh draw selection.
-    call<InstanceCommands::ReleaseInstance>(*client, commands, {instance});
-    const auto removed = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(observed_revision > revision);
-    if (paged)
-    {
-        const auto dependencies = call<ReadPagedDependencies>(*client, commands, {readback, instances});
-        for (const auto count : dependencies.counts) CHECK(count == 3);
-    }
-    stopAndRemoveJob(*client, commands, peer);
-    call<RemoveView>(*client, commands, {scene, peer_view});
-    stopAndRemoveJob(*client, commands, job);
-    call<RemoveView>(*client, commands, {scene, view});
-    const auto retirement_deadline = Clock::now() + 10s;
-    while (!EffectCaptureBuffer::pixels[0].ready || !EffectCaptureBuffer::pixels[1].ready)
-    {
-        CHECK(Clock::now() < retirement_deadline);
-        std::this_thread::yield();
-    }
-    call<TransformCommands::Release>(*client, commands, transform);
-    CHECK(call<TransformCommands::Update>(*client, commands, {transforms, std::span{&update, 1}}, false)
-        .error.type == kStorageIdentity);
-    matrix[0] = 17;
-    const auto replacement = call<TransformCommands::Create>(*client, commands, {
-        transforms, std::span{&matrix, 1}
-    }).transforms.front();
-    const auto recycled = extension_detail::ResourceIdentity::local(replacement);
-    CHECK(recycled.index == first_key.index && recycled.gen == first_key.gen + 1);
-    CHECK(call<TransformCommands::Release>(*client, commands, transform, false).error.type == kStorageIdentity);
-    const auto new_instance = call<InstanceCommands::CreateInstance>(*client, commands, {
-        instances, {expected_mesh, material, 0, replacement, true, false}
-    }).instance;
-    CHECK(call<TransformCommands::Release>(*client, commands, replacement, false).error.type == kDeviceBusy);
-    const auto new_view = call<CreateView>(*client, commands, {scene}).view;
-    binding.resources.front().resource = call<GetOrCreateResource>(*client, commands, {
-        device, ViewScope{scene, new_view}, EffectCaptureDescriptor::descriptor.type
-    }).resource_id;
-    const auto restarted = startRenderJob(*client, commands, device, scene, new_view, target, effect, binding);
-    const auto reused = call<RequestRenderJob>(*client, commands, {restarted});
-    stopAndRemoveJob(*client, commands, restarted);
-    call<RemoveView>(*client, commands, {scene, new_view});
-    call<InstanceCommands::ReleaseInstance>(*client, commands, {new_instance});
-    call<TransformCommands::Release>(*client, commands, replacement);
-    call<TransformCommands::Release>(*client, commands, next);
-    server->stop();
-    worker.join();
-    CHECK(server->stats().validation_errors == 0);
-    CHECK(first.slot_index != changed.slot_index && first.slot_index != removed.slot_index);
-    CHECK(changed.slot_index != removed.slot_index);
-    const auto verify = [](const CapturedPixels& capture, std::uint32_t slot, std::array<std::uint32_t, 5> expected)
-    {
-        CHECK(capture.ready.load() == 1 && capture.frames.size() == 3);
-        std::array<std::uint32_t, 5> actual;
-        std::memcpy(actual.data(), capture.frames[slot].data(), sizeof(actual));
-        if (actual != expected)
-            std::fprintf(stderr, "slot=%u count=%u flags=%u alive=%u matrix=%08x index=%u expected=%08x/%u\n",
-                slot, actual[0], actual[1], actual[2], actual[3], actual[4], expected[3], expected[4]);
-        CHECK(actual == expected);
-    };
-    const auto& capture = EffectCaptureBuffer::pixels[0];
-    const auto& peer_capture = EffectCaptureBuffer::pixels[1];
-    verify(capture, first.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(3.f), first_key.index});
-    verify(capture, changed.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f), first_key.index});
-    verify(capture, removed.slot_index, {});
-    verify(peer_capture, after_growth.slot_index, {1, 1, 1, std::bit_cast<std::uint32_t>(11.f), first_key.index});
-    for (auto slot : {next_page.slot_index, next_fif.slot_index})
-        verify(peer_capture, slot, {1, 1, 1, std::bit_cast<std::uint32_t>(5.f), next_key.index});
-    CHECK(after_growth.slot_index != next_page.slot_index && after_growth.slot_index != next_fif.slot_index);
-    CHECK(next_page.slot_index != next_fif.slot_index);
-    verify(EffectCaptureBuffer::pixels[2], reused.slot_index, {
-        1, 1, 1, std::bit_cast<std::uint32_t>(17.f), recycled.index
-    });
-    std::printf("TRANSFORM INDEX PASS: FIF=3 GPU records=%u/%u reused=%u generation=%u matrix values=3/11/5/17\n",
-        first_key.index, next_key.index, recycled.index, recycled.gen);
-    std::printf("MESH IMPORT PASS backend=%s paged=%u native fields, snapshot revision, and read-only qualification\n",
-        d3d12 ? "D3D12" : "Vulkan", static_cast<unsigned>(paged));
-    return 0;
-}
-
-static void lightingGraphOutput(bool d3d12)
-{
-    RenderServerConfig config;
-    config.channel_name = "lux.render.test.lighting-graph";
-    config.frames_in_flight = 2;
-    config.validation = nativeValidationEnabled();
-    config.uploads.emplace();
-    DeviceOptions options;
-    if (d3d12) options.backend = EGraphicsBackend::D3D12;
-    auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
-
-    const auto initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    EffectNodeDefinition source;
-    constexpr std::string_view source_name = "test.lighting.gbuffer";
-    source.identity = {graph::nodeTypeId(source_name), std::string{source_name}, 1};
-    source.ports = {{Lighting::surface, "surface", {std::string{GBufferBundle::type}, GBufferBundle::version},
-        graph::EPinDirection::OUTPUT}};
-    CHECK(server->registerEffectCapability(source));
-    EffectImplementation source_implementation;
-    source_implementation.capability = source.identity.id;
-    source_implementation.identity = {"test.lighting.gbuffer.clear", 1};
-    source_implementation.supported_outputs = {Lighting::surface};
-    source_implementation.initialize = initialize;
-    source_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
-    {
-        constexpr std::array<std::array<float, 4>, 4> clear{{
-            {.75f, .75f, .75f, 0}, {0, 0, 1, .5f}, {0, 0, 0, 1}, {}
-        }};
-        EffectResourceBundle surface;
-        for (std::size_t i = 0; i < GBufferBundle::members.size(); ++i)
-        {
-            const auto name = GBufferBundle::members[i];
-            const bool depth = i == 3;
-            const auto format = depth ? rdesc::GBufferLayout::depth_format : rdesc::GBufferLayout::color_formats[i];
-            const auto resource = take(context.declareResource({std::string{name}, GraphImageDesc{64, 64, 1, 1, format}}));
-            const auto pass = take(context.addTransferPass(std::string{name} + ".clear", TransferWork{{ClearImage{
-                {{resource, 0}, GraphImageRange{depth ? 2u : 1u}}, clear[i], .25f
-            }}}));
-            surface.push_back({effectPortSemantic(name), pass.written.front()});
-        }
-        return context.publish(Lighting::surface, std::move(surface));
-    };
-    const auto source_selection = source_implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(source_implementation)));
-
-    EffectNodeDefinition shadow_source;
-    constexpr std::string_view shadow_name = "test.lighting.shadow";
-    shadow_source.identity = {graph::nodeTypeId(shadow_name), std::string{shadow_name}, 1};
-    shadow_source.ports = {{Lighting::shadows, "shadows", {std::string{ShadowBundle::type}, ShadowBundle::version},
-        graph::EPinDirection::OUTPUT}};
-    CHECK(server->registerEffectCapability(shadow_source));
-    EffectImplementation shadow_implementation;
-    shadow_implementation.capability = shadow_source.identity.id;
-    shadow_implementation.identity = {"test.lighting.shadow.occluder", 1};
-    shadow_implementation.supported_outputs = {Lighting::shadows};
-    shadow_implementation.initialize = initialize;
-    shadow_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
-    {
-        using Word = std::pair<std::uint64_t, std::uint32_t>;
-        constexpr auto one = std::bit_cast<std::uint32_t>(1.0f);
-        constexpr std::array views{Word{0, one}, Word{20, one}, Word{40, one}, Word{60, one}};
-        constexpr std::array slices{
-            Word{offsetof(ShadowSliceGpu, uv_scale_bias), one},
-            Word{offsetof(ShadowSliceGpu, uv_scale_bias) + 4, one},
-            Word{offsetof(ShadowSliceGpu, inner_uv) + 8, one},
-            Word{offsetof(ShadowSliceGpu, inner_uv) + 12, one},
-            Word{offsetof(ShadowSliceGpu, identity) + 4, 1}
-        };
-        constexpr std::array ranges{Word{sizeof(ShadowMappingHeader) + offsetof(LightShadowRange, count), 1}};
-        constexpr std::array<std::uint64_t, 3> sizes{
-            sizeof(MeshVisibilityView), sizeof(ShadowSliceGpu), sizeof(ShadowMappingHeader) + sizeof(LightShadowRange)
-        };
-        const std::array<std::span<const Word>, 3> patches{views, slices, ranges};
-        EffectResourceBundle shadow;
-        for (std::size_t i = 0; i < sizes.size(); ++i)
-        {
-            const std::string name{ShadowBundle::members[i]};
-            const auto buffer = take(context.declareResource({name, GraphBufferDesc{sizes[i]}}));
-            const auto initial = take(context.addTransferPass(
-                name + ".zero", TransferWork{{FillBuffer{{{buffer, 0}}, 0}}}
-            ));
-            TransferWork words;
-            for (auto [offset, value] : patches[i])
-            {
-                words.operations.push_back(FillBuffer{{initial.written.front(), GraphBufferRange{offset, 4}}, value});
-            }
-            const auto filled = take(context.addTransferPass(name + ".records", std::move(words)));
-            shadow.push_back({effectPortSemantic(name), filled.written.front()});
-        }
-        const auto depth = take(context.declareResource({
-            "occluder", GraphImageDesc{16, 16, 1, 2, rdesc::ETextureFormat::D32_SFLOAT}
-        }));
-        const auto cleared = take(context.addTransferPass(
-            "clear occluder", TransferWork{{ClearImage{{{depth, 0}, GraphImageRange{2, 0, 1, 0, 2}}, {}, 0.f}}}
-        ));
-        shadow.push_back({effectPortSemantic(ShadowBundle::members.back()), cleared.written.front()});
-        return context.publish(Lighting::shadows, std::move(shadow));
-    };
-    const auto shadow_selection = shadow_implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(shadow_implementation)));
-
-    EffectNodeDefinition sink;
-    constexpr std::string_view sink_name = "test.lighting.readback";
-    sink.identity = {graph::nodeTypeId(sink_name), std::string{sink_name}, 1};
-    sink.ports = {
-        {ToneMapping::color, "color", {std::string{ToneMapping::display_type}, 1}, graph::EPinDirection::INPUT, 1, true},
-        {node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
-    };
-    CHECK(server->registerEffectCapability(sink));
-    EffectImplementation sink_implementation;
-    sink_implementation.capability = sink.identity.id;
-    sink_implementation.identity = {"test.lighting.readback.full", 1};
-    sink_implementation.supported_outputs = {node_bytes};
-    sink_implementation.initialize = initialize;
-    sink_implementation.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
-    {
-        const auto input = context.inputs(ToneMapping::color);
-        CHECK(input.size() == 1 && input.front().size() == 1);
-        const ResourceRequirement requirement{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
-        const auto buffer = take(context.importFinalBuffer("readback", requirement, {
-            "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
-        }));
-        const auto copied = take(context.addTransferPass("copy lighting result", TransferWork{{CopyImageBuffer{
-            {input.front().front().version}, {buffer}, 256, effect_capture_bytes, ImageCopyRegion{0, 0, 64, 64}
-        }}}));
-        return context.publish(node_bytes, {{node_bytes, copied.written.front()}});
-    };
-    const auto sink_selection = sink_implementation.identity;
-    CHECK(server->registerEffectImplementation(std::move(sink_implementation)));
-
-    const auto make_effect = [&](bool with_shadow, std::string_view implementation = Lighting::direct,
-                                 std::string grid = {})
-    {
-        CreateEffectRequest request;
-        request.graph = std::make_unique<EffectGraph>();
-        EffectGraphEdit edit{*request.graph};
-        const auto surface = take(edit.addNode(source, source_selection));
-        const auto lighting = take(edit.addNode(
-            Lighting::definition(), {std::string{implementation}, Lighting::version}, std::move(grid)
-        ));
-        const auto tone = take(edit.addNode(ToneMapping::definition(), {
-            std::string{ToneMapping::linear}, ToneMapping::version
-        }, "exposure=0"));
-        const auto capture = take(edit.addNode(sink, sink_selection));
-        CHECK(edit.connect(edit.pinId(surface, Lighting::surface), edit.pinId(lighting, Lighting::surface)));
-        CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
-        CHECK(edit.connect(edit.pinId(tone, ToneMapping::color), edit.pinId(capture, ToneMapping::color)));
-        if (with_shadow)
-        {
-            const auto shadow = take(edit.addNode(shadow_source, shadow_selection));
-            CHECK(edit.connect(edit.pinId(shadow, Lighting::shadows), edit.pinId(lighting, Lighting::shadows)));
-        }
-        CHECK(edit.setOutput("readback", edit.pinId(capture, node_bytes)));
-        CHECK(edit.commit());
-        return std::pair{std::move(request), lighting};
-    };
-
-    auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
-    CHECK(client);
-    std::thread worker([&] { CHECK(server->run()); });
-    const auto commands = queryCommands(*client);
-    auto [request, lighting] = make_effect(false);
-    const auto effect = call<CreateEffect>(*client, commands, std::move(request)).effect;
-    const auto shadow_effect = call<CreateEffect>(*client, commands, make_effect(true).first).effect;
-    const auto clustered_shadow = call<CreateEffect>(*client, commands, make_effect(true, Lighting::clustered).first).effect;
-    const auto clustered = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "depth=logarithmic y=5 x=7 index-capacity=65536 z=9").first).effect;
-    const auto overflow = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "x=1 y=1 z=1 index-capacity=1 depth=linear").first).effect;
-    const auto invalid_grid = call<CreateEffect>(*client, commands,
-        make_effect(false, Lighting::clustered, "x=1 y=0 z=1 index-capacity=1 depth=linear").first, false);
-    CHECK(invalid_grid.error.type == kInvalidEffectArguments);
-    const auto invalid_depth = call<CreateEffect>(
-        *client, commands, make_effect(false, Lighting::clustered, "depth=unknown").first, false
-    );
-    CHECK(invalid_depth.error.type == kInvalidEffectArguments);
-    CHECK(invalid_depth.error.args[1] != 0 && invalid_depth.error.args[2] == 0);
-    call<SetLightingEnvironment>(*client, commands, {effect, lighting, {}});
-    const auto device = call<CreateDeviceSession>(*client, commands, options).device;
-    for (auto selected : {effect, shadow_effect, clustered_shadow, clustered, overflow})
-        call<PrepareEffect>(*client, commands, {selected, device});
-    const auto scene = call<CreateScene>(*client, commands, {}).scene;
-    const auto view = call<CreateView>(*client, commands, {scene}).view;
-    const TargetDesc output{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
-    const auto target = call<CreateTarget>(*client, commands, {device, output}).target;
-    const auto light_resource = call<GetOrCreateResource>(*client, commands, {device, scene, kLightResourceName}).resource_id;
-    DirectionalLightGpu directional;
-    directional.radiance = {3, 0, 0, 0};
-    const std::array<VDirectLight, 1> authored{directional};
-    const auto lights = call<LightingCommands::CreateLights>(*client, commands, {light_resource, {1, authored}});
-    CHECK(lights.lights.size() == 1);
-    const auto view_resource = [&](ViewId owner, ResourceNameView type)
-    {
-        return call<GetOrCreateResource>(*client, commands, {device, ViewScope{scene, owner}, type}).resource_id;
-    };
-    JobBinding binding;
-    const auto camera_resource = view_resource(view, kViewParameterResourceName);
-    binding.resources.push_back({"readback", view_resource(view, EffectCaptureDescriptor::descriptor.type)});
-    for (std::uint32_t i = 0; i < Lighting::light_bindings.size(); ++i)
-        binding.resources.push_back({std::string{Lighting::light_bindings[i]}, light_resource, i});
-    binding.resources.push_back({
-        std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
-    });
-    auto parameters = ViewGpuParameters{};
-    parameters.position_near[2] = 2;
-    parameters.direction_far[3] = 4;
-    // A forward depth ray runs from world z=1 to z=0, in the view's -Z direction.
-    parameters.inverse_view_projection[10] = -1;
-    parameters.inverse_view_projection[14] = 1;
-    call<ViewParameterCommands::Update>(*client, commands, {camera_resource, std::span{&parameters, 1}});
-    const auto job = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
-    auto malformed = binding;
-    malformed.resources[1].projection = static_cast<std::uint32_t>(EDirectLightingBuffer::COUNTS);
-    CHECK(call<StartRenderJob>(*client, commands, {device, job, target, malformed}, false).error.type == kStorageMismatch);
-    call<StartRenderJob>(*client, commands, {device, job, target, binding});
-    const auto red = call<RequestRenderJob>(*client, commands, {job});
-    directional.radiance = {0, 0, 3, 0};
-    const DirectLightUpdate change{lights.lights.front(), directional};
-    call<LightingCommands::Update>(*client, commands, {light_resource, std::span{&change, 1}});
-    CHECK(call<SetLightingEnvironment>(*client, commands, {effect, lighting, {-1, 0, 0}}, false).error.type
-        == kFrameContract);
-    call<SetLightingEnvironment>(*client, commands, {effect, lighting, {0, .5f, 0}});
-    const auto blue = call<RequestRenderJob>(*client, commands, {job});
-    CHECK(red.slot_index != blue.slot_index);
-    stopAndRemoveJob(*client, commands, job);
-    call<RemoveView>(*client, commands, {scene, view});
-    const auto draw = [&](EffectId selected)
-    {
-        const auto selected_view = call<CreateView>(*client, commands, {scene}).view;
-        const auto selected_camera = view_resource(selected_view, kViewParameterResourceName);
-        binding.resources.back().resource = selected_camera;
-        binding.resources.front().resource = view_resource(selected_view, EffectCaptureDescriptor::descriptor.type);
-        call<ViewParameterCommands::Update>(*client, commands, {selected_camera, std::span{&parameters, 1}});
-        const auto selected_job = call<CreateRenderJob>(*client, commands, {
-            scene, selected_view, selected, EJobCadence::REQUESTED
-        }).job;
-        call<StartRenderJob>(*client, commands, {device, selected_job, target, binding});
-        const auto receipt = call<RequestRenderJob>(*client, commands, {selected_job});
-        stopAndRemoveJob(*client, commands, selected_job);
-        call<RemoveView>(*client, commands, {scene, selected_view});
-        return receipt.slot_index;
-    };
-    const auto occluded = draw(shadow_effect);
-    const auto clustered_occluded = draw(clustered_shadow);
-    directional.radiance = {};
-    const DirectLightUpdate disable_directional{lights.lights.front(), directional};
-    call<LightingCommands::Update>(*client, commands, {light_resource, std::span{&disable_directional, 1}});
-    const std::array<VDirectLight, 2> local{
-        PointLightGpu{{0, 0, 1.5f, 10}, {0, 2, 0, 0}, {1, 0, 0, 0}},
-        SpotLightGpu{{0, 0, 1.5f, 10}, {0, 0, 3, 0}, {0, 0, -1, .65f}, {1, 0, 0, .9f}}
-    };
-    call<LightingCommands::CreateLights>(*client, commands, {light_resource, {2, local}});
-    call<SetLightingEnvironment>(*client, commands, {effect, lighting, {}});
-    const auto direct_slot = draw(effect);
-    const auto clustered_slot = draw(clustered);
-    const auto overflow_slot = draw(overflow);
-    server->stop();
-    worker.join();
-    CHECK(server->stats().validation_errors == 0);
-    const auto& pixels = EffectCaptureBuffer::pixels.front();
-    CHECK(pixels.ready.load() == 1 && pixels.frames.size() == 2);
-    constexpr std::size_t center = 32 * 256 + 32 * 4;
-    const auto* first = pixels.frames[red.slot_index].data() + center;
-    const auto* second = pixels.frames[blue.slot_index].data() + center;
-    CHECK(first[0] > std::byte{100} && first[1] < std::byte{5} && first[2] < std::byte{5});
-    CHECK(second[0] < std::byte{5} && second[1] > std::byte{40} && second[2] > std::byte{100});
-    CHECK(first[3] == std::byte{255} && second[3] == std::byte{255});
-    const auto captured = [](std::size_t index, std::uint32_t slot) noexcept -> std::span<const std::byte>
-    {
-        const auto& result = EffectCaptureBuffer::pixels[index];
-        CHECK(result.ready.load() == 1 && slot < result.frames.size());
-        return result.frames[slot];
-    };
-    for (const auto dark : {captured(1, occluded), captured(2, clustered_occluded)})
-    {
-        CHECK(dark[center] < std::byte{5} && dark[center + 1] < std::byte{5} && dark[center + 2] < std::byte{5});
-        CHECK(dark[center + 3] == std::byte{255});
-    }
-    const auto reference = captured(3, direct_slot);
-    CHECK(reference[center + 1] > std::byte{50} && reference[center + 2] > std::byte{50});
-    for (const auto candidate : {captured(4, clustered_slot), captured(5, overflow_slot)})
-    {
-        CHECK(reference.size() == candidate.size());
-        for (std::size_t i = 0; i < reference.size(); ++i)
-            CHECK(std::abs(std::to_integer<int>(reference[i]) - std::to_integer<int>(candidate[i])) <= 2);
-    }
-    std::printf("LIGHTING GRAPH PASS backend=%s typed updates, linked shadow, clustered lists and overflow parity\n",
-        d3d12 ? "D3D12" : "Vulkan");
-}
-
 static void basicFeatureOutputs(bool d3d12)
 {
     RenderServerConfig config;
@@ -5759,24 +5298,21 @@ static void basicFeatureOutputs(bool d3d12)
     auto& execution = lux::execution::ExecutionRuntime::instance();
     auto server = take(RenderServer::create(config, execution));
     registerOutputNodes(*server);
-    take(server->registerResource<EffectCaptureBuffer>(EffectCaptureBuffer::commandBindings()));
+    take(server->registerResource<EffectCaptureBuffer>());
 
-    const auto initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    EffectNodeDefinition depth_source;
+    EffectCapability depth_source;
     constexpr std::string_view depth_name = "test.depth.clear";
-    depth_source.identity = {graph::nodeTypeId(depth_name), std::string{depth_name}, 1};
-    depth_source.ports = {{DepthPyramid::depth, "depth", {std::string{DepthPyramid::depth_type}, 1},
+    depth_source.id = graph::nodeTypeId(depth_name);
+    depth_source.canonical_name = depth_name;
+    const EffectPortDefinition depth_source_ports[]{{DepthReductionPorts::depth.semantic, "depth", {DepthPyramid::depth_type, 1},
         graph::EPinDirection::OUTPUT}};
+    depth_source.ports = depth_source_ports;
     CHECK(server->registerEffectCapability(depth_source));
-    EffectImplementation clear_depth;
-    clear_depth.capability = depth_source.identity.id;
+    ImplementationEntry clear_depth;
+    clear_depth.capability = depth_source.id;
     clear_depth.identity = {"test.depth.clear.fixed", 1};
-    clear_depth.supported_outputs = {DepthPyramid::depth};
-    clear_depth.initialize = initialize;
-    clear_depth.build = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
+    clear_depth.supported_outputs = {DepthReductionPorts::depth.semantic};
+    static constexpr auto build_clear_depth = [](EffectCompileContext& context, std::string_view) noexcept -> RenderResult<void>
     {
         GraphImageDesc depth{64, 64, 1, 1, rdesc::ETextureFormat::D32_SFLOAT};
         depth.extent.source = EImageExtentSource::TARGET;
@@ -5784,30 +5320,32 @@ static void basicFeatureOutputs(bool d3d12)
         const auto cleared = take(context.addTransferPass(
             "clear forward depth", TransferWork{{ClearImage{{{image, 0}, GraphImageRange{2}}, {}, .25f}}}
         ));
-        return context.publish(DepthPyramid::depth, {{DepthPyramid::depth, cleared.written.front()}});
+        return context.publish(DepthReductionPorts::depth.semantic, {{DepthReductionPorts::depth.semantic, cleared.written.front()}});
     };
+    clear_depth.create = fixture::Effect<build_clear_depth>::create;
     const auto depth_selection = clear_depth.identity;
     CHECK(server->registerEffectImplementation(std::move(clear_depth)));
 
-    EffectNodeDefinition read_pyramid;
+    EffectCapability read_pyramid;
     static constexpr auto pyramid_input = effectPortSemantic("pyramid");
     constexpr std::string_view read_name = "test.depth.pyramid.readback";
-    read_pyramid.identity = {graph::nodeTypeId(read_name), std::string{read_name}, 1};
-    read_pyramid.ports = {
-        {pyramid_input, "pyramid", {std::string{DepthPyramid::pyramid_type}, 1}, graph::EPinDirection::INPUT, 1, true},
+    read_pyramid.id = graph::nodeTypeId(read_name);
+    read_pyramid.canonical_name = read_name;
+    const EffectPortDefinition read_pyramid_ports[]{
+        {pyramid_input, "pyramid", {DepthPyramid::pyramid_type, 1}, graph::EPinDirection::INPUT, 1, true},
         {node_bytes, "bytes", {"test.readback_bytes", 1}, graph::EPinDirection::OUTPUT}
     };
+    read_pyramid.ports = read_pyramid_ports;
     CHECK(server->registerEffectCapability(read_pyramid));
-    EffectImplementation readback;
-    readback.capability = read_pyramid.identity.id;
+    ImplementationEntry readback;
+    readback.capability = read_pyramid.id;
     readback.identity = {"test.depth.pyramid.readback.texel", 1};
     readback.supported_outputs = {node_bytes};
-    readback.initialize = initialize;
-    readback.build = [](EffectCompileContext& context, std::string_view key) noexcept -> RenderResult<void>
+    static constexpr auto build_readback = [](EffectCompileContext& context, std::string_view key) noexcept -> RenderResult<void>
     {
         const auto source = context.inputs(pyramid_input);
         CHECK(source.size() == 1 && source.front().size() == 1);
-        const ResourceRequirement resource{ResourceName{EffectCaptureDescriptor::descriptor.type.name()}};
+        const ResourceNameView resource{EffectCaptureDescriptor::descriptor.type.name()};
         const auto buffer = take(context.importFinalBuffer(key, resource, {
             "", GraphBufferDesc{effect_capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION
         }));
@@ -5821,6 +5359,7 @@ static void basicFeatureOutputs(bool d3d12)
         const auto done = take(context.addTransferPass(std::string{key} + ".copy", TransferWork{{copy}}));
         return context.publish(node_bytes, {{node_bytes, done.written.front()}});
     };
+    readback.create = fixture::Effect<build_readback>::create;
     const auto read_selection = readback.identity;
     CHECK(server->registerEffectImplementation(std::move(readback)));
 
@@ -5835,18 +5374,18 @@ static void basicFeatureOutputs(bool d3d12)
         EffectGraphEdit edit{*result.graph};
         const auto depth = take(edit.addNode(depth_source, depth_selection, ""));
         const auto pyramid = take(edit.addNode(
-            DepthPyramid::definition(), {std::string{DepthPyramid::forward_zo}, DepthPyramid::version},
+            capabilities::DepthReduction, {std::string{"lux.render.depth_pyramid.forward_zo"}, capabilities::DepthReduction.version},
             "mips=" + std::string{mips}
         ));
-        CHECK(edit.connect(edit.pinId(depth, DepthPyramid::depth), edit.pinId(pyramid, DepthPyramid::depth)));
+        CHECK(edit.connect(edit.pinId(depth, DepthReductionPorts::depth.semantic), edit.pinId(pyramid, DepthReductionPorts::depth.semantic)));
         const auto connect = [&](graph::PinSemanticId port, std::string key)
         {
             const auto sink = take(edit.addNode(read_pyramid, read_selection, key));
             CHECK(edit.connect(edit.pinId(pyramid, port), edit.pinId(sink, pyramid_input)));
             CHECK(edit.setOutput(std::move(key), edit.pinId(sink, node_bytes), false));
         };
-        connect(DepthPyramid::current, "current");
-        if (previous) connect(DepthPyramid::previous, "previous");
+        connect(DepthReductionPorts::current.semantic, "current");
+        if (previous) connect(DepthReductionPorts::previous.semantic, "previous");
         CHECK(edit.commit());
         return result;
     };
@@ -5889,11 +5428,13 @@ static void basicFeatureOutputs(bool d3d12)
         {rdesc::ETextureFormat::RGBA8_UNORM}, EExpectedEncoding::SRGB);
     verifyTonemapOutput({*client, commands, session}, scene,
         {rdesc::ETextureFormat::RGBA8_SRGB}, EExpectedEncoding::SRGB);
+    verifyTonemapOutput({*client, commands, session}, scene,
+        {rdesc::ETextureFormat::RGBA16_SFLOAT}, EExpectedEncoding::HDR_LINEAR);
     verifyTargetInput(*client, commands, session, scene);
     const auto secondary = call<CreateDeviceSession>(*client, commands, options).device;
     verifyTargetInput(*client, commands, secondary, scene);
     std::puts("DEVICE HISTORY PASS: sampled and read back published pixels on both sessions");
-    std::printf("TONE MAPPING PASS backend=%s linear, shader sRGB, target sRGB and node exposure\n",
+    std::printf("TONE MAPPING PASS backend=%s linear, shader sRGB, target sRGB, FP16 HDR and node exposure\n",
         d3d12 ? "D3D12" : "Vulkan");
     server->stop();
     render.join();
@@ -5921,7 +5462,7 @@ struct WsiFailureProbe final
     {
         using Config = void;
 
-        static inline const ResourceDefinition descriptor{ResourceNameView{"test.wsi.failure"}, 0, 0, {}};
+        static inline const ResourceDefinition descriptor{ResourceNameView{"test.wsi.failure"}, {}, {}, {}};
     };
 
     static inline std::atomic<bool> fail_view = false;
@@ -6026,13 +5567,8 @@ static void windowOutput(bool d3d12)
     const auto first = startRenderJob(*client, commands, session, scene, view, target.target, effect);
     const auto second = call<CreateRenderJob>(*client, commands, {scene, view, effect, EJobCadence::REQUESTED}).job;
     CHECK(call<StartRenderJob>(*client, commands, {session, second, target.target}, false).error.type == kTargetInUse);
-    const auto layout = call<QueryRenderJobInputLayout>(*client, commands, first).layout;
-    auto foreign = take(FrameLayout::create(layout.channels(), layout.revision()));
-    CHECK(layout == foreign && !layout.hasSameIdentity(foreign));
-    auto stale = take(FrameData::create<std::tuple<>>(foreign));
-    CHECK(stale.seal());
-    // The packet is qualified after successful Acquire and before the first GPU submission.
-    CHECK(call<RequestRenderJob>(*client, commands, {first, &stale}, false).error.type == kFrameContract);
+    // Reject the input after Acquire so the next writer must reuse the unconsumed READY image.
+    CHECK(call<RequestRenderJob>(*client, commands, {first, FrameData{}}, false).error.type == kFrameContract);
     CHECK(server->stats().submissions == 0);
     stopAndRemoveJob(*client, commands, first);
     call<StartRenderJob>(*client, commands, {session, second, target.target});
@@ -6048,6 +5584,44 @@ static void windowOutput(bool d3d12)
     for (int i = 0; i < 6; ++i) renderFrame(*client, commands, second);
     waitPresented(6);
 
+    auto hdr = target.description;
+    hdr.display_mode = EDisplayMode::HDR;
+    CreateEffectRequest hdr_request;
+    hdr_request.graph = std::make_unique<EffectGraph>();
+    hdr_request.output = target.description.outputContract();
+    hdr_request.output.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+    EffectGraphEdit hdr_edit{*hdr_request.graph};
+    const auto hdr_source = take(hdr_edit.addNode(outputSource(true), {std::string{hdr_source_name}, 1}));
+    const auto hdr_tone = take(hdr_edit.addNode(capabilities::ToneMapping, {"lux.render.tone_mapping.hdr_linear", 1}, "exposure=2"));
+    CHECK(hdr_edit.connect(hdr_edit.pinId(hdr_source, ToneMappingPorts::color.semantic),
+                           hdr_edit.pinId(hdr_tone, ToneMappingPorts::hdr_color.semantic)));
+    CHECK(hdr_edit.setOutput("color", hdr_edit.pinId(hdr_tone, ToneMappingPorts::color.semantic), true));
+    CHECK(hdr_edit.commit());
+    const auto hdr_effect = createPreparedEffect(*client, commands, session, std::move(hdr_request));
+    const auto switched = call<ResizeTarget>(*client, commands, {target.target, hdr, hdr_effect}, false);
+    if (switched.error.type)
+    {
+        CHECK(switched.error.type == kDeviceUnsupported && switched.output_available);
+        CHECK(switched.epoch == target.epoch && switched.description == target.description);
+        std::puts("HDR UNSUPPORTED: HDR request preserved the SDR target and writer");
+    }
+    else
+    {
+        CHECK(switched.output_available && switched.target == target.target && switched.epoch == target.epoch + 1);
+        CHECK(switched.description.display_mode == EDisplayMode::HDR && switched.sdr_white_nits > 0.F);
+        CHECK(switched.description.format == rdesc::ETextureFormat::RGBA16_SFLOAT);
+        renderFrame(*client, commands, second);
+        waitPresented(7);
+        target = call<ResizeTarget>(*client, commands, {target.target, target.description, effect});
+        CHECK(target.output_available && target.epoch == switched.epoch + 1 && target.sdr_white_nits == 0.F);
+        CHECK(target.description.display_mode == EDisplayMode::SDR);
+        std::puts("HDR PRESENT PASS: same target and writer returned from linear HDR to SDR");
+    }
+    call<RemoveEffect>(*client, commands, {hdr_effect});
+    const auto before_resize = server->stats().presentations;
+    renderFrame(*client, commands, second);
+    waitPresented(before_resize + 1);
+
     CHECK(SetWindowPos(window, nullptr, 0, 0, 400, 300, SWP_NOMOVE | SWP_NOZORDER));
     const auto [changed_width, changed_height] = dimensions();
     auto requested = target.description;
@@ -6060,7 +5634,7 @@ static void windowOutput(bool d3d12)
     CHECK(!failed.output_available && failed.target == target.target && failed.epoch == target.epoch);
     CHECK(call<SetTargetActive>(*client, commands, {target.target, true, failed.epoch}, false).error.type ==
         kRuntimeState);
-    const auto resized = call<ResizeTarget>(*client, commands, {target.target, requested});
+    const auto resized = call<ResizeTarget>(*client, commands, {target.target, requested, effect});
     CHECK(resized.output_available && resized.epoch == target.epoch + 1);
     CHECK(resized.description.width == changed_width && resized.description.height == changed_height);
     CHECK(call<SetTargetActive>(*client, commands, {target.target, true, target.epoch}, false).error.type ==
@@ -6069,11 +5643,10 @@ static void windowOutput(bool d3d12)
     call<RebindRenderJobEffect>(*client, commands, {session, second, effect});
     CHECK(call<StopRenderJob>(*client, commands, first, false).error.type == kJobIdentity);
     for (int i = 0; i < 6; ++i) renderFrame(*client, commands, second);
-    waitPresented(12);
+    waitPresented(before_resize + 7);
     const auto submitted = server->stats().submissions;
-    CHECK(call<RequestRenderJob>(*client, commands, {second, &stale}, false).error.type == kFrameContract);
+    CHECK(call<RequestRenderJob>(*client, commands, {second, FrameData{}}, false).error.type == kFrameContract);
     CHECK(server->stats().submissions == submitted);
-    stale.release();
     CHECK(call<RemoveTarget>(*client, commands, target.target, false).error.type == kDeviceBusy);
     call<StopRenderJob>(*client, commands, second);
     call<RemoveTarget>(*client, commands, target.target);
@@ -6101,13 +5674,30 @@ struct SignalRetirementFence final
     using Response = AckResponse;
 };
 
+struct SetViewQueueGate final
+{
+    static constexpr std::string_view name{"test.device.view_queue_gate"};
+    struct Request final
+    {
+        ResourceInstanceId resource;
+        bool hold;
+    };
+    using Data = Request;
+    struct Response final
+    {
+        RenderError error;
+        std::uint64_t copied_bytes = 0;
+    };
+    static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
+};
+
 struct DeviceRetirementProbe final
 {
     struct Descriptor final
     {
         using Config = void;
 
-        static inline const ResourceDefinition descriptor{ResourceNameView{"test.device.retirement"}, 0, 0, {}};
+        static inline const ResourceDefinition descriptor{ResourceNameView{"test.device.retirement"}, {}, {}, {}};
     };
 
     static inline std::array<nri::AdapterDesc, 3> adapters;
@@ -6120,10 +5710,46 @@ struct DeviceRetirementProbe final
     static inline std::atomic<bool> arm = false, held = false;
     static inline std::atomic<std::int64_t>* accepted_ns = nullptr;
     static inline std::atomic<bool> hold_queue_idle = false, queue_idle_entered = false;
+    DeviceSession& session;
+    ResourceUploader* uploads;
     std::size_t index;
-    std::optional<RetirementFence> fence;
+    std::optional<RetirementFence> fence, view_gate;
 
-    explicit DeviceRetirementProbe(DeviceSession& session) noexcept : index(created++)
+    static void setViewGate(
+        DeviceRetirementProbe& owner, const SetViewQueueGate::Request& request, SetViewQueueGate::Response& reply
+    ) noexcept
+    {
+        auto& view_gate = owner.view_gate;
+        auto& session = owner.session;
+        auto& queue = session.queue();
+        const auto& core = session.nriCore();
+        if (request.hold)
+        {
+            CHECK(!view_gate);
+            // Every earlier use is complete. Only work placed behind this native gate can delay row reuse.
+            CHECK(core.QueueWaitIdle(&queue.native()) == nri::Result::SUCCESS);
+            CHECK(queue.poll());
+            view_gate.emplace(session);
+            const nri::FenceSubmitDesc wait{view_gate->fence, 1, nri::StageBits::ALL};
+            nri::QueueSubmitDesc hold{};
+            hold.waitFences = &wait;
+            hold.waitFenceNum = 1;
+            CHECK(core.QueueSubmit(queue.native(), hold) == nri::Result::SUCCESS);
+        }
+        else
+        {
+            CHECK(view_gate);
+            view_gate->signal();
+            CHECK(core.QueueWaitIdle(&queue.native()) == nri::Result::SUCCESS);
+            CHECK(queue.poll());
+            view_gate.reset();
+        }
+        CHECK(owner.uploads);
+        reply = {{}, owner.uploads->statistics().copied_bytes};
+    }
+
+    explicit DeviceRetirementProbe(ResourceCreateContext& context) noexcept
+        : session(context.device), uploads(context.uploads), index(created++)
     {
         CHECK(index < adapters.size());
         adapters[index] = session.description().adapterDesc;
@@ -6188,7 +5814,7 @@ struct DeviceRetirementProbe final
     static RenderResult<std::unique_ptr<DeviceRetirementProbe>>
     create(ResourceCreateContext& context, ResourceInstanceId) noexcept
     {
-        return std::make_unique<DeviceRetirementProbe>(context.device);
+        return std::make_unique<DeviceRetirementProbe>(context);
     }
 
     static ResourceRegistration factory() noexcept
@@ -6348,11 +5974,107 @@ static int startFairness(bool d3d12, bool reverse_adapters)
     return 0;
 }
 
+static void verifyViewRowRetirement(
+    ipc::IpcRequester& client, const CommandList& commands, SceneId scene, std::array<DeviceSessionId, 2> devices
+)
+{
+    const auto observed = call<CreateView>(client, commands, {scene}).view;
+    const auto idle = call<CreateView>(client, commands, {scene}).view;
+    ViewGpuParameters parameters;
+    parameters.background = {1, 0, 0, 1};
+    call<UpdateView>(client, commands, {{scene, observed}, parameters});
+    CreateEffectRequest request;
+    request.graph = std::make_unique<EffectGraph>();
+    EffectGraphEdit edit{*request.graph};
+    const auto draw = take(edit.addNode(outputSource(false), {"test.output.view", 1}));
+    const auto capture = take(edit.addNode(ColorCapture::definition(), {std::string{ColorCapture::name}, 1}));
+    const auto color = edit.pinId(draw, ToneMappingPorts::color.semantic);
+    CHECK(edit.connect(color, edit.pinId(capture, ColorCapture::color)));
+    CHECK(edit.setOutput("color", color, true));
+    CHECK(edit.setOutput("pixels", edit.pinId(capture, ColorCapture::pixels)));
+    CHECK(edit.commit());
+    const auto effect = createPreparedEffect(client, commands, devices[0], std::move(request));
+    call<PrepareEffect>(client, commands, {effect, devices[1]});
+    std::array<ResourceInstanceId, 2> probes;
+    std::array<CapturedPixels, 2> pixels, idle_pixels;
+    std::array<JobSubmitted, 2> receipts;
+    std::array<std::uint64_t, 2> uploads;
+    std::array<RenderJobId, 2> jobs;
+    std::array<TargetId, 2> targets;
+    for (unsigned i = 0; i < devices.size(); ++i)
+    {
+        const auto device = devices[i];
+        probes[i] = call<QueryResource>(client, commands, {
+            device, DeviceScope{}, DeviceRetirementProbe::Descriptor::descriptor.type
+        }).resource_id;
+        const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA8_UNORM};
+        targets[i] = call<CreateTarget>(client, commands, {device, target}).target;
+        const auto start = [&](ViewId view, CapturedPixels& capture_pixels)
+        {
+            const ViewScope scope{scene, view};
+            const auto camera = call<GetOrCreateResource>(client, commands, {
+                device, scope, kViewParameterResourceName
+            }).resource_id;
+            const auto output = GraphCaptureBuffer::bind({client, commands, device}, scope, {&capture_pixels});
+            JobBinding binding;
+            binding.resources = {{std::string{ViewParameterResource::gpu_binding}, camera},
+                                 {std::string{ColorCapture::name}, output}};
+            return startRenderJob(client, commands, device, scene, view, targets[i], effect, std::move(binding));
+        };
+        const auto finished = start(idle, idle_pixels[i]);
+        renderFrame(client, commands, finished);
+        stopAndRemoveJob(client, commands, finished);
+        jobs[i] = start(observed, pixels[i]);
+        renderFrame(client, commands, jobs[i]);
+    }
+    // Update once after both replicas exist. Both devices must sample the newly selected row.
+    parameters.background = {0, 1, 0, 1};
+    call<UpdateView>(client, commands, {{scene, observed}, parameters});
+    // B has the current revision in every FIF. Its held graph read must protect the row without a new upload.
+    for (unsigned i = 0; i < 3; ++i) renderFrame(client, commands, jobs[1]);
+    for (unsigned i = 0; i < devices.size(); ++i)
+    {
+        uploads[i] = call<SetViewQueueGate>(client, commands, {probes[i], true}).copied_bytes;
+        receipts[i] = call<RequestRenderJob>(client, commands, {jobs[i]});
+        stopAndRemoveJob(client, commands, jobs[i]);
+    }
+    call<RemoveView>(client, commands, {scene, observed});
+    CHECK(call<UpdateView>(client, commands, {{scene, observed}, {}}, false).error.type == kRuntimeIdentity);
+    call<RemoveView>(client, commands, {scene, idle});
+    const auto both_held = call<CreateView>(client, commands, {scene}).view;
+    CHECK(both_held.index == idle.index && both_held.gen != idle.gen);
+    const auto released_a = call<SetViewQueueGate>(client, commands, {probes[0], false});
+    CHECK(released_a.copied_bytes - uploads[0] == sizeof(ViewGpuParameters));
+    const auto one_held = call<CreateView>(client, commands, {scene}).view;
+    CHECK(one_held.index != observed.index);
+    const auto released_b = call<SetViewQueueGate>(client, commands, {probes[1], false});
+    CHECK(released_b.copied_bytes == uploads[1]);
+    const auto recycled = call<CreateView>(client, commands, {scene}).view;
+    CHECK(recycled.index == observed.index && recycled.gen != observed.gen);
+    CHECK(call<RemoveView>(client, commands, {scene, observed}, false).error.type == kRuntimeIdentity);
+    const auto deadline = Clock::now() + 10s;
+    for (unsigned i = 0; i < devices.size(); ++i)
+    {
+        while (!pixels[i].ready.load() || !idle_pixels[i].ready.load()) CHECK(Clock::now() < deadline);
+        const auto& bytes = pixels[i].frames.at(receipts[i].slot_index);
+        CHECK(bytes[0] == std::byte{0} && bytes[1] == std::byte{255} && bytes[2] == std::byte{0});
+    }
+    for (auto id : {both_held, one_held, recycled}) call<RemoveView>(client, commands, {scene, id});
+    for (auto target : targets) call<RemoveTarget>(client, commands, target);
+    call<RemoveEffect>(client, commands, {effect});
+    std::printf("VIEW ROW RETIREMENT PASS: old=%u/%u idle=%u/%u reused=%u/%u "
+                "held_uploads=%llu,%llu green_readbacks=2\n",
+        observed.index, observed.gen, idle.index, idle.gen, recycled.index, recycled.gen,
+        static_cast<unsigned long long>(released_a.copied_bytes - uploads[0]),
+        static_cast<unsigned long long>(released_b.copied_bytes - uploads[1]));
+}
+
 static bool physicalDeviceLifecycle(bool d3d12)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const auto backend = d3d12 ? "D3D12" : "Vulkan";
     RenderServerConfig config{"lux.render.test.device_lifecycle", nativeValidationEnabled()};
+    config.uploads.emplace();
     config.diagnostics.report = [](void*, const RenderDiagnostic& diagnostic) noexcept
     {
         if (diagnostic.severity == ERenderDiagnosticSeverity::ERROR_MESSAGE)
@@ -6361,7 +6083,8 @@ static bool physicalDeviceLifecycle(bool d3d12)
     };
     auto server = take(RenderServer::create(config, lux::execution::ExecutionRuntime::instance()));
     registerOutputNodes(*server);
-    take(server->registerResource<DeviceRetirementProbe>());
+    const std::array view_gate_commands{CommandBinding::declare<SetViewQueueGate, &DeviceRetirementProbe::setViewGate>()};
+    take(server->registerResource<DeviceRetirementProbe>(view_gate_commands));
     const std::array gate_commands{CommandBinding::declare<SignalRetirementFence, &DeviceRetirementProbe::signal>()};
     CHECK(server->registerCommands(gate_commands));
     auto requester = ipc::IpcCore::instance().createRequester(config.channel_name);
@@ -6403,6 +6126,7 @@ static bool physicalDeviceLifecycle(bool d3d12)
 
     const auto scene = call<CreateScene>(client, commands, {}).scene;
     const auto view = call<CreateView>(client, commands, {scene}).view;
+    verifyViewRowRetirement(client, commands, scene, {a, b});
     verifyTargetInput(client, commands, a, scene, b);
     verifyTargetInput(client, commands, b, scene, a);
 
@@ -6588,13 +6312,7 @@ static bool physicalDeviceLifecycle(bool d3d12)
     const auto unused_job = startRenderJob(
         client, commands, replacement, scene, view, unused_target.target, reopened_effect
     );
-    const auto layout = call<QueryRenderJobInputLayout>(client, commands, unused_job).layout;
-    auto other_layout = take(FrameLayout::create(layout.channels(), layout.revision()));
-    auto stale = take(FrameData::create<std::tuple<>>(other_layout));
-    CHECK(stale.seal());
-    // The frame rejects the stale layout after Acquire and before submitting its acquire wait.
-    CHECK(call<RequestRenderJob>(client, commands, {unused_job, &stale}, false).error.type == kFrameContract);
-    stale.release();
+    CHECK(call<RequestRenderJob>(client, commands, {unused_job, FrameData{}}, false).error.type == kFrameContract);
     call<StopRenderJob>(client, commands, unused_job);
     call<RemoveTarget>(client, commands, unused_target.target);
     call<RemoveRenderJob>(client, commands, unused_job);
@@ -6637,21 +6355,12 @@ int main(int argc, char** argv)
         meshRasterStream(argc > 2 && std::string_view{argv[2]} == "d3d12");
         return 0;
     }
-    const auto probe = argc > 1 ? std::string_view{argv[1]} : std::string_view{};
-    const bool mesh_visibility = probe == "--mesh-visibility";
-    const bool gbuffer_visibility = probe == "--gbuffer-visibility";
-    if (probe == "--mesh-imports" || mesh_visibility || gbuffer_visibility)
-    {
-        const auto mode = argc > 2 ? std::string_view{argv[2]} : std::string_view{};
-        const bool paged = mode == "paged" || (argc > 3 && std::string_view{argv[3]} == "paged");
-        return meshGraphImports(mode == "d3d12", paged, mesh_visibility || gbuffer_visibility, gbuffer_visibility);
-    }
     if (argc > 1 && std::string_view{argv[1]} == "--effect-graph")
     {
         const auto mode = argc > 3 ? std::string_view{argv[3]} : std::string_view{};
-        const bool uniform_faults = mode == "uniform-faults";
-        const bool async_uniform = uniform_faults || mode == "async-uniform";
-        effectGraphOutput(argc > 2 && std::string_view{argv[2]} == "d3d12", async_uniform, uniform_faults);
+        if (!mode.empty() && mode != "uniform-faults") return 2;
+        const bool async_uniform = mode == "uniform-faults";
+        effectGraphOutput(argc > 2 && std::string_view{argv[2]} == "d3d12", async_uniform);
         if (async_uniform && !UniformUploadProbe::hasSeparateComputeQueue())
         {
             std::puts("No independent compute queue on this adapter");
@@ -6662,11 +6371,6 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string_view{argv[1]} == "--basic-features")
     {
         basicFeatureOutputs(argc > 2 && std::string_view{argv[2]} == "d3d12");
-        return 0;
-    }
-    if (argc > 1 && std::string_view{argv[1]} == "--lighting-graph")
-    {
-        lightingGraphOutput(argc > 2 && std::string_view{argv[2]} == "d3d12");
         return 0;
     }
     if (argc > 1 && std::string_view{argv[1]} == "--prepared-buffer")
@@ -6697,14 +6401,13 @@ int main(int argc, char** argv)
         CHECK(validation.errors == 0);
         return 0;
     }
-    {
-        graphOutput(validation);
-        importedExtentContracts(validation);
-        importedIdentityReuse(validation, EGraphicsBackend::VULKAN);
+    if (argc != 1) return 2;
+    graphOutput(validation);
+    importedExtentContracts(validation);
+    importedIdentityReuse(validation, EGraphicsBackend::VULKAN);
 #ifdef _WIN32
-        importedIdentityReuse(validation, EGraphicsBackend::D3D12);
+    importedIdentityReuse(validation, EGraphicsBackend::D3D12);
 #endif
-        deviceLostDelivery(validation);
-    }
+    deviceLostDelivery(validation);
     CHECK(validation.errors == 0);
 }

@@ -1,4 +1,5 @@
 #include "../Common.slang"
+#include "../SceneView.slang"
 
 #include "brdf/brdf_common.glsl"
 #include "brdf/brdf_ggx.glsl"
@@ -48,12 +49,10 @@ struct LightCounts
 
 [[vk::binding(3, 1)]] StructuredBuffer<LightCounts> light_counts : register(t3, space1);
 
+[[vk::binding(4, 1)]] StructuredBuffer<SceneViewGpu> scene_view : register(t4, space1);
+
 struct Parameters
 {
-    mat4 inverse_view_projection;
-    vec4 camera_position;
-    vec4 viewport;
-    vec4 background;
     vec4 environment;
 };
 
@@ -113,7 +112,7 @@ void luxMain()
     float d = texelFetch(depth, pixel, 0).r;
     if (d >= 1.0)
     {
-        hdr_color = vec4(parameters.background.rgb, 1.0);
+        hdr_color = vec4(scene_view[0].background.rgb, 1.0);
         return;
     }
     vec4 a = texelFetch(albedo_metallic, pixel, 0);
@@ -128,10 +127,10 @@ void luxMain()
         return;
     }
     // The active NRI viewport uses positive height (originBottomLeft=true). Convert once, here.
-    vec2 uv = (gl_FragCoord.xy / vec2(textureSize(depth, 0)) - parameters.viewport.xy) / parameters.viewport.zw;
-    vec4 reconstructed = mul(parameters.inverse_view_projection, vec4(uv * 2.0 - 1.0, d, 1.0));
+    vec2 uv = (gl_FragCoord.xy / vec2(textureSize(depth, 0)) - scene_view[0].viewport.xy) / scene_view[0].viewport.zw;
+    vec4 reconstructed = mul(scene_view[0].inverse_view_projection, vec4(uv * 2.0 - 1.0, d, 1.0));
     vec3 position = reconstructed.xyz / reconstructed.w;
-    vec3 view = normalize(parameters.camera_position.xyz - position);
+    vec3 view = normalize(scene_view[0].position_near.xyz - position);
     float ndotv = max(dot(n, view), 0.0);
     float metallic = clamp(a.a, 0.0, 1.0);
     roughness = clamp(roughness, 0.04, 1.0);

@@ -1,17 +1,31 @@
 #pragma once
 
 #include <lux/engine/render/runtime/commands/Command.hpp>
-#include <lux/engine/render/effect/EffectNodeDefinition.hpp>
+#include <lux/engine/render/effect/EffectCapability.hpp>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace lux::render
 {
-    struct EffectCapabilityInfo final
+    namespace detail { class CapabilityMetadata; }
+
+    struct LUX_RENDER_PUBLIC EffectCapabilityInfo final
     {
-        EffectNodeDefinition definition;
+        EffectCapabilityInfo(const EffectCapability&, std::vector<ImplementationOption>, std::vector<CommandId>) noexcept;
+        ~EffectCapabilityInfo() noexcept;
+        EffectCapabilityInfo(EffectCapabilityInfo&&) noexcept;
+        EffectCapabilityInfo& operator=(EffectCapabilityInfo&&) noexcept;
+        EffectCapabilityInfo(const EffectCapabilityInfo&);
+        EffectCapabilityInfo& operator=(const EffectCapabilityInfo&);
+
+        [[nodiscard]] const EffectCapability& definition() const & noexcept;
+        const EffectCapability& definition() const && = delete;
         std::vector<ImplementationOption> implementations;
         std::vector<CommandId> commands;
+
+    private:
+        std::unique_ptr<const detail::CapabilityMetadata> metadata_;
     };
 
     struct ListEffectCapabilities final

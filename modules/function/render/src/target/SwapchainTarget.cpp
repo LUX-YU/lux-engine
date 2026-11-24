@@ -8,6 +8,7 @@
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/NativeResult.hpp>
 #include <utility>
+#include <cmath>
 
 namespace lux::render::detail
 {
@@ -16,6 +17,29 @@ namespace lux::render::detail
     ) noexcept
         : session_(session), description_(description), surface_(surface), uses_(session.makeFrontiers())
     {
+    }
+
+    RenderResult<void> SwapchainTarget::preflightPresentation(EDisplayMode mode, bool display_changed) noexcept
+    {
+        if (mode == EDisplayMode::SDR) return {};
+        // DXGI specifies linear BT.709 for a new FP16 swapchain. NRI's Vulkan format preference
+        // can select the same texture format with another color space and does not expose that choice.
+        if (session_.description().graphicsAPI != nri::GraphicsAPI::D3D12)
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        // NRI caches monitor data on the swapchain. A moved window needs the new chain's display query.
+        if (!available() || display_changed) return {};
+        return readHdrDisplay();
+    }
+
+    RenderResult<void> SwapchainTarget::readHdrDisplay() noexcept
+    {
+        nri::DisplayDesc display{};
+        const auto status = swap_chain_operations_.GetDisplayDesc(*swap_chain_, display);
+        if (status != nri::Result::SUCCESS) return cxx::unexpected(nativeError(status));
+        if (!display.isHDR || !std::isfinite(display.sdrLuminance) || display.sdrLuminance <= 0.F)
+            return cxx::unexpected(RenderError{kDeviceUnsupported});
+        if (description_.display_mode == EDisplayMode::HDR) sdr_white_nits_ = display.sdrLuminance;
+        return {};
     }
 
     RenderResult<SwapchainTarget> SwapchainTarget::create(
@@ -71,11 +95,14 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
+        const bool hdr = description.display_mode == EDisplayMode::HDR;
         if (!session.description().features.swapChain)
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
         SwapchainTarget output(session, description, surface);
+        if (auto valid = output.preflightPresentation(description.display_mode); !valid)
+            return cxx::unexpected(valid.error());
         auto status = nri::nriGetInterface(
             session.device(),
             NRI_INTERFACE(nri::SwapChainInterface),
@@ -92,7 +119,7 @@ namespace lux::render::detail
         swap_chain.height = static_cast<nri::Dim_t>(description.height);
         swap_chain.textureNum = static_cast<std::uint8_t>(frame_count + 1);
         swap_chain.queuedFrameNum = static_cast<std::uint8_t>(frame_count);
-        swap_chain.format = nri::SwapChainFormat::BT709_G22_8BIT;
+        swap_chain.format = hdr ? nri::SwapChainFormat::BT709_G10_16BIT : nri::SwapChainFormat::BT709_G22_8BIT;
         swap_chain.flags = surface.vertical_sync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE;
         status = output.swap_chain_operations_.CreateSwapChain(session.device(), swap_chain, output.swap_chain_);
         if (status != nri::Result::SUCCESS)
@@ -109,22 +136,31 @@ namespace lux::render::detail
         const auto& actual = session.nriCore().GetTextureDesc(*images[0]);
         const auto format = actual.format;
         auto& target = output.description_;
-        switch (format)
+        if (hdr)
         {
-        case nri::Format::RGBA8_UNORM:
-            target.format = rdesc::ETextureFormat::RGBA8_UNORM;
-            break;
-        case nri::Format::RGBA8_SRGB:
-            target.format = rdesc::ETextureFormat::RGBA8_SRGB;
-            break;
-        case nri::Format::BGRA8_UNORM:
-            target.format = rdesc::ETextureFormat::BGRA8_UNORM;
-            break;
-        case nri::Format::BGRA8_SRGB:
-            target.format = rdesc::ETextureFormat::BGRA8_SRGB;
-            break;
-        default:
-            return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (format != nri::Format::RGBA16_SFLOAT) return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (auto display = output.readHdrDisplay(); !display) return cxx::unexpected(display.error());
+            target.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+        }
+        else
+        {
+            switch (format)
+            {
+            case nri::Format::RGBA8_UNORM:
+                target.format = rdesc::ETextureFormat::RGBA8_UNORM;
+                break;
+            case nri::Format::RGBA8_SRGB:
+                target.format = rdesc::ETextureFormat::RGBA8_SRGB;
+                break;
+            case nri::Format::BGRA8_UNORM:
+                target.format = rdesc::ETextureFormat::BGRA8_UNORM;
+                break;
+            case nri::Format::BGRA8_SRGB:
+                target.format = rdesc::ETextureFormat::BGRA8_SRGB;
+                break;
+            default:
+                return cxx::unexpected(RenderError{kDeviceUnsupported});
+            }
         }
         target.width = actual.width;
         target.height = actual.height;
@@ -168,6 +204,7 @@ namespace lux::render::detail
 
     SwapchainTarget::SwapchainTarget(SwapchainTarget&& other) noexcept
         : state(other.state), session_(other.session_), description_(other.description_), surface_(other.surface_),
+          sdr_white_nits_(other.sdr_white_nits_),
           swap_chain_operations_(other.swap_chain_operations_), swap_chain_(std::exchange(other.swap_chain_, nullptr)),
           images_(std::move(other.images_)), views_(std::move(other.views_)),
           acquire_semaphores_(std::move(other.acquire_semaphores_)),
@@ -204,17 +241,14 @@ namespace lux::render::detail
         return presentation_.phase == EPresentationPhase::READY;
     }
 
-    RenderResult<bool> SwapchainTarget::bindImage(std::uint32_t frame_slot) noexcept
+    void SwapchainTarget::bindReadyImage(std::uint32_t frame_slot) noexcept
     {
-        auto ready = prefetched();
-        if (!ready || !*ready) return ready;
         frames_[frame_slot] = {images_[acquired_image_], views_[acquired_image_], &presentation_, UINT32_MAX, &uses_};
-        return true;
     }
 
     SwapchainTarget::ENativeStep SwapchainTarget::beginAdvance(bool acquire) noexcept
     {
-        if (!available() || state.resizing) return ENativeStep::NONE;
+        if (!available() || state.pending_replacement.has_value()) return ENativeStep::NONE;
         if (presentation_.phase == EPresentationPhase::SUBMITTED)
         {
             presentation_.phase = EPresentationPhase::PRESENTING;

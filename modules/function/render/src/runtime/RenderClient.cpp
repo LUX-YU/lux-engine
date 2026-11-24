@@ -15,10 +15,36 @@ namespace lux::render
         struct CorrelationTag;
         using Key = cxx::SlotKey<CorrelationTag>;
 
+        struct WindowReceiver final
+        {
+            RenderJobId job;
+            JobReplyHandler handler;
+        };
+
         struct PendingResponse final
         {
             Key key;
-            ResponseNode* receiver; // stdexec owns the connected operation, not this directory.
+            std::variant<ResponseNode*, WindowReceiver> receiver;
+
+            [[nodiscard]] bool matches(const ipc::IpcMessage& message) const noexcept
+            {
+                if (const auto* node = std::get_if<ResponseNode*>(&receiver))
+                    return message.typeHash() == (*node)->response_type.hash();
+                return message.typeHash() == cxx::make_basic_type_info<JobSubmitted>().hash() &&
+                    message.get<JobSubmitted>().job == std::get<WindowReceiver>(receiver).job;
+            }
+
+            void finish(ipc::IpcMessage&& message, RenderError error) const noexcept
+            {
+                if (const auto* node = std::get_if<ResponseNode*>(&receiver))
+                {
+                    RenderClient::deliver(**node, std::move(message), error);
+                    return;
+                }
+                const auto& run = std::get<WindowReceiver>(receiver);
+                auto reply = error.type ? JobSubmitted{error, run.job} : std::move(message.get<JobSubmitted>());
+                run.handler.complete(run.handler.context, std::move(reply));
+            }
         };
 
         explicit Impl(ipc::IpcRequester requester) noexcept : requester(std::move(requester))
@@ -38,7 +64,6 @@ namespace lux::render
         ipc::IpcRequester requester;
         cxx::SlotMap<PendingResponse, CorrelationTag> pending;
         std::array<CommandId, std::tuple_size_v<CommonCommands>> commands;
-        std::array<FrameData*, 2> frame_borrows{};
         RenderError failure;
     };
 
@@ -102,35 +127,16 @@ namespace lux::render
         return impl_->commands[index];
     }
 
-    RenderResult<void> RenderClient::borrowFrame(FrameData& data) noexcept
-    {
-        auto slot = std::ranges::find(impl_->frame_borrows, nullptr);
-        if (slot == impl_->frame_borrows.end())
-        {
-            return cxx::unexpected(RenderError{kRuntimeCapacity});
-        }
-        if (!data.beginSubmission())
-        {
-            return cxx::unexpected(RenderError{kFrameContract});
-        }
-        *slot = &data;
-        return {};
-    }
-
-    void RenderClient::releaseFrame(FrameData& data) noexcept
-    {
-        auto slot = std::ranges::find(impl_->frame_borrows, &data);
-        if (slot == impl_->frame_borrows.end()) std::terminate();
-        *slot = nullptr;
-        data.completeSubmission();
-    }
-
     RenderResult<void> RenderClient::send(CommandId command, ipc::IpcMessage& message, ResponseNode& receiver) noexcept
     {
         if (impl_->failure.type != 0)
         {
             return cxx::unexpected(impl_->failure);
         }
+        if (command == commonCommand(commonIndex<RequestRenderJob>()) &&
+            message.typeHash() == cxx::make_basic_type_info<RequestRenderJob::Request>().hash() &&
+            !message.get<RequestRenderJob::Request>().additional_runs.empty())
+            return cxx::unexpected(RenderError{kCommandContract});
         const auto id = impl_->pending.emplace(Impl::PendingResponse{{}, &receiver});
         impl_->pending.find(id)->key = id;
         auto sent = impl_->requester.trySend(commandTag(command), Impl::correlation(id), message);
@@ -142,6 +148,35 @@ namespace lux::render
             });
         }
         return {};
+    }
+
+    RenderResult<void> RenderClient::submitWindow(
+        std::span<const RenderJobId> jobs, WindowUpdates& updates, JobReplyHandler handler
+    ) noexcept
+    {
+        if (impl_->failure.type) return cxx::unexpected(impl_->failure);
+        if (jobs.empty() || !handler.complete) return cxx::unexpected(RenderError{kFrameContract});
+        ipc::IpcMessage message;
+        auto& input = message.emplace<RequestRenderJob::Request>();
+        input.job = jobs.front();
+        input.additional_runs.reserve(jobs.size() - 1);
+        const auto register_reply = [&](RenderJobId job) noexcept
+        {
+            const auto key = impl_->pending.emplace(Impl::PendingResponse{{}, Impl::WindowReceiver{job, handler}});
+            impl_->pending.find(key)->key = key;
+            return RequestId{Impl::correlation(key)};
+        };
+        const auto first = register_reply(input.job);
+        for (auto job : jobs.subspan(1)) input.additional_runs.push_back({job, register_reply(job)});
+        input.updates = std::move(updates);
+        const auto command = commonCommand(commonIndex<RequestRenderJob>());
+        const auto sent = impl_->requester.trySend(commandTag(command), first.value, message);
+        if (sent) return {};
+        updates = std::move(input.updates);
+        input.forEachRun(first, [&](const auto& run) noexcept { impl_->pending.erase(Impl::key(run.reply.value)); });
+        return cxx::unexpected(RenderError{
+            sent.error() == ipc::EIpcError::WOULD_BLOCK ? kRuntimeCapacity : kRuntimeState
+        });
     }
 
     void RenderClient::deliver(ResponseNode& node, ipc::IpcMessage&& message, RenderError error) noexcept
@@ -172,14 +207,14 @@ namespace lux::render
             {
                 continue;
             }
-            if (message.typeHash() != entry->receiver->response_type.hash())
+            if (!entry->matches(message))
             {
                 if (impl_->failure.type == 0) impl_->failure = {kCommandContract};
                 continue; // Keep this operation until Server can no longer borrow its source.
             }
-            auto* receiver = entry->receiver;
+            const auto pending = *entry;
             impl_->pending.erase(id);
-            deliver(*receiver, std::move(message), {});
+            pending.finish(std::move(message), {});
         }
         if (impl_->failure.type != 0)
         {
@@ -197,7 +232,7 @@ namespace lux::render
         {
             const auto entry = *impl_->pending.begin();
             impl_->pending.erase(entry.key);
-            deliver(*entry.receiver, {}, {kOutcomeUnknown});
+            entry.finish({}, {kOutcomeUnknown});
         }
     }
 } // namespace lux::render

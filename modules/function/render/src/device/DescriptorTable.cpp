@@ -210,32 +210,31 @@ namespace lux::render::detail
         pool_capacity_ = 0;
     }
 
-    DescriptorTable::NativeBindingSelection DescriptorTable::nativeBindingSelection() const noexcept
+    void DescriptorTable::retainFramePools(std::vector<NativePoolId>& held) noexcept
     {
-        return {tables_[0].pool, tables_[1].pool, tables_[2].pool};
-    }
-
-    void DescriptorTable::retainNativeBindings(const NativeBindingSelection& selection) noexcept
-    {
-        for (const auto id : selection)
+        // Vulkan recordings reference the current native sets directly. A later Freeze in this
+        // round may observe a replacement while an earlier Job is waiting for submission.
+        if (session_.description().graphicsAPI != nri::GraphicsAPI::VK) return;
+        for (const auto& table : tables_)
         {
-            if (id.isNull()) continue;
+            const auto id = table.pool;
+            if (id.isNull() || std::ranges::find(held, id) != held.end()) continue;
             auto* pool = pools_.find(id);
-            const bool invalid = !pool || pool->replaced || pool->readers == UINT32_MAX;
-            if (invalid) std::terminate();
+            if (!pool || pool->replaced || pool->readers == UINT32_MAX) std::terminate();
             ++pool->readers;
+            held.push_back(id);
         }
     }
 
-    void DescriptorTable::releaseNativeBindings(const NativeBindingSelection& selection) noexcept
+    void DescriptorTable::releaseFramePools(std::vector<NativePoolId>& held) noexcept
     {
-        for (const auto id : selection)
+        for (const auto id : held)
         {
-            if (id.isNull()) continue;
             auto* pool = pools_.find(id);
             if (!pool || !pool->readers) std::terminate();
             if (--pool->readers == 0 && pool->replaced) retirePool(id);
         }
+        held.clear();
     }
 
     void DescriptorTable::retirePool(NativePoolId id) noexcept
@@ -372,6 +371,13 @@ namespace lux::render::detail
         ++content_revision_;
         if (!changes_.empty())
             changes_[content_revision_ % change_capacity] = {slot, static_cast<std::uint32_t>(tableIndex(type))};
+    }
+
+    nri::Descriptor* DescriptorTable::textureView(Slot slot) const noexcept
+    {
+        const auto& table = tables_[tableIndex(nri::DescriptorType::TEXTURE)];
+        const auto* entry = table.slots.tryGet(slot);
+        return entry ? entry->descriptor : nullptr;
     }
 
     void DescriptorTable::write(nri::DescriptorType type, Slot slot, nri::Descriptor* descriptor) noexcept

@@ -161,6 +161,57 @@ namespace lux::render::detail
                 bindings.private_bindings.empty() ? 0u : bindings.private_set, bindings.shared_sets, shared
             };
         }
+
+        RenderResult<nri::PipelineLayout*>
+        createPipelineLayout(
+            DeviceSession& session,
+            const LayoutKey& key,
+            std::uint32_t color_count,
+            std::uint32_t& max_colors
+        ) noexcept
+        {
+            std::vector<nri::DescriptorSetDesc> sets;
+            for (std::size_t kind = 0; kind < key.shared_sets.size(); ++kind)
+            {
+                const auto set = key.shared_sets[kind];
+                if (set == kGraphInvalidIndex)
+                {
+                    continue;
+                }
+                if (key.shared[kind].descriptorNum == 0)
+                {
+                    return cxx::unexpected(RenderError{kDeviceUnsupported});
+                }
+                sets.push_back({set, &key.shared[kind], 1});
+            }
+            if (!key.ranges.empty())
+            {
+                sets.push_back({key.private_set, key.ranges.data(), static_cast<std::uint32_t>(key.ranges.size())});
+            }
+            const auto& limits = session.description();
+            constexpr auto supported_stages =
+                nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+            const bool is_d3d12 = limits.graphicsAPI == nri::GraphicsAPI::D3D12;
+            const nri::RootConstantDesc parameters{0, key.parameter_bytes, key.parameter_stages};
+            nri::PipelineLayoutDesc description{};
+            description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
+            description.rootRegisterSpace = is_d3d12 ? 255 : 0;
+            description.shaderStages = supported_stages;
+            description.descriptorSets = sets.data();
+            description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
+            description.rootConstants = key.parameter_bytes ? &parameters : nullptr;
+            description.rootConstantNum = unsigned(key.parameter_bytes != 0);
+            const auto capacity = qualifyPipelineLayout(limits, description, color_count);
+            if (!capacity) return cxx::unexpected(capacity.error());
+            max_colors = *capacity;
+            nri::PipelineLayout* layout = nullptr;
+            const auto created = session.nriCore().CreatePipelineLayout(session.device(), description, layout);
+            if (created != nri::Result::SUCCESS)
+            {
+                return cxx::unexpected(nativeError(created));
+            }
+            return layout;
+        }
     } // namespace
 
     struct CompiledPrograms::Layout final
@@ -200,22 +251,26 @@ namespace lux::render::detail
         const auto owner_scheduler = co_await stdexec::read_env(stdexec::get_scheduler);
         const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
         auto& [shader, bindings, raster] = input;
-        auto relocated = co_await (
-            stdexec::schedule(cpu) |
-            stdexec::then([&]() noexcept { return relocateShader(std::move(shader), bindings.bindings); }) |
-            stdexec::upon_stopped(
-                []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
-                { return cxx::unexpected(RenderError{kCpuStopped}); }
-            ) |
-            stdexec::continues_on(owner_scheduler) |
-            stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
-        );
-        if (!relocated)
+        if (selection_stop.stop_requested() || stop.stop_requested())
+            co_return cxx::unexpected(RenderError{kCommandCancelled});
+        // The shader key includes the final reflected coordinates. Relocate only when they differ.
+        if (requiresShaderRelocation(shader, bindings.bindings))
         {
-            co_return cxx::unexpected(relocated.error());
+            auto relocated = co_await (
+                stdexec::schedule(cpu) |
+                stdexec::then([&]() noexcept { return relocateSpirv(std::move(shader), bindings.bindings); }) |
+                stdexec::upon_stopped(
+                    []() noexcept -> RenderResult<rdesc::ShaderProgramArtifact>
+                    { return cxx::unexpected(RenderError{kCpuStopped}); }
+                ) |
+                stdexec::continues_on(owner_scheduler) |
+                stdexec::upon_error(NativeDeliveryFailure<rdesc::ShaderProgramArtifact>{})
+            );
+            if (!relocated) co_return cxx::unexpected(relocated.error());
+            if (selection_stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
+            shader = std::move(*relocated);
         }
-        if (selection_stop.stop_requested()) co_return cxx::unexpected(RenderError{kCommandCancelled});
-        auto& retained_shader = acquireShader(std::move(*relocated));
+        auto& retained_shader = acquireShader(std::move(shader));
         cxx::scope_exit release_shader([&]() noexcept { releaseShader(retained_shader); });
         const auto& artifact = retained_shader.artifact;
         auto layout = acquireLayout(bindings, raster ? static_cast<std::uint32_t>(raster->colors.size()) : 0u);
@@ -292,9 +347,7 @@ namespace lux::render::detail
             return &layout;
         }
         std::uint32_t max_colors = 0;
-        auto created = createPipelineLayout(
-            session_.device(), session_.nriCore(), bindings, key.ranges, key.shared, color_count, max_colors
-        );
+        auto created = createPipelineLayout(session_, key, color_count, max_colors);
         if (!created) return cxx::unexpected(created.error());
         bindings.layout = *created;
         if (layout_serial_ == UINT64_MAX) std::terminate();
@@ -451,14 +504,9 @@ namespace lux::render::detail
         std::terminate();
     }
 
-    void CompiledPrograms::retainLive(NativeProgramId id) noexcept
-    {
-        auto& program = resolve(id);
-        if (!program.users || program.users == UINT32_MAX) std::terminate();
-        ++program.users;
-    }
-
-    void CompiledPrograms::releaseBindings(const NativeProgramBindings& bindings) noexcept
+    void CompiledPrograms::releaseBindings(
+        const NativeProgramBindings& bindings, const SubmissionFrontiers& accepted
+    ) noexcept
     {
         std::vector<NativeProgramId> programs;
         std::vector<LayoutId> layouts;
@@ -469,22 +517,25 @@ namespace lux::render::detail
         }
         for (const auto& stream : bindings.streams_)
         {
-            if (!stream) continue;
-            for (const auto& program : stream->programs) programs.push_back(program.cache_id);
+            for (const auto& program : stream.programs) programs.push_back(program.cache_id);
         }
         if (!layouts.empty())
         {
-            session_.deferRelease([this, layouts = std::move(layouts)]() noexcept
+            session_.deferRelease(accepted, [this, layouts = std::move(layouts)]() noexcept
             {
                 for (const auto layout : layouts) dropLayout(layout);
             });
         }
         const auto get = [&](std::size_t i) noexcept { return programs[i]; };
-        if (programs.empty()) return;
-        auto accepted = session_.makeFrontiers();
-        for (std::size_t q = 0; q < session_.queueCount(); ++q)
-            accepted.accept(session_.submissionPoint(q, session_.physicalQueue(q).submitted()));
         release(programs.size(), get, accepted);
+    }
+
+    void CompiledPrograms::retainLive(NativeProgramId id) noexcept
+    {
+        auto& program = resolve(id);
+        if (!program.users || program.users == UINT32_MAX || acquisition_serial_ == UINT64_MAX) std::terminate();
+        ++program.users;
+        program.last_acquired = ++acquisition_serial_;
     }
 
     void CompiledPrograms::release(

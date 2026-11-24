@@ -1,9 +1,8 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <lux/engine/render/graph/DrawResource.hpp>
-#include <lux/engine/render/resource/RasterProgramBuild.hpp>
+#include <lux/engine/render/graph/DrawList.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/render/graph/PassValues.hpp>
@@ -70,6 +69,9 @@ namespace lux::render
             bool comparison_sampler = false;
             // An unbounded read-only table of structured records supplied by the declared Resource.
             bool shared_records = false;
+            // Enables per-run Target publications on this finite, sampled 2D image argument.
+            rdesc::ETextureFormat target_format = rdesc::ETextureFormat::UNDEFINED;
+            bool operator==(const Input&) const noexcept = default;
         };
 
         std::string purpose;
@@ -89,21 +91,29 @@ namespace lux::render
             std::vector<std::uint32_t> geometry_locations;
         };
 
-        // Fixed programs and a mutable program source are mutually exclusive for a stream.
-        using VStreamPrograms = std::variant<std::vector<StreamProgram>, RasterProgramSource>;
+        // Each fixed entry is one complete raster pipeline use. Several entries may use the same shader.
+        struct ReadyPrograms final
+        {
+            // Name the Resource publishing the complete set. A composed stream binds its own ready draw slots.
+            std::string resource;
+            bool operator==(const ReadyPrograms&) const noexcept = default;
+        };
+        using VStreamPrograms = std::variant<std::vector<StreamProgram>, ReadyPrograms>;
         VStreamPrograms programs;
         // Source sampler IDs granted to this stream at link time.
         std::vector<std::uint32_t> stream_samplers{};
         // Requires a depth attachment and an explicit depth bias for every submitted section.
         bool section_depth_bias = false;
         std::vector<DrawResourceInput> draw_resources;
+        // Capability binding providing pass-local RasterStreamData. Program slots use revision zero and
+        // index the fixed programs or the Resource publication selected for this Run.
+        std::string draw_list{};
 
-        [[nodiscard]] bool requiresCapability(EStorageCapability capability) const noexcept
+        [[nodiscard]] DrawResourceReads externalReads() const noexcept
         {
-            return std::ranges::any_of(draw_resources, [capability](const auto& input) noexcept
-            {
-                return (input.required_capabilities & static_cast<std::uint32_t>(capability)) != 0;
-            });
+            DrawResourceReads reads;
+            for (const auto& input : draw_resources) reads |= input.reads;
+            return reads;
         }
 
         [[nodiscard]] std::span<const StreamProgram> fixedPrograms() const & noexcept
@@ -116,7 +126,7 @@ namespace lux::render
 
         [[nodiscard]] bool usesStreamProducer() const noexcept
         {
-            return std::holds_alternative<RasterProgramSource>(programs) || !fixedPrograms().empty();
+            return !std::holds_alternative<std::vector<StreamProgram>>(programs) || !fixedPrograms().empty();
         }
     };
 
@@ -161,6 +171,7 @@ namespace lux::render
         GraphResourceId resource;
         std::uint32_t mip = 0;
         std::array<std::uint32_t, 2> group_size{8, 8};
+        std::uint32_t group_depth = 1;
     };
 
     using VDispatchArguments = std::variant<DispatchArguments, IndirectDispatchArguments, ImageDispatchArguments>;

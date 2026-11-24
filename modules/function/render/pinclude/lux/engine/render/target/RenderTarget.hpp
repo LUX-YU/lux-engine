@@ -28,9 +28,24 @@ namespace lux::render::runtime_detail
         return std::visit([](const auto& value) noexcept -> const TargetDesc& { return value.description(); }, target);
     }
 
+    inline void adoptTarget(VRenderTarget& target, VRenderTarget&& candidate) noexcept
+    {
+        std::visit([&](auto& value) noexcept
+        {
+            using T = std::remove_cvref_t<decltype(value)>;
+            target.emplace<T>(std::move(value));
+        }, candidate);
+    }
+
     [[nodiscard]] inline bool targetAvailable(const VRenderTarget& target) noexcept
     {
         const auto* swapchain = std::get_if<detail::SwapchainTarget>(&target);
         return !swapchain || swapchain->available();
+    }
+
+    [[nodiscard]] inline bool targetReadyFor(const VRenderTarget& target, RenderJobId writer) noexcept
+    {
+        const auto& state = targetState(target);
+        return state.enabled && state.writer == writer && targetAvailable(target);
     }
 } // namespace lux::render::runtime_detail

@@ -1,8 +1,7 @@
-#include <lux/engine/render/runtime/JobCpuPreparation.hpp>
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
-#include <lux/engine/render/graph/execute/RasterFramePreparation.hpp>
-#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/runtime/commands/Error.hpp>
@@ -14,38 +13,33 @@
 namespace lux::render::detail
 {
     RenderResult<void>
-    RasterFramePreparation::resizeLayers(GraphResourceId resource, std::uint32_t layers) noexcept
+    FrameResources::resizeLayers(DeviceSession& session, JobFrameResources::LayeredImage& selected) noexcept
     {
-        const auto selected =
-            std::ranges::find(frame_.layered_images, resource, &FrameResources::LayeredImage::resource);
-        const bool invalid_layers = layers == 0 || layers > session_.description().dimensions.textureLayerMaxNum;
-        if (selected == frame_.layered_images.end() || invalid_layers)
-        {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        if (selected->views.size() == layers)
+        const auto resource = selected.resource;
+        const auto layers = selected.requested_layers;
+        if (selected.views.size() == layers)
         {
             return {};
         }
-        const auto& core = session_.nriCore();
-        auto& binding = frame_.bindings[resource.index];
-        const auto& compiled = graph_.resources()[resource.index];
+        const auto& core = session.nriCore();
+        auto& binding = bindings[resource.index];
+        const auto& compiled = recordingGraph().resources()[resource.index];
         if (layers > 1)
         {
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = graph_.bindingPlan().pass(pass);
-                if (!program.bindings[program.uses[index].field].image_arrayed)
+                const auto& program = recordingGraph().bindingPlan().pass(pass);
+                if (!program.bindings[program.uses[index].field].acceptsMultipleLayers())
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {resource.index, layers}});
             }
         }
         auto description = *binding.image_description;
         const bool replace_image = description.layerNum != layers;
         description.layerNum = static_cast<nri::Dim_t>(layers);
-        nri::Texture* image = binding.image;
+        nri::Texture* image = selected.texture;
         if (replace_image)
         {
-            const auto created = core.CreatePlacedTexture(session_.device(), NriDeviceHeap, description, image);
+            const auto created = core.CreatePlacedTexture(session.device(), NriDeviceHeap, description, image);
             if (created != nri::Result::SUCCESS)
             {
                 return cxx::unexpected(nativeError(created));
@@ -79,16 +73,9 @@ namespace lux::render::detail
         );
         const auto add_view = [&](ImageViewBinding use, nri::TextureView kind, std::uint32_t count) -> RenderResult<void>
         {
-            nri::TextureViewDesc view{
-                image,
-                kind,
-                description.format,
-                static_cast<nri::Dim_t>(use.range.first_mip),
-                static_cast<nri::Dim_t>(use.range.mip_count),
-                static_cast<nri::Dim_t>(use.range.first_layer),
-                static_cast<nri::Dim_t>(count)
-            };
-            view.planes = static_cast<nri::PlaneBits>(use.range.aspects);
+            auto range = use.range;
+            range.layer_count = count;
+            const auto view = graphImageView(image, kind, description.format, range);
             nri::Descriptor* descriptor = nullptr;
             const auto created = core.CreateTextureView(view, descriptor);
             if (created != nri::Result::SUCCESS)
@@ -111,12 +98,9 @@ namespace lux::render::detail
             }
             for (const auto [pass, index] : compiled.descriptor_uses)
             {
-                const auto& program = graph_.bindingPlan().pass(pass);
+                const auto& program = recordingGraph().bindingPlan().pass(pass);
                 const auto& use = program.uses[index];
-                const bool arrayed = program.bindings[use.field].image_arrayed;
-                const auto kind = use.kind == EDescriptorKind::STORAGE_IMAGE
-                    ? (arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY : nri::TextureView::STORAGE_TEXTURE)
-                    : (arrayed ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE);
+                const auto kind = program.bindings[use.field].image_type;
                 if (auto created = add_view(
                         {pass, index, EImageViewTarget::DESCRIPTOR, std::get<GraphImageRange>(use.range)},
                         kind,
@@ -149,10 +133,10 @@ namespace lux::render::detail
             layer_views.push_back(descriptor);
         }
         // The acquired FIF slot has no GPU reader. Adopt all views before releasing the old image.
-        frame_.invalidateResource(graph_.recordingDependencies(), resource.index);
+        invalidateResource(recordingGraph().recordingDependencies(), resource.index);
         for (auto& replacement : replacements)
         {
-            auto& pass = frame_.passes[replacement.use.pass];
+            auto& pass = passes[replacement.use.pass];
             nri::Descriptor** destination = nullptr;
             switch (replacement.use.target)
             {
@@ -179,101 +163,92 @@ namespace lux::render::detail
             if (replacement.use.target == EImageViewTarget::DESCRIPTOR)
             {
                 const auto& use =
-                    graph_.bindingPlan().pass(pass.compiled_pass->binding_slot).uses[replacement.use.index];
+                    recordingGraph().bindingPlan().pass(pass.compiled_pass->binding_slot).uses[replacement.use.index];
                 const nri::UpdateDescriptorRangeDesc
                     update{pass.private_descriptors, use.binding, use.element, destination, 1};
                 core.UpdateDescriptorRanges(&update, 1);
                 pass.history_views[replacement.use.index] = nullptr;
-                const auto history = graph_.resources()[use.resource].history;
-                if (history != kGraphInvalidIndex) frame_.pending_history_views.mark(history);
+                const auto history = recordingGraph().resources()[use.resource].history;
+                if (history != kGraphInvalidIndex) pending_history_views.mark(history);
             }
             else
             {
-                *std::ranges::find(frame_.native.views, previous) = replacement.descriptor;
+                *std::ranges::find(native.views, previous) = replacement.descriptor;
             }
             core.DestroyDescriptor(previous);
         }
-        for (auto* previous : selected->views)
-        {
-            std::erase(frame_.native.views, previous);
-            core.DestroyDescriptor(previous);
-        }
-        selected->views = std::move(layer_views);
-        frame_.native.views.insert(frame_.native.views.end(), selected->views.begin(), selected->views.end());
+        for (auto* previous : selected.views) core.DestroyDescriptor(previous);
+        selected.views = std::move(layer_views);
         if (replace_image)
         {
             std::vector<nri::Descriptor*> stream_views;
-            frame_.native.collectRasterViews(nullptr, binding.image, stream_views);
+            collectRasterViews(nullptr, binding.image, stream_views);
             for (auto* view : stream_views) core.DestroyDescriptor(view);
-            *std::ranges::find(frame_.native.images, binding.image) = image;
-            auto* old_image = binding.image;
+            auto* old_image = std::exchange(selected.texture, image);
             binding.select(nullptr, image, core);
             core.DestroyTexture(old_image);
             // Runtime-layer uses are whole-resource. Each compiled transition spans all nominal layers.
-            for (const auto [pass, index] : compiled.barrier_uses)
+            for (const auto index : compiled.barrier_uses)
             {
-                auto& barrier = frame_.passes[pass].images[index];
+                auto& barrier = entry_images[index];
                 barrier.texture = binding.image;
                 barrier.layerNum = static_cast<nri::Dim_t>(layers);
             }
-            for (const auto index : compiled.final_barrier_uses)
+            for (const auto index : compiled.exit_barrier_uses)
             {
-                frame_.final_images[index].texture = binding.image;
-                frame_.final_images[index].layerNum = static_cast<nri::Dim_t>(layers);
+                exit_images[index].texture = binding.image;
+                exit_images[index].layerNum = static_cast<nri::Dim_t>(layers);
             }
         }
         rollback.release();
         return {};
     }
 
-    RenderResult<void> RasterFramePreparation::prepareSections() noexcept
+    RenderResult<void> FrameResources::prepareSections(DeviceSession& session, std::span<const RasterDrawInput> draws) noexcept
     {
-        for (auto& image : frame_.layered_images) image.requested_layers = 0;
+        for (auto& image : native.layered_images) image.requested_layers = 0;
 
-        for (const auto p : graph_.recordingDependencies().producer_passes)
+        for (const auto& program : recordingGraph().programs().rasterStreams())
         {
-            const auto* program = graph_.programs().rasterStream(p);
-            if (!program) continue;
-            const auto& stream = draws_[program->list];
+            const auto p = program.pass;
+            if (program.resource_list && !passEnabled(recordingGraph().passes()[p])) continue;
+            const auto& stream = draws[program.list];
             if (!stream.written) return cxx::unexpected(RenderError{kFrameContract, {p}});
-            const auto layer_count = static_cast<std::uint32_t>(stream.sections.size());
-            const auto limit = session_.description().dimensions.textureLayerMaxNum;
+            const auto layer_count = static_cast<std::uint32_t>(stream.data.sections.size());
+            const auto limit = session.description().dimensions.textureLayerMaxNum;
             if (layer_count > limit) return cxx::unexpected(RenderError{kGraphInvalidRange, {p, layer_count}});
 
             const auto matchesLayers = [&](const ResourceAccess& access) noexcept
             {
-                const auto resource = access.version.resource;
-                const auto& desc = std::get<GraphImageDesc>(graph_.resources()[resource.index].description);
+                const auto& resource = recordingGraph().resources()[access.version.resource.index];
+                const auto& desc = std::get<GraphImageDesc>(resource.description);
                 const auto& range = std::get<GraphImageRange>(access.range);
                 if (!desc.runtime_layers) return !layer_count || range.layer_count == layer_count;
-                if (!layer_count) return false;
-                const auto image = std::ranges::find(
-                    frame_.layered_images, resource, &FrameResources::LayeredImage::resource
-                );
-                if (image == frame_.layered_images.end()) return false;
-                if (image->requested_layers && image->requested_layers != layer_count) return false;
-                image->requested_layers = layer_count;
+                if (!layer_count || resource.layer_slot == kGraphInvalidIndex) return false;
+                auto& image = native.layered_images[resource.layer_slot];
+                if (image.requested_layers && image.requested_layers != layer_count) return false;
+                image.requested_layers = layer_count;
                 return true;
             };
             const auto validAttachment = [&](const RasterAttachment& attachment) noexcept
             {
                 return matchesLayers(attachment.access) && (!attachment.resolve || matchesLayers(*attachment.resolve));
             };
-            const auto& scope = *graph_.recordingProgram().rasterScope(*frame_.passes[p].compiled_pass);
-            if (scope.section_depth_bias && stream.sections.empty())
+            const auto& scope = *recordingGraph().recordingProgram().rasterScope(*passes[p].compiled_pass);
+            if (scope.section_depth_bias && stream.data.sections.empty())
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor, {p}});
             const bool compatible = std::ranges::all_of(scope.colors, validAttachment) &&
                 (!scope.depth || validAttachment(*scope.depth));
             if (!compatible) return cxx::unexpected(RenderError{kGraphInvalidRange, {p, layer_count}});
             if (!layer_count) continue;
 
-            auto& seen = frame_.stream_layers_seen;
+            auto& seen = stream_layers_seen;
             seen.assign(layer_count, 0);
             std::uint32_t next_draw = 0;
-            for (const auto& section : stream.sections)
+            for (const auto& section : stream.data.sections)
             {
                 const bool covers_next_draws =
-                    section.draws.first == next_draw && section.draws.fits(stream.draws.size());
+                    section.draws.first == next_draw && section.draws.fits(stream.data.draws.size());
                 const bool new_layer = section.layer < layer_count && !seen[section.layer];
                 if (!covers_next_draws || !new_layer)
                     return cxx::unexpected(RenderError{kGraphInvalidRange, {p, section.layer}});
@@ -289,64 +264,91 @@ namespace lux::render::detail
                 next_draw += section.draws.count;
                 seen[section.layer] = 1;
             }
-            if (next_draw != stream.draws.size())
+            if (next_draw != stream.data.draws.size())
                 return cxx::unexpected(RenderError{kGraphInvalidRange, {p, next_draw}});
         }
 
         // Every stream has agreed on the shape before any native attachment is replaced.
-        for (const auto& image : frame_.layered_images)
+        for (auto& image : native.layered_images)
         {
             if (!image.requested_layers) continue;
-            if (auto selection = resizeLayers(image.resource, image.requested_layers); !selection)
+            if (auto selection = resizeLayers(session, image); !selection)
                 return cxx::unexpected(selection.error());
         }
         return {};
     }
 
     RenderResult<void>
-    RasterFramePreparation::materializeSections(std::uint32_t p, const RasterDrawInput& stream) noexcept
+    FrameResources::materializeSections(DeviceSession& session, std::uint32_t p, const RasterDrawInput& stream) noexcept
     {
-        auto& candidate = frame_.stream_scratch;
-        candidate.has_explicit_sections = !stream.sections.empty();
+        auto& candidate = stream_scratch;
+        candidate.has_explicit_sections = !stream.data.sections.empty();
         candidate.sections.clear();
         candidate.colors.clear();
-        if (!candidate.has_explicit_sections) return {};
+        if (!candidate.has_explicit_sections && candidate.packets.empty()) return {};
 
-        const auto& pass = frame_.passes[p];
-        const auto& scope = *graph_.recordingProgram().rasterScope(*pass.compiled_pass);
+        const auto& pass = passes[p];
+        const auto& scope = *recordingGraph().recordingProgram().rasterScope(*pass.compiled_pass);
         const auto& first = scope.colors.empty() ? *scope.depth : scope.colors.front();
         const auto& first_range = std::get<GraphImageRange>(first.access.range);
-        const auto& core = session_.nriCore();
-        const auto* image = frame_.bindings[first.access.version.resource.index].image;
+        const auto& core = session.nriCore();
+        const auto* image = bindings[first.access.version.resource.index].image;
         if (!image) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
-        const auto& info = *frame_.bindings[first.access.version.resource.index].image_description;
+        const auto& info = *bindings[first.access.version.resource.index].image_description;
         const auto width = std::max(1u, std::uint32_t(info.width) >> first_range.first_mip);
         const auto height = std::max(1u, std::uint32_t(info.height) >> first_range.first_mip);
-        const auto& default_viewport = scope.viewport ? *scope.viewport : frame_.viewport;
+        const auto& default_viewport = scope.viewport ? *scope.viewport : this->viewport;
+
+        const auto clipDraws = [&](RasterStreamRange range, const RasterViewport& viewport) noexcept -> RenderResult<void>
+        {
+            const auto x = static_cast<std::int32_t>(viewport.x * width);
+            const auto y = static_cast<std::int32_t>(viewport.y * height);
+            const auto right = x + static_cast<std::int32_t>(viewport.width * width);
+            const auto bottom = y + static_cast<std::int32_t>(viewport.height * height);
+            for (std::size_t i = range.first; i < std::size_t(range.first) + range.count; ++i)
+            {
+                const auto& clip = stream.data.draws[i].clip;
+                const auto left = clip ? std::max(x, clip->left) : x;
+                const auto top = clip ? std::max(y, clip->top) : y;
+                const auto end_x = clip ? std::min(right, clip->right) : right;
+                const auto end_y = clip ? std::min(bottom, clip->bottom) : bottom;
+                auto& rect = candidate.packets[i].scissor;
+                if (end_x <= left || end_y <= top)
+                {
+                    rect = {};
+                    continue;
+                }
+                constexpr auto max_origin = std::numeric_limits<std::int16_t>::max();
+                if (left > max_origin || top > max_origin)
+                    return cxx::unexpected(RenderError{kGraphInvalidRange, {p, i}});
+                rect = {
+                    static_cast<std::int16_t>(left), static_cast<std::int16_t>(top),
+                    static_cast<nri::Dim_t>(end_x - left), static_cast<nri::Dim_t>(end_y - top)
+                };
+            }
+            return {};
+        };
+        if (!candidate.has_explicit_sections)
+            return clipDraws({0, static_cast<std::uint32_t>(candidate.packets.size())}, default_viewport);
 
         const auto sliceView = [&](const ResourceAccess& access, bool depth, std::uint32_t layer,
                                    nri::Descriptor*& view) noexcept -> RenderResult<void>
         {
             if (!view) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
             const auto resource = access.version.resource;
-            const auto& desc = std::get<GraphImageDesc>(graph_.resources()[resource.index].description);
-            if (desc.runtime_layers)
+            const auto layer_slot = recordingGraph().resources()[resource.index].layer_slot;
+            if (layer_slot != kGraphInvalidIndex)
             {
-                const auto image = std::ranges::find(
-                    frame_.layered_images, resource, &FrameResources::LayeredImage::resource
-                );
-                if (image == frame_.layered_images.end() || layer >= image->views.size())
-                    return cxx::unexpected(RenderError{kFrameContract, {p, layer}});
-                view = image->views[layer];
+                view = native.layered_images[layer_slot].views[layer];
                 return {};
             }
             auto range = std::get<GraphImageRange>(access.range);
             if (range.layer_count == 1) return {};
             range.first_layer += layer;
             range.layer_count = 1;
-            auto* texture = frame_.bindings[access.version.resource.index].image;
+            auto* texture = bindings[access.version.resource.index].image;
             if (!texture) return cxx::unexpected(RenderError{kDeviceArgument, {p}});
-            auto& views = frame_.native.raster_attachment_views;
+            auto& views = this->native.raster_attachment_views;
             const auto found = std::ranges::find_if(views, [&](const auto& entry) noexcept
             {
                 return entry.image == texture && entry.range == range && entry.depth == depth;
@@ -356,7 +358,7 @@ namespace lux::render::detail
                 view = found->view;
                 return {};
             }
-            const auto& native = *frame_.bindings[resource.index].image_description;
+            const auto& native = *bindings[resource.index].image_description;
             const auto kind = depth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT;
             const nri::TextureViewDesc description{
                 texture, kind, native.format, static_cast<nri::Dim_t>(range.first_mip), 1,
@@ -378,7 +380,7 @@ namespace lux::render::detail
             return {};
         };
 
-        for (const auto& selected : stream.sections)
+        for (const auto& selected : stream.data.sections)
         {
             RasterDrawList::Section section;
             section.first_color = static_cast<std::uint32_t>(candidate.colors.size());
@@ -391,16 +393,7 @@ namespace lux::render::detail
                 viewport.x * width, viewport.y * height, viewport.width * width, viewport.height * height,
                 viewport.min_depth, viewport.max_depth, true
             };
-            const auto& v = section.viewport;
-            const auto max_origin = std::numeric_limits<std::int16_t>::max();
-            if (v.x > max_origin || v.y > max_origin)
-                return cxx::unexpected(RenderError{kGraphInvalidRange, {p, selected.layer}});
-            const nri::Rect scissor{
-                static_cast<std::int16_t>(v.x), static_cast<std::int16_t>(v.y),
-                static_cast<nri::Dim_t>(v.width), static_cast<nri::Dim_t>(v.height)
-            };
-            for (auto& packet : std::span{candidate.packets}.subspan(section.first_draw, section.draw_count))
-                packet.scissor = scissor;
+            if (auto clipped = clipDraws(selected.draws, viewport); !clipped) return clipped;
             if (selected.depth_bias)
             {
                 section.depth_bias = nri::DepthBiasDesc{selected.depth_bias->constant, 0, selected.depth_bias->slope};

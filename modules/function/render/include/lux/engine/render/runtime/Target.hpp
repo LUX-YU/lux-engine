@@ -15,6 +15,8 @@ namespace lux::render
         SURFACE
     };
 
+    enum class EDisplayMode : std::uint8_t { SDR, HDR };
+
     // Immutable Effect output contract. Actual pixel dimensions belong to Target and Instance.
     struct EffectOutputDesc final
     {
@@ -37,6 +39,8 @@ namespace lux::render
         std::uint32_t           samples{1};
         ETargetKind             kind{ETargetKind::OFFSCREEN};
         bool                    sampled = false; // Allows graph consumers to borrow the execution layer's published output.
+
+        EDisplayMode display_mode = EDisplayMode::SDR; // Surface presentation only. Offscreen color follows its format.
 
         [[nodiscard]] GraphOutputRequirements graphRequirements() const noexcept
         {
@@ -87,7 +91,7 @@ namespace lux::render
     >;
 
     // Borrowed platform window, retained until RemoveTarget completes (or RenderServer joins).
-    // No Window/UI object crosses the protocol. The first path is SDR; WAITABLE/HDR are not implied.
+    // No Window/UI object crosses the protocol. TargetDesc selects the display mode.
     struct SurfaceDescription final
     {
         VSurfaceWindow window;

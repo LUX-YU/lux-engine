@@ -6,19 +6,19 @@
 
 namespace lux::render::runtime_detail
 {
-    void CommandRegistry::publishNodeCommands(const EffectNodeDefinition& node, std::vector<CommandId> commands) noexcept
+    void CommandRegistry::publishNodeCommands(const EffectCapability& node, std::vector<CommandId> commands) noexcept
     {
         if (!commands.empty()) node_commands_.emplace(&node, std::move(commands));
     }
 
     void CommandRegistry::publishImplementationBindings(
-        const EffectImplementation& implementation, std::vector<CommandBindingLocation> bindings
+        const ImplementationEntry& implementation, std::vector<CommandBindingLocation> bindings
     ) noexcept
     {
         if (!bindings.empty()) implementation_bindings_.emplace(&implementation, std::move(bindings));
     }
 
-    std::span<const CommandId> CommandRegistry::nodeCommands(const EffectNodeDefinition& node) const noexcept
+    std::span<const CommandId> CommandRegistry::nodeCommands(const EffectCapability& node) const noexcept
     {
         const auto found = node_commands_.find(&node);
         if (found == node_commands_.end()) return {};
@@ -26,7 +26,7 @@ namespace lux::render::runtime_detail
     }
 
     std::span<const CommandBindingLocation>
-    CommandRegistry::effectBindings(const EffectImplementation& implementation) const noexcept
+    CommandRegistry::effectBindings(const ImplementationEntry& implementation) const noexcept
     {
         const auto found = implementation_bindings_.find(&implementation);
         if (found == implementation_bindings_.end()) return {};
@@ -85,7 +85,9 @@ namespace lux::render::runtime_detail
             const auto& binding = bindings[i];
             const bool invalid_route =
                 !binding.valid() || !binding.isResourceCommand() || binding.handlerType().isValid();
-            if (invalid_route || binding.storageType() != storage)
+            const auto receiver = binding.storageType();
+            const bool wrong_receiver = receiver != storage || receiver.name() != storage.name();
+            if (invalid_route || wrong_receiver)
             {
                 return cxx::unexpected(RenderError{kCommandContract});
             }

@@ -1,5 +1,7 @@
+#include "JointAverage.hpp"
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
+#include <lux/engine/render/resource/view/Resource.hpp>
 #include <exec/create.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
@@ -7,10 +9,10 @@
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/effect/EffectCatalog.hpp>
 #include <lux/engine/render/effect/EffectDiagnostic.hpp>
-#include <lux/engine/render/effect/builtin/GBuffer.hpp>
-#include <lux/engine/render/effect/builtin/Lighting.hpp>
-#include <lux/engine/render/effect/builtin/Shadow.hpp>
-#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredGeometry.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredLighting.hpp>
+#include <lux/engine/render/effect/capabilities/ShadowRendering.hpp>
+#include <lux/engine/render/effect/capabilities/ToneMapping.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectInitializationContext.hpp>
@@ -377,14 +379,6 @@ struct WorkspaceProbe
 static_assert(!PreparationKernel<WorkspaceProbe<int&>>);
 static_assert(!PreparationKernel<WorkspaceProbe<const int>>);
 
-struct InvalidSelection : WorkspaceProbe<int>
-{
-    static void invalidBuild(const LinkedData&, RasterProgramBuildContext&) noexcept;
-};
-
-template <class T>
-concept AcceptsInvalidBuild = requires { RasterProgramBuilder::make<T, &T::invalidBuild>(); };
-
 template <class Kernel, class Config>
 concept CanDeclareCpuCall = requires(EffectCompileContext& context, Config config)
 {
@@ -393,22 +387,19 @@ concept CanDeclareCpuCall = requires(EffectCompileContext& context, Config confi
 
 static_assert(CanDeclareCpuCall<ClearPreparation, ClearPreparation::Configuration>);
 static_assert(!CanDeclareCpuCall<ClearPreparation, std::string>);
-static_assert(CanDeclareCpuCall<InvalidSelection, InvalidSelection::Configuration>);
 
-static_assert(PreparationKernel<InvalidSelection>);
-static_assert(!AcceptsInvalidBuild<InvalidSelection>);
 
 static constexpr std::string_view clear_node = "test.effect.clear";
 static constexpr std::string_view clear_resource = "scene_state";
 static constexpr auto clear_color = effectPortSemantic("color");
 
-static EffectNodeDefinition clearDefinition()
-{
-    return {
-        .identity = {graph::nodeTypeId(clear_node), std::string{clear_node}, 1},
-        .ports = {{clear_color, "color", {std::string{ToneMapping::display_type}, 1}, graph::EPinDirection::OUTPUT}}
-    };
-}
+inline constexpr EffectPortDefinition kClearCapabilityPorts[]{{clear_color, "color", {kDisplayColorType, 1}, graph::EPinDirection::OUTPUT}};
+
+inline constexpr EffectCapability kClearCapability{
+    .id = graph::nodeTypeId(clear_node), .canonical_name = clear_node, .ports = kClearCapabilityPorts
+};
+
+static_assert(kClearCapability.ports.front().semantic == clear_color);
 
 static bool usesNamedInputs(std::string_view args) noexcept
 {
@@ -417,7 +408,18 @@ static bool usesNamedInputs(std::string_view args) noexcept
 
 static void registerClearNode(RenderServer& server)
 {
-    CHECK(server.registerEffectCapability(clearDefinition()));
+    {
+        std::string name{clear_node}, display{"SDK clear"}, port_name{"color"}, value_type{kDisplayColorType};
+        const std::array ports{outputPort(port_name, {value_type, 1})};
+        const EffectCapability description{
+            .id = graph::nodeTypeId(name), .canonical_name = name, .display_name = display, .ports = ports
+        };
+        CHECK(server.registerEffectCapability(description));
+        name.assign(name.size(), 'x');
+        display.clear();
+        port_name.clear();
+        value_type.clear();
+    }
     EffectImplementation implementation;
     implementation.capability = graph::nodeTypeId(clear_node);
     implementation.identity = {std::string{clear_node}, 1};
@@ -438,8 +440,28 @@ static void registerClearNode(RenderServer& server)
         }
         const auto* color = context.configuration<std::array<float, 4>>();
         if (!color) return cxx::unexpected(RenderError{kInvalidConfig});
+        if (args == "sample-target")
+        {
+            const auto source = take(context.importTargetImage("source", rdesc::ETextureFormat::RGBA8_UNORM));
+            GraphImageDesc image{32, 32, 1, 1, rdesc::ETextureFormat::RGBA16_SFLOAT};
+            image.extent.source = EImageExtentSource::TARGET;
+            const auto sampled = take(context.declareResource({"sampled image", image}));
+            const auto output = take(context.declareResource({"sampled output", image}));
+            ComputeWork sample;
+            sample.interface.program = take(context.addProgram(GraphProgram{kJointAverage.load(context.shaderTarget())}));
+            sample.interface.resources = {
+                {"first_image", {source}}, {"second_image", {source}},
+                {"generated", {{sampled, 0}, {}, EGraphAccess::WRITE}}
+            };
+            sample.dispatch = ImageDispatchArguments{sampled};
+            const auto read = take(context.addComputePass("sample producer", std::move(sample)));
+            const auto copy = take(context.addTransferPass(
+                "publish sampled pixels", TransferWork{{lux::render::CopyImage{{read.written.front()}, {{output, 0}}}}}
+            ));
+            return context.publish(clear_color, {{clear_color, copy.written.front()}});
+        }
         const auto state = take(context.importStorageSnapshot<bool>(
-            clear_resource, {ResourceName{ColdResource::descriptor.type.name()}}
+            clear_resource, ColdResource::descriptor.type
         ));
         GraphImageDesc image{32, 32, 1, 1, rdesc::ETextureFormat::RGBA8_UNORM};
         image.extent.source = EImageExtentSource::TARGET;
@@ -450,7 +472,7 @@ static void registerClearNode(RenderServer& server)
         if (usesNamedInputs(args))
         {
             const auto other = take(context.importStorageSnapshot<bool>(
-                "companion", {ResourceName{ColdResource::descriptor.type.name()}}
+                "companion", ColdResource::descriptor.type
             ));
             const std::array words{
                 take(context.declareCpuData<std::int32_t>()), take(context.declareCpuData<std::uint32_t>())
@@ -475,7 +497,7 @@ static void registerClearNode(RenderServer& server)
             if (args == "missing-frame-input") uses.storage_inputs.clear();
             if (args == "wrong-frame-input")
                 uses.storage_inputs[0] = take(context.importStorageSnapshot<std::uint32_t>(
-                    "different type", {ResourceName{ColdResource::descriptor.type.name()}}
+                    "different type", ColdResource::descriptor.type
                 ));
             if (auto added = context.addCpuCall<ClearPreparation>(true, std::move(uses)); !added) return added;
         }
@@ -489,7 +511,7 @@ static CreateEffectRequest clearEffect(std::string arguments = std::string{})
     CreateEffectRequest request;
     request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*request.graph};
-    const auto node = take(edit.addNode(clearDefinition(), {std::string{clear_node}, 1}, std::move(arguments)));
+    const auto node = take(edit.addNode(kClearCapability, {std::string{clear_node}, 1}, std::move(arguments)));
     CHECK(edit.setOutput("color", edit.pinId(node, clear_color), true));
     CHECK(edit.commit());
     return request;
@@ -507,21 +529,21 @@ static CreateEffectRequest deferredEffect(bool shadows, bool clustered)
     CreateEffectRequest request;
     request.graph = std::make_unique<EffectGraph>();
     EffectGraphEdit edit{*request.graph};
-    const auto gbuffer = take(edit.addNode(GBuffer::definition(), {std::string{GBuffer::indexed}, GBuffer::version}));
+    const auto gbuffer = take(edit.addNode(capabilities::DeferredGeometry, {std::string{"lux.render.gbuffer.indexed"}, capabilities::DeferredGeometry.version}));
     const auto lighting = take(edit.addNode(
-        Lighting::definition(), {std::string{clustered ? Lighting::clustered : Lighting::direct}, Lighting::version}
+        capabilities::DeferredLighting, {std::string{clustered ? "lux.render.lighting.deferred.clustered" : "lux.render.lighting.deferred.direct"}, capabilities::DeferredLighting.version}
     ));
     const auto tone = take(edit.addNode(
-        ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+        capabilities::ToneMapping, {std::string{"lux.render.tone_mapping.linear"}, capabilities::ToneMapping.version}
     ));
-    CHECK(edit.connect(edit.pinId(gbuffer, GBuffer::surface), edit.pinId(lighting, Lighting::surface)));
+    CHECK(edit.connect(edit.pinId(gbuffer, DeferredGeometryPorts::surface.semantic), edit.pinId(lighting, DeferredLightingPorts::surface.semantic)));
     if (shadows)
     {
-        const auto shadow = take(edit.addNode(Shadow::definition(), {std::string{Shadow::indexed}, Shadow::version}));
-        CHECK(edit.connect(edit.pinId(shadow, Shadow::shadows), edit.pinId(lighting, Lighting::shadows)));
+        const auto shadow = take(edit.addNode(capabilities::ShadowRendering, {std::string{"lux.render.shadow.indexed"}, capabilities::ShadowRendering.version}));
+        CHECK(edit.connect(edit.pinId(shadow, ShadowRenderingPorts::shadows.semantic), edit.pinId(lighting, DeferredLightingPorts::shadows.semantic)));
     }
-    CHECK(edit.connect(edit.pinId(lighting, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
-    CHECK(edit.setOutput("color", edit.pinId(tone, ToneMapping::color), true));
+    CHECK(edit.connect(edit.pinId(lighting, DeferredLightingPorts::hdr.semantic), edit.pinId(tone, ToneMappingPorts::hdr_color.semantic)));
+    CHECK(edit.setOutput("color", edit.pinId(tone, ToneMappingPorts::color.semantic), true));
     CHECK(edit.commit());
     return request;
 }
@@ -671,72 +693,19 @@ static void profileJobRounds(
     const TargetDesc target{32, 32, rdesc::ETextureFormat::RGBA8_UNORM};
     std::vector<Job> jobs;
     jobs.reserve(job_count);
-    const auto create_jobs = [&](std::size_t target_count)
+    const auto begin = Clock::now();
+    while (jobs.size() < job_count)
     {
-        const auto begin = Clock::now();
-        while (jobs.size() < target_count)
-        {
-            const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
-            const auto output = call<CreateTarget>(client, {session, target});
-            CHECK(!created.error.type && !output.error.type);
-            CHECK(!call<StartRenderJob>(client, {session, created.job, output.target, binding}).error.type);
-            jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
-        }
-        return std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
-    };
-    const auto initial_setup = create_jobs(3);
+        const auto created = call<CreateRenderJob>(client, {scene, view, effect, EJobCadence::REQUESTED});
+        const auto output = call<CreateTarget>(client, {session, target});
+        CHECK(!created.error.type && !output.error.type);
+        CHECK(!call<StartRenderJob>(client, {session, created.job, output.target, binding}).error.type);
+        jobs.push_back({created.job, output.target, take(ipc::IpcCore::instance().createRequester(channel))});
+    }
+    const auto setup_elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
     const std::array names{CommandName{RequestRenderJob::name}};
     const auto command = call<QueryCommandIds>(client, names).ids.front();
-    const auto verify_ancestry = [&]
-    {
-        CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {jobs[0].id}, {}}).error.type);
-        CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {jobs[1].id}, {}}).error.type);
-        CHECK(!call<StopRenderJob>(client, jobs[1].id).error.type);
-        auto park = take(ipc::IpcCore::instance().createRequester(channel));
-        auto& first = jobs[0];
-        auto& last = jobs[2];
-        const auto frame = [&]
-        {
-            ParkDispatch::entered = false;
-            ParkDispatch::pending = true;
-            const auto parked = send<ParkDispatch>(park, {});
-            const auto deadline = Clock::now() + std::chrono::seconds(10);
-            while (!ParkDispatch::entered.load())
-            {
-                CHECK(Clock::now() < deadline);
-                std::this_thread::yield();
-            }
-            // Demand arrives in reverse order. Native acceptance must still follow A -> C.
-            const auto c = sendBound<RequestRenderJob>(last.wire, command, {last.id});
-            const auto a = sendBound<RequestRenderJob>(first.wire, command, {first.id});
-            ParkDispatch::pending = false;
-            ParkDispatch::pending.notify_all();
-            CHECK(!receive<ParkDispatch>(park, parked).error.type);
-            return std::pair{receive<RequestRenderJob>(first.wire, a), receive<RequestRenderJob>(last.wire, c)};
-        };
-        const auto before = Monitor::accepted_submits.load();
-        const auto [submitted_a, submitted_c] = frame();
-        CHECK(!submitted_a.error.type && !submitted_c.error.type);
-        CHECK(submitted_a.frame_index == submitted_c.frame_index && submitted_a.slot_index == submitted_c.slot_index);
-        CHECK(Monitor::accepted_submits == before + 2);
-        Monitor::injected = nri::Result::INVALID_ARGUMENT;
-        Monitor::reject_after = 2;
-        const auto [accepted, rejected] = frame();
-        CHECK(!accepted.error.type && accepted.job == first.id && rejected.error.type == kDeviceFailure);
-        CHECK(Monitor::accepted_submits == before + 3);
-        const auto [recovered_a, recovered_c] = frame();
-        CHECK(!recovered_a.error.type && !recovered_c.error.type && Monitor::accepted_submits == before + 5);
-        std::printf("JOB_ANCESTRY native_acceptance=2,1,2 rejection=%llu same_frame_and_slot=1\n", rejected.error.type);
-        CHECK(!call<SetRenderJobDependencies>(client, {jobs[2].id, {}, {}}).error.type);
-        CHECK(!call<SetRenderJobDependencies>(client, {jobs[1].id, {}, {}}).error.type);
-        CHECK(!call<StartRenderJob>(client, {session, jobs[1].id, jobs[1].target, binding}).error.type);
-    };
-    verify_ancestry();
-    const auto setup_elapsed = initial_setup + create_jobs(job_count);
-    for (unsigned i = 1; i < job_count; ++i)
-        if (i % 16 < 4 && i % 16 != 0)
-            CHECK(!call<SetRenderJobDependencies>(client, {jobs[i].id, {jobs[i - 1].id}, {}}).error.type);
-    std::printf("JOB_SETUP jobs=%u create_and_start_ms=%.6f dormant_ancestry=passed\n", job_count, setup_elapsed);
+    std::printf("JOB_SETUP jobs=%u create_and_start_ms=%.6f\n", job_count, setup_elapsed);
     struct Load final
     {
         std::string_view name;
@@ -956,14 +925,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     const auto [merged_first, merged_second] = batch(job.job, other_job);
     CHECK(!merged_first.error.type && !merged_second.error.type && merged_first.frame_index == merged_second.frame_index);
     CHECK(accepted() == merge_before + 1 && Monitor::records == 2 && Monitor::parallel_arrivals == 2);
-    CHECK(call<SetRenderJobDependencies>(client, {other_job, {job.job}, {}}).error.type == 0);
-    Monitor::parallel_arrivals.store(0);
-    const auto ordered_before = accepted();
-    const auto [ordered_first, ordered_second] = batch(job.job, other_job);
-    CHECK(!ordered_first.error.type && !ordered_second.error.type && ordered_first.frame_index == ordered_second.frame_index);
-    CHECK(accepted() == ordered_before + 2 && Monitor::parallel_arrivals == 2);
     Monitor::require_overlap.store(false);
-    CHECK(call<SetRenderJobDependencies>(client, {other_job, {}, {}}).error.type == 0);
     auto holding = take(ipc::IpcCore::instance().createRequester(config.channel_name));
     const auto held = send<HoldSceneResource>(holding, cold);
     const auto hold_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -976,8 +938,8 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     const auto blocked_run = sendBound<RequestRenderJob>(second_wire, job_command, {job.job});
     const auto independent = call<RequestRenderJob>(client, {other_job});
     CHECK(independent.error.type == 0 && independent.job == other_job);
-    CHECK(call<QueryExecutionProgress>(client, job.job).progress.count(EExecutionOutcome::EXECUTED) == 2);
-    CHECK(call<QueryExecutionProgress>(client, other_job).progress.count(EExecutionOutcome::EXECUTED) == 3);
+    CHECK(call<QueryExecutionProgress>(client, job.job).progress.count(EExecutionOutcome::EXECUTED) == 1);
+    CHECK(call<QueryExecutionProgress>(client, other_job).progress.count(EExecutionOutcome::EXECUTED) == 2);
     const auto retired_before = Monitor::retired_textures.load();
     CHECK(call<RemoveTarget>(client, other_target).error.type == kDeviceBusy);
     CHECK(!call<StopRenderJob>(client, other_job).error.type);
@@ -993,7 +955,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     CHECK(receive<HoldSceneResource>(holding, held).error.type == 0);
     CHECK(receive<RequestRenderJob>(second_wire, blocked_run).job == job.job);
     holding.reset();
-    const auto sealed = server->registerEffectCapability(clearDefinition());
+    const auto sealed = server->registerEffectCapability(kClearCapability);
     CHECK(!sealed && sealed.error().type == kCapabilityInUse);
     std::puts("SERVER INTERLEAVE PASS: IPC, exclusive Resource, unrelated Job and GPU retirement before terminal delivery");
     CHECK(call<RemoveRenderJob>(client, other_job).error.type == 0);
@@ -1004,7 +966,7 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     const auto next = call<RequestRenderJob>(client, {job.job});
     CHECK(next.error.type == 0 && next.job == job.job);
     CHECK(Monitor::records == records_before_resize + 1);
-    std::puts("PARALLEL RECORD PASS: two overlapping batches, merged without an edge, ordered with an edge");
+    std::puts("PARALLEL RECORD PASS: independent Jobs recorded concurrently and shared one native submit");
 
     const auto texture_store = call<GetOrCreateResource>(client, {session, DeviceScope{}, kTextureResourceName});
     CHECK(texture_store.error.type == 0);
@@ -1050,10 +1012,24 @@ static void recordClearGraph(execution::ExecutionRuntime& execution, DeviceOptio
     uploads.reset();
     std::puts("INDEPENDENT UPLOAD PASS: frame recorded during held upload, 8 MiB completed across staging windows");
 
-    const auto suffix_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM}}).target;
-    const auto suffix = call<CreateRenderJob>(client, {scene, view, effect.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<StartRenderJob>(client, {session, suffix, suffix_target, binding}).error.type == 0);
-    CHECK(call<SetRenderJobDependencies>(client, {suffix, {job.job}, {}}).error.type == 0);
+    auto sampled_request = clearEffect();
+    sampled_request.output = {rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN, true};
+    const auto sampled_effect = call<CreateEffect>(client, std::move(sampled_request)).effect;
+    CHECK(!call<PrepareEffect>(client, {sampled_effect, session}).error.type);
+    const auto sampled_target = call<CreateTarget>(client, {
+        session, {32, 32, rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN, true}
+    }).target;
+    CHECK(!call<RebindRenderJobEffect>(client, {session, job.job, sampled_effect, sampled_target, binding}).error.type);
+
+    auto sample_request = clearEffect("sample-target");
+    sample_request.output.format = rdesc::ETextureFormat::RGBA16_SFLOAT;
+    const auto sample_effect = call<CreateEffect>(client, std::move(sample_request)).effect;
+    CHECK(!call<PrepareEffect>(client, {sample_effect, session}).error.type);
+    const auto suffix_target = call<CreateTarget>(client, {session, {32, 32, rdesc::ETextureFormat::RGBA16_SFLOAT}}).target;
+    const auto suffix = call<CreateRenderJob>(client, {scene, view, sample_effect, EJobCadence::REQUESTED}).job;
+    JobBinding consumer;
+    consumer.target_images = {{sampled_target, "source", EProductRead::CURRENT_RUN}};
+    CHECK(!call<StartRenderJob>(client, {session, suffix, suffix_target, std::move(consumer)}).error.type);
     const auto executed = [&](RenderJobId id)
     {
         return call<QueryExecutionProgress>(client, id).progress.count(EExecutionOutcome::EXECUTED);
@@ -1236,21 +1212,17 @@ static void verifyDeviceOwnership(
     CHECK(!call<PrepareEffect>(client, {effect, second.device}).error.type);
     const auto job_a = make_job();
     const auto job_b = make_job();
-    const auto dormant = make_job();
     CHECK(call<StartRenderJob>(client, {second.device, job_a, a.target}).error.type == kJobState);
     const auto binding_a = clearBinding(resource_a);
     const auto binding_b = clearBinding(resource_b);
     auto foreign_image = binding_a;
-    foreign_image.target_images.push_back({.target = imported.target, .binding = "foreign"});
+    foreign_image.target_images.push_back({.target = imported.target, .binding = "foreign", .read = EProductRead::LATEST_PUBLISHED});
     CHECK(call<StartRenderJob>(client, {first, job_a, a.target, foreign_image}).error.type == kJobState);
     CHECK(call<StartRenderJob>(client, {first, job_a, a.target, binding_b}).error.type == kStorageMismatch);
     CHECK(!call<StartRenderJob>(client, {first, job_a, a.target, binding_a}).error.type);
     CHECK(!call<StartRenderJob>(client, {second.device, job_b, b.target, binding_b}).error.type);
     CHECK(call<RebindRenderJobEffect>(client, {second.device, job_a, effect, b.target}).error.type == kJobState);
     CHECK(call<RebindRenderJobEffect>(client, {first, job_a, effect, a.target, foreign_image}).error.type == kJobState);
-    CHECK(call<SetRenderJobDependencies>(client, {job_b, {job_a}, {}}).error.type == kJobState);
-    CHECK(!call<SetRenderJobDependencies>(client, {dormant, {job_a}, {}}).error.type);
-    CHECK(call<SetRenderJobDependencies>(client, {job_b, {dormant}, {}}).error.type == kJobState);
     CHECK(!call<RequestRenderJob>(client, {job_a}).error.type);
 
     const auto textures = call<GetOrCreateResource>(client, {second.device, DeviceScope{}, kTextureResourceName});
@@ -1267,7 +1239,7 @@ static void verifyDeviceOwnership(
     CHECK(!call<TextureCommands::Release>(client, {texture.texture}).error.type);
 
     CHECK(call<RemoveDeviceSession>(client, second.device).error.type == kDeviceBusy);
-    for (auto id : {job_a, job_b, dormant})
+    for (auto id : {job_a, job_b})
     {
         CHECK(!call<StopRenderJob>(client, id).error.type);
         CHECK(!call<RemoveRenderJob>(client, id).error.type);
@@ -1556,10 +1528,10 @@ int main(int argc, char** argv)
     CHECK(catalog.error.type == 0);
     const auto clear = std::ranges::find_if(catalog.capabilities, [](const EffectCapabilityInfo& capability)
     {
-        return capability.definition.identity.canonical_name == clear_node;
+        return capability.definition().canonical_name == clear_node;
     });
     CHECK(clear != catalog.capabilities.end());
-    CHECK(clear->definition.identity.version == 1);
+    CHECK(clear->definition().version == 1);
     CHECK(clear->implementations.size() == 1);
     CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
     CHECK(call<CreateEffect>(client, {}).error.type == kCapabilityDeclaration);
@@ -1569,10 +1541,10 @@ int main(int argc, char** argv)
     {
         EffectGraphEdit edit{*missing.graph};
         missing_node = take(edit.addNode(
-            ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+            capabilities::ToneMapping, {std::string{"lux.render.tone_mapping.linear"}, capabilities::ToneMapping.version}
         ));
-        missing_pin = edit.pinId(missing_node, ToneMapping::hdr_color);
-        CHECK(edit.setOutput("color", edit.pinId(missing_node, ToneMapping::color), true));
+        missing_pin = edit.pinId(missing_node, ToneMappingPorts::hdr_color.semantic);
+        CHECK(edit.setOutput("color", edit.pinId(missing_node, ToneMappingPorts::color.semantic), true));
         CHECK(edit.commit());
     }
     CHECK(call<CreateEffect>(client, std::move(missing)).error.type == kCapabilityDeclaration);
@@ -1637,20 +1609,14 @@ int main(int argc, char** argv)
     const auto replacement = create();
     CHECK(replacement.error.type == 0 && Monitor::queries == before);
     const auto rival = call<CreateRenderJob>(client, {scene, view, replacement.effect, EJobCadence::REQUESTED}).job;
-    CHECK(call<SetRenderJobDependencies>(client, {rival, {current}, {}}).error.type == 0);
-    CHECK(call<SetRenderJobDependencies>(client, {current, {rival}, {rival}}).error.type == kJobCycle);
-    const auto old_schema = call<QueryRenderJobInputLayout>(client, current).layout;
     Monitor::deny.store(true);
     CHECK(call<PrepareEffect>(client, {replacement.effect, session}).error.type == kDeviceUnsupported);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == kJobState);
     CHECK(!call<PrepareEffect>(client, {replacement.effect, session}).error.type);
     CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == kTargetInUse);
-    CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<UpdateJobInputs>(client, {current}).error.type == 0);
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect}).error.type == 0);
-    CHECK(call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     CHECK(call<RebindRenderJobEffect>(client, {session, current, replacement.effect, moved_target}).error.type == 0);
-    CHECK(!call<QueryRenderJobInputLayout>(client, current).layout.hasSameIdentity(old_schema));
     const auto warm_compiles = server->stats().compiled_graphs;
     CHECK(call<StartRenderJob>(client, {session, rival, target, binding}).error.type == 0);
     CHECK(server->stats().compiled_graphs == warm_compiles);
@@ -1671,25 +1637,28 @@ int main(int argc, char** argv)
         }
     };
     Monitor::hold_submit.store(true);
-    const auto layout = call<QueryRenderJobInputLayout>(client, current).layout;
-    auto packet = take(FrameData::create<std::tuple<>>(layout));
+    const auto view_address = call<GetOrCreateResource>(client, {
+        session, ViewScope{scene, view}, ViewParameterResource::descriptor.type
+    }).address();
+    auto packet = take(FrameData::create<std::tuple<ViewParameterResource>>({view_address}));
+    CHECK(packet.addData<ViewParameterResource>(ViewGpuParameters{}));
     CHECK(packet.seal());
     const auto run = send<RequestRenderJob>(asynchronous, {current, &packet});
     await(Monitor::submitted);
     CHECK(call<HoldSceneResource>(client, retained.resource_id).error.type == kDeviceBusy);
     CHECK(call<RemoveTarget>(client, moved_target).error.type == kDeviceBusy);
     CHECK(call<RequestRenderJob>(client, {current}).error.type == kJobBusy);
-    auto adopted = take(FrameData::create<std::tuple<>>(layout));
+    auto adopted = take(FrameData::create<std::tuple<ViewParameterResource>>({view_address}));
+    CHECK(adopted.addData<ViewParameterResource>(ViewGpuParameters{}));
     CHECK(adopted.seal());
-    CHECK(call<UpdateFrameData>(client, {current, &adopted}).error.type == 0);
+    CHECK(call<UpdateFrameData>(client, {&adopted}).error.type == 0);
     adopted.release();
     CHECK(adopted.writable());
     CHECK(call<StopRenderJob>(client, current).error.type == 0);
     CHECK(packet.sealed());
-    auto rejected_packet = take(FrameData::create<std::tuple<>>(layout));
-    CHECK(rejected_packet.seal());
-    CHECK(call<UpdateFrameData>(client, {current, &rejected_packet}).error.type == kJobStopped);
-    rejected_packet.release();
+    CHECK(adopted.seal());
+    CHECK(call<UpdateFrameData>(client, {&adopted}).error.type == 0);
+    adopted.release();
     CHECK(call<RemoveRenderJob>(client, current).error.type == kJobBusy);
     CHECK(call<StartRenderJob>(client, {session, rival, moved_target, binding}).error.type == kJobBusy);
     Monitor::hold_submit.store(false);
@@ -1728,12 +1697,13 @@ int main(int argc, char** argv)
     CHECK(!call<StartRenderJob>(
         peer_client, {peer_session.device, peer_job, peer_target.target, clearBinding(peer_resource)}
     ).error.type);
-    const auto peer_layout = call<QueryRenderJobInputLayout>(peer_client, peer_job).layout;
-    CHECK(peer_layout == old_schema && !peer_layout.hasSameIdentity(old_schema));
-    auto foreign_packet = take(FrameData::create<std::tuple<>>(old_schema));
-    CHECK(foreign_packet.seal());
-    CHECK(call<RequestRenderJob>(peer_client, {peer_job, &foreign_packet}).error.type == kFrameContract);
-    foreign_packet.release();
+    const auto peer_view_address = call<GetOrCreateResource>(peer_client, {
+        peer_session.device, ViewScope{peer_scene, peer_view}, ViewParameterResource::descriptor.type
+    }).address();
+    CHECK(peer_view_address.server != view_address.server);
+    CHECK(adopted.seal());
+    CHECK(call<RequestRenderJob>(peer_client, {peer_job, &adopted}).error.type == kFrameContract);
+    adopted.release();
     CHECK(!call<StopRenderJob>(peer_client, peer_job).error.type);
 
     const auto cold_effect = create();
@@ -1848,8 +1818,10 @@ int main(int argc, char** argv)
     CHECK(ran && Monitor::destroyed && server->stats().validation_errors == 0);
     client.reset();
     server.reset();
-    CHECK(clear->definition.identity.canonical_name == clear_node);
-    CHECK(clear->definition.ports.front().name == "color");
+    CHECK(clear->definition().canonical_name == clear_node);
+    CHECK(clear->definition().display_name == "SDK clear");
+    CHECK(clear->definition().ports.front().name == "color");
+    CHECK(clear->definition().ports.front().type.canonical_name == kDisplayColorType);
     CHECK(clear->implementations.front().identity == (ImplementationSelection{std::string{clear_node}, 1}));
     recordClearGraph(*execution, device);
     CHECK(verifyIndependentDevices(*execution, device, false));

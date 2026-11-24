@@ -33,9 +33,7 @@ namespace lux::render::detail
         }
     }
 
-    RenderResult<ConstantBufferVersion> ConstantBufferStorage::pin(
-        std::uint64_t revision, const SubmissionFrontiers& completed
-    ) noexcept
+    RenderResult<ConstantBufferVersion> ConstantBufferStorage::pinExisting(std::uint64_t revision) noexcept
     {
         if (!revision) return cxx::unexpected(RenderError{kFrameContract});
         auto match = std::ranges::find(versions_, revision, &Version::revision);
@@ -47,6 +45,12 @@ namespace lux::render::detail
             return ConstantBufferVersion{static_cast<std::uint32_t>(match - versions_.begin()), revision};
         }
 
+        return ConstantBufferVersion{};
+    }
+
+    RenderResult<ConstantBufferVersion>
+    ConstantBufferStorage::allocateVersion(std::uint64_t revision, const SubmissionFrontiers& completed) noexcept
+    {
         // Prefer unused native backings. With every slot in use, wait for actual completed frontiers.
         auto reusable = std::ranges::find(versions_, EPhase::EMPTY, &Version::phase);
         if (reusable == versions_.end())
@@ -142,36 +146,59 @@ namespace lux::render::detail
         return {.buffer = version.buffer, .size = bytes_, .queue_uses = {&version.preparation, &version.accepted}};
     }
 
-    RenderResult<std::optional<ResourceInput>>
-    ConstantBufferSelections::prepare(
-        const BoundConstantBuffer& input, const SubmissionFrontiers& completed, ResourceUploader& uploads
-    ) noexcept
+    RenderResult<void> ConstantBufferSelections::select(const BoundConstantBuffer& input) noexcept
     {
         auto& storage = *input.storage;
-        const bool first = storage.selection_ == SIZE_MAX;
-        if (first)
+        if (storage.selection_ != SIZE_MAX) return {};
+        const auto revision = *input.value.revision;
+        if (input.value.bytes.size() != storage.bytes_) return cxx::unexpected(RenderError{kFrameContract});
+        const auto version = storage.pinExisting(revision);
+        if (!version) return cxx::unexpected(version.error());
+
+        storage.selection_ = entries_.size();
+        entries_.push_back({&storage, *version, pending_.size(), revision});
+        if (!*version || !storage.ready(*version))
+            pending_.insert(pending_.end(), input.value.bytes.begin(), input.value.bytes.end());
+        return {};
+    }
+
+    RenderResult<bool>
+    ConstantBufferSelections::prepare(const SubmissionFrontiers& completed, ResourceUploader& uploads) noexcept
+    {
+        bool ready = true;
+        for (auto& entry : entries_)
         {
-            storage.selection_ = entries_.size();
-            entries_.emplace_back(&storage);
+            auto& storage = *entry.storage;
+            if (!entry.version)
+            {
+                const auto version = storage.allocateVersion(entry.revision, completed);
+                if (!version)
+                {
+                    const auto error = version.error();
+                    const bool wait_capacity = error.type == kDeviceCapacity &&
+                        (uploads.hasFrameCopies() || storage.device_.pendingGpuWork());
+                    if (error.type != kDeviceBusy && !wait_capacity) return cxx::unexpected(error);
+                    ready = false;
+                    continue;
+                }
+                entry.version = *version;
+            }
+            if (storage.ready(entry.version)) continue;
+            ready = false;
+            const auto bytes = std::span<const std::byte>{pending_}.subspan(entry.offset, storage.bytes_);
+            if (auto staged = storage.stage(entry.version, bytes, uploads); !staged)
+            {
+                const bool wait_capacity = staged.error().type == kDeviceCapacity &&
+                    (uploads.hasFrameCopies() || storage.device_.pendingGpuWork());
+                if (!wait_capacity) return cxx::unexpected(staged.error());
+            }
         }
-        auto& entry = entries_[storage.selection_];
-        if (!entry.version)
-        {
-            if (first) entry.revision = *input.value.revision;
-            auto pinned = storage.pin(entry.revision, completed);
-            if (!pinned && pinned.error().type != kDeviceBusy) return cxx::unexpected(pinned.error());
-            if (first && (!pinned || !storage.ready(*pinned)))
-                entry.pending.assign(input.value.bytes.begin(), input.value.bytes.end());
-            if (!pinned) return std::nullopt;
-            entry.version = *pinned;
-        }
-        if (!storage.ready(entry.version))
-        {
-            auto staged = storage.stage(entry.version, entry.pending, uploads);
-            if (!staged) return cxx::unexpected(staged.error());
-            return std::nullopt;
-        }
-        return storage.binding(entry.version);
+        return ready;
+    }
+
+    ResourceInput ConstantBufferSelections::binding(ConstantBufferStorage& storage) const noexcept
+    {
+        return storage.binding(entries_[storage.selection_].version);
     }
 
     void ConstantBufferSelections::settle(SubmissionPoint point, RenderError error) noexcept
@@ -188,5 +215,6 @@ namespace lux::render::detail
             entry.storage->selection_ = SIZE_MAX;
         }
         entries_.clear();
+        pending_.clear();
     }
 } // namespace lux::render::detail

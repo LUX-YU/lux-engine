@@ -4,25 +4,26 @@
 #include <lux/engine/description/ShaderProgramArtifact.hpp>
 #include <lux/engine/function/graph/GraphTypes.hpp>
 #include <lux/engine/render/core/ConfigValue.hpp>
-#include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
-#include <lux/engine/render/effect/CpuCall.hpp>
+#include <lux/engine/render/effect/FrameAlgorithm.hpp>
 #include <lux/engine/render/graph/GraphResource.hpp>
 #include <lux/engine/render/graph/Work.hpp>
 #include <lux/engine/render/resource/ResourceDefinition.hpp>
+#include <lux/engine/render/resource/ResourceProjection.hpp>
 #include <lux/engine/render/graph/GraphProgram.hpp>
 #include <lux/engine/render/graph/Sampler.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <array>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <vector>
 
 namespace lux::render
 {
-    namespace runtime_detail { struct EffectLoweringWorkspace; struct NodePinView; }
-    namespace effect_detail { struct ValidatedEffectNode; }
+    namespace runtime_detail { struct EffectLoweringWorkspace; struct EffectResourceOperand; }
+    namespace effect_detail { struct ValidatedEffectNode; struct ValidatedEffectPin; }
 
     struct EffectResourceValue final
     {
@@ -31,6 +32,12 @@ namespace lux::render
     };
 
     using EffectResourceBundle = std::vector<EffectResourceValue>;
+
+    struct ResourceBufferExtent final
+    {
+        std::string_view requirement;
+        std::uint32_t field;
+    };
 
     struct EffectBuildDevice final
     {
@@ -53,14 +60,6 @@ namespace lux::render
         EffectCompileContext& operator=(const EffectCompileContext&) = delete;
         [[nodiscard]] graph::NodeId nodeId() const noexcept;
         // Borrows the immutable value published during CreateEffect for this build call.
-        template <class T> [[nodiscard]] const T* configuration() const & noexcept
-        {
-            const auto* configuration = nodeConfiguration();
-            return configuration ? configuration->borrow<T>() : nullptr;
-        }
-
-        template <class T> const T* configuration() const && = delete;
-
         // Extents are evaluated per instance from graph declarations, including through compatible resize.
         [[nodiscard]] const GraphOutputRequirements& target() const noexcept;
         [[nodiscard]] const EffectBuildDevice& device() const noexcept;
@@ -108,28 +107,25 @@ namespace lux::render
         [[nodiscard]] RenderResult<ResourceVersion>
         importResource(
             std::string_view binding,
-            const ResourceRequirement& owner,
-            GraphResource declaration,
+            ResourceNameView owner,
+            ResourceProjection declaration,
             std::uint32_t projection = 0
-        ) noexcept
-        {
-            if (declaration.output_range) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return bindStorageProjection(binding, owner, std::move(declaration), projection);
-        }
+        ) noexcept;
+
+        // CPU views and GPU projections use the same scoped Resource requirement.
+        [[nodiscard]] RenderResult<ResourceVersion>
+        importProjection(
+            const ResourceRequirement& requirement,
+            std::string_view operand,
+            ResourceProjection declaration,
+            std::uint32_t projection = 0
+        ) noexcept;
 
         [[nodiscard]] RenderResult<ResourceVersion>
         importFinalBuffer(
-            std::string_view binding,
-            const ResourceRequirement& owner,
-            GraphResource declaration,
+            std::string_view binding, ResourceNameView owner, GraphResource declaration,
             std::uint32_t projection = 0
-        ) noexcept
-        {
-            const auto* buffer = std::get_if<GraphBufferDesc>(&declaration.description);
-            if (!buffer) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            if (!declaration.output_range) declaration.output_range = GraphBufferRange{0, buffer->size};
-            return bindStorageProjection(binding, owner, std::move(declaration), projection);
-        }
+        ) noexcept;
 
         // A preparation owned by this node supplies the initial contents of each frame's Buffer.
         [[nodiscard]] RenderResult<ResourceVersion> declarePreparedBuffer(
@@ -137,9 +133,13 @@ namespace lux::render
             EGraphUse initial_use = EGraphUse::STORAGE_READ
         ) noexcept;
 
-        // Preparation chooses the size. The contents are defined by graph writes each frame.
+        // Graph writes define the contents. A resource extent supplies the admitted FIF byte count;
+        // without it, a CPU algorithm must explicitly publish the frame size.
         [[nodiscard]] RenderResult<ResourceVersion>
-        declareFrameBuffer(std::string_view name, std::uint64_t minimum_bytes, std::uint64_t maximum_bytes) noexcept;
+        declareFrameBuffer(
+            std::string_view name, std::uint64_t minimum_bytes, std::uint64_t maximum_bytes,
+            std::optional<ResourceBufferExtent> extent = {}
+        ) noexcept;
 
         // Copy the complete typed member into this pass's inline range when the Job prepares a frame.
         template <ShaderConstantBlock T, class State, T State::*Member>
@@ -169,51 +169,40 @@ namespace lux::render
             });
         }
 
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<GraphCpuDataId> declareCpuData() noexcept
+        // A CPU view and GPU projections can select the same scoped Resource under distinct operand names.
+        template <class T> [[nodiscard]] RenderResult<ResourceViewSlot>
+        readResourceView(const ResourceRequirement& source, std::string_view operand) noexcept
         {
-            return declareCpuValue({}, cxx::make_basic_type_info<T>(), sizeof(T));
+            return bindResourceView(source, operand, cxx::make_basic_type_info<T>());
         }
 
-        // A read-only CPU graph value selected from this node's initialized state.
-        template <CpuPreparationValue T>
-        [[nodiscard]] RenderResult<GraphCpuDataId> importEffectState() noexcept
-        {
-            return declareCpuValue(nodeId(), cxx::make_basic_type_info<T>(), sizeof(T));
-        }
-
-        template <class T>
-        [[nodiscard]] RenderResult<GraphStorageSnapshotId>
-        importStorageSnapshot(
-            std::string_view binding,
-            const ResourceRequirement& required,
-            ESnapshotScope scope = ESnapshotScope::ANY_ON_DEVICE
-        ) noexcept
-        {
-            return importStorageValue(binding, required, cxx::make_basic_type_info<T>(), scope);
-        }
-
-        template <PreparationKernel T, auto Create = nullptr> requires extension_detail::CpuWorkspaceFactory<T, Create>
+        template <auto Frame, auto Link = nullptr, auto Create = nullptr>
         [[nodiscard]] RenderResult<void>
-        addCpuCall(typename T::Configuration configuration, CpuCallDependencies uses) noexcept
+        onFrame(typename extension_detail::FrameBinding<Frame, Link, Create>::Configuration config, FrameAlgorithmUses uses) noexcept
         {
-            auto owned = ConfigValue::make(std::move(configuration));
+            auto owned = ConfigValue::make(std::move(config));
             if (!owned) return cxx::unexpected(owned.error());
-            return declareCpuCall(std::move(uses), std::move(*owned), &extension_detail::bindCpuCall<T, Create>);
+            using Binding = extension_detail::FrameBinding<Frame, Link, Create>;
+            return declareFrameAlgorithm(std::move(uses), std::move(*owned), &Binding::bind);
         }
 
-        [[nodiscard]] std::span<const EffectResourceBundle> inputs(graph::PinSemanticId) const noexcept;
+        // The connected output bundles remain owned by this compilation. Read them during the build callback.
+        [[nodiscard]] auto inputs(graph::PinSemanticId semantic) const noexcept
+        {
+            return sourcePins(semantic) | std::views::transform(
+                [bundles = sourceBundles()](std::uint32_t pin) noexcept -> const EffectResourceBundle& { return bundles[pin]; }
+            );
+        }
         [[nodiscard]] bool outputDemanded(graph::PinSemanticId) const noexcept;
         [[nodiscard]] RenderResult<void> publish(graph::PinSemanticId, EffectResourceBundle) noexcept;
 
     private:
         friend struct runtime_detail::EffectLoweringWorkspace;
-        RenderResult<void> declareCpuCall(CpuCallDependencies, ConfigValue, extension_detail::BindCpuCall) noexcept;
+        RenderResult<void> declareFrameAlgorithm(FrameAlgorithmUses, ConfigValue, extension_detail::BindFrameAlgorithm) noexcept;
 
-        EffectCompileContext(
-            runtime_detail::EffectLoweringWorkspace&, const effect_detail::ValidatedEffectNode&,
-            const ConfigValue*, const runtime_detail::NodePinView&
-        ) noexcept;
+        EffectCompileContext(runtime_detail::EffectLoweringWorkspace&, const effect_detail::ValidatedEffectNode&) noexcept;
+        [[nodiscard]] std::span<const std::uint32_t> sourcePins(graph::PinSemanticId) const noexcept;
+        [[nodiscard]] std::span<const EffectResourceBundle> sourceBundles() const noexcept;
         using ChoiceArm = cxx::function_ref<RenderResult<ResourceVersion>(EffectCompileContext&) noexcept>;
         [[nodiscard]] RenderResult<ResourceVersion> declareChoice(PassCondition, ChoiceArm, ChoiceArm) noexcept;
         [[nodiscard]] RenderResult<ResourceVersion>
@@ -223,21 +212,18 @@ namespace lux::render
 
         runtime_detail::EffectLoweringWorkspace& workspace_;
         const effect_detail::ValidatedEffectNode& node_;
-        const ConfigValue* configuration_;
-        const runtime_detail::NodePinView& pins_;
+        std::span<const effect_detail::ValidatedEffectPin> pins_;
+        std::span<EffectResourceBundle> outputs_;
 
+        [[nodiscard]] RenderResult<std::uint32_t> requireResource(std::string_view binding) noexcept;
         [[nodiscard]] RenderResult<ResourceVersion>
-        bindStorageProjection(std::string_view, const ResourceRequirement&, GraphResource, std::uint32_t) noexcept;
-        [[nodiscard]] const ConfigValue* nodeConfiguration() const noexcept;
+        bindStorageProjection(runtime_detail::EffectResourceOperand, std::optional<GraphBufferRange>) noexcept;
         [[nodiscard]] RenderResult<ResourceVersion>
         declareConstantBuffer(extension_detail::ConstantBufferField) noexcept;
         [[nodiscard]] RenderResult<void>
         declareInlineCopy(GraphPassId, extension_detail::InlineBlockInput) noexcept;
-        [[nodiscard]] RenderResult<GraphCpuDataId>
-        declareCpuValue(graph::NodeId, cxx::basic_type_info, std::size_t) noexcept;
-        [[nodiscard]] RenderResult<GraphStorageSnapshotId>
-        importStorageValue(
-            std::string_view, const ResourceRequirement&, cxx::basic_type_info, ESnapshotScope
-        ) noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> linkRequirement(const ResourceRequirement&) noexcept;
+        [[nodiscard]] RenderResult<ResourceViewSlot>
+        bindResourceView(const ResourceRequirement&, std::string_view operand, cxx::basic_type_info) noexcept;
     };
 }

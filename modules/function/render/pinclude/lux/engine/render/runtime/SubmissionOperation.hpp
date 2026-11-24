@@ -23,7 +23,8 @@ namespace lux::render::detail
     {
         std::uint32_t producer;
         std::uint32_t consumer;
-        std::uint32_t target_input = kGraphInvalidIndex; // Whole-Job order when no sampled Target operand is selected.
+        std::uint32_t consumer_batch;
+        nri::StageBits stages = nri::StageBits::ALL;
         bool operator==(const SubmissionOrder&) const noexcept = default;
     };
 
@@ -36,14 +37,20 @@ namespace lux::render::detail
             bool wrote_output = false;
             bool completed = false;
             std::uint32_t first_batch = kGraphInvalidIndex;
-            SubmissionFrontiers accepted;
         };
 
     private:
+        struct ProductRead final
+        {
+            std::uint32_t producer_job, consumer_batch;
+            nri::StageBits stages;
+        };
+
         struct JobReceipt final
         {
             ExecutionBindingId binding{};
             JobSubmissionResult result;
+            std::span<const ProductRead> readers;
             std::uint32_t remaining_batches = 0;
         };
 
@@ -51,16 +58,12 @@ namespace lux::render::detail
         {
             std::uint32_t instance = 0, local_batch = 0, queue = 0;
             std::uint32_t predecessor_count = 0, pending_predecessors = 0;
-            std::uint32_t first_successor = 0, successor_count = 0;
             SubmissionFrontiers waits;
             std::vector<nri::StageBits> stages;
             std::uint64_t serial = 0;
-        };
+            bool acceptance_unknown = false;
 
-        struct BatchDependency final
-        {
-            std::uint32_t producer = 0, consumer = 0;
-            nri::StageBits stages = nri::StageBits::ALL;
+            void addWait(SubmissionPoint, nri::StageBits) noexcept;
         };
 
         struct Slot final
@@ -76,9 +79,9 @@ namespace lux::render::detail
             std::vector<JobReceipt> jobs;
             std::vector<SubmissionOrder> order;
             std::vector<BatchExecution> batches;
-            std::vector<BatchDependency> dependencies;
+            std::vector<ProductRead> product_reads;
             std::vector<std::vector<std::uint32_t>> ready_batches;
-            std::vector<std::uint32_t> recording_batches;
+            std::vector<std::uint32_t> selected_batches;
             struct Recording final
             {
                 std::span<nri::CommandBuffer* const> commands;
@@ -86,7 +89,7 @@ namespace lux::render::detail
             };
             std::vector<const FrozenRecordingFrame*> recording_frames;
             std::vector<Recording> recordings;
-            std::vector<nri::CommandBuffer*> recording_commands;
+            std::vector<nri::CommandBuffer*> submit_commands;
             std::vector<nri::FenceSubmitDesc> wait_fences, signal_fences;
             std::uint32_t remaining_batches = 0;
             bool graph_started = false;
@@ -110,9 +113,8 @@ namespace lux::render::detail
             [[nodiscard]] const JobSubmissionResult*
             acceptedFrameUse(std::uint32_t slot, std::size_t ordinal, ExecutionBindingId) const & noexcept;
             const JobSubmissionResult* acceptedFrameUse(std::uint32_t, std::size_t, ExecutionBindingId) const && = delete;
-            [[nodiscard]] bool acceptedPass(
-                std::uint32_t slot, const runtime_detail::JobExecution&, const JobSubmissionResult&, std::uint32_t pass
-            ) const noexcept;
+            [[nodiscard]] bool
+            mayHaveExecuted(std::uint32_t slot, const JobSubmissionResult&, std::uint32_t local_batch) const noexcept;
             [[nodiscard]] bool dumpSubmissions(const FrameProgress&, DumpSink) const noexcept;
             [[nodiscard]] RasterReads takeRasterReads() noexcept;
 
@@ -123,33 +125,33 @@ namespace lux::render::detail
             std::uint32_t queue_cursor_ = 0;
         };
 
-        SubmissionOperation(DeviceSession&, FrameProgress&, FrameProgress::SlotSelection, Workspace&) noexcept;
+        SubmissionOperation(DeviceSession&, FrameProgress&, FrameContext, Workspace&) noexcept;
         ~SubmissionOperation() noexcept;
         [[nodiscard]] RenderResult<void>
         prepare(std::span<runtime_detail::JobExecution* const>, std::span<const SubmissionOrder>) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>> record(execution::CpuScheduler, bool parallel) noexcept;
-        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const std::optional<RenderError>& cancel) noexcept;
-        void acceptPreparation(std::uint64_t serial) noexcept;
+        [[nodiscard]] exec::task<RenderResult<std::uint32_t>> submit(const RenderError& cancel) noexcept;
+        void acceptPreparation(SubmissionPoint) noexcept;
         void rejectSuffix(RenderError) noexcept;
         [[nodiscard]] bool complete() const noexcept { return slot_.remaining_batches == 0; }
-        [[nodiscard]] bool prepared() const noexcept { return slot_.graph_started; }
         [[nodiscard]] bool canSubmit() const noexcept;
 
     private:
         [[nodiscard]] static bool laterBatch(const Slot&, std::uint32_t, std::uint32_t) noexcept;
         [[nodiscard]] std::uint32_t readyQueue() const noexcept;
-        void accept(const SubmissionQueue&, std::uint64_t serial) noexcept;
+        void accept(SubmissionPoint) noexcept;
         void enqueueReadyBatch(Slot&, std::uint32_t) noexcept;
         void selectReadyBatches(Slot&, std::uint32_t) noexcept;
         void acceptBatch(Slot&, std::uint32_t, std::uint64_t) noexcept;
+        void settleBufferUses(std::size_t instance) noexcept;
         [[nodiscard]] bool hasPresentationBoundary(const BatchExecution&) const noexcept;
         [[nodiscard]] RenderResult<void>
         rebuildDependencies(std::span<const SubmissionOrder>) noexcept;
-        [[nodiscard]] std::uint32_t slotIndex() const noexcept { return selection_.frame.slot_index; }
+        [[nodiscard]] std::uint32_t slotIndex() const noexcept { return selection_.slot_index; }
 
         DeviceSession& device_;
         FrameProgress& progress_;
-        FrameProgress::SlotSelection selection_;
+        FrameContext selection_;
         Workspace& workspace_;
         Slot& slot_;
         std::span<runtime_detail::JobExecution* const> jobs_;

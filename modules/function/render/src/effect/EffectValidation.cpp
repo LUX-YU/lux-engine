@@ -14,17 +14,6 @@ namespace lux::render::effect_detail
             std::uint32_t to;
         };
 
-        [[nodiscard]] auto reject(
-            EEffectIssue issue,
-            graph::NodeId node = {},
-            graph::PinId pin = {},
-            graph::PinId related_pin = {},
-            std::uint32_t detail = 0
-        ) noexcept
-        {
-            return cxx::unexpected(EffectDiagnostic{issue, node, pin, related_pin, detail});
-        }
-
         [[nodiscard]] const EffectPortDefinition& portDefinition(
             const ValidatedEffectGraph& graph, std::uint32_t pin
         ) noexcept
@@ -74,18 +63,30 @@ namespace lux::render::effect_detail
         }
     }
 
+    [[nodiscard]] RenderError reportEffectFailure(
+        const RenderErrorSink& sink, RenderError error, const EffectDiagnostic& diagnostic,
+        std::string_view message
+    ) noexcept
+    {
+        if (sink.report)
+        {
+            sink.report(sink.context, {ERenderDiagnosticSeverity::ERROR_MESSAGE, error, message, {}, 0, &diagnostic});
+        }
+        return error;
+    }
+
     EffectValidationResult validateEffectGraph(const EffectGraph& source, const EffectCatalog& catalog) noexcept
     {
         if (!catalog.sealed())
-            return reject(EEffectIssue::CATALOG_NOT_SEALED);
+            return cxx::unexpected(EffectDiagnostic{EEffectIssue::CATALOG_NOT_SEALED});
         const auto source_nodes = source.topology().nodes();
         const auto source_pins = source.topology().pins();
         const auto source_links = source.topology().links();
         const bool exceeds_dense_capacity = source_nodes.size() >= kInvalidEffectIndex ||
             source_pins.size() >= kInvalidEffectIndex || source_links.size() >= kInvalidEffectIndex;
-        if (exceeds_dense_capacity) return reject(EEffectIssue::CAPACITY);
+        if (exceeds_dense_capacity) return cxx::unexpected(EffectDiagnostic{EEffectIssue::CAPACITY});
         if (source.nodes().size() != source_nodes.size())
-            return reject(EEffectIssue::MISSING_NODE_PAYLOAD);
+            return cxx::unexpected(EffectDiagnostic{EEffectIssue::MISSING_NODE_PAYLOAD});
 
         // Cold normalization only. Never copy these source tables into an executable.
         std::vector<graph::NodeRecord> node_records(source_nodes.begin(), source_nodes.end());
@@ -106,18 +107,18 @@ namespace lux::render::effect_detail
             const auto& record = node_records[node_index];
             const bool is_duplicate = node_index != 0 && node_records[node_index - 1].id == record.id;
             if (!record.id.valid() || is_duplicate)
-                return reject(EEffectIssue::SCHEMA_MISMATCH, record.id);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH, record.id});
             const auto* payload = source.findNode(record.id);
             if (!payload)
-                return reject(EEffectIssue::MISSING_NODE_PAYLOAD, record.id);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::MISSING_NODE_PAYLOAD, record.id});
             auto capability = catalog.findCapability(record.type, payload->capability_version);
-            if (!capability || capability->identity.canonical_name != payload->capability_name)
-                return reject(EEffectIssue::UNKNOWN_CAPABILITY, record.id);
+            if (!capability || capability->canonical_name != payload->capability_name)
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::UNKNOWN_CAPABILITY, record.id});
             auto implementation = catalog.findImplementation(
                 record.type, payload->capability_version, payload->implementation
             );
             if (!implementation)
-                return reject(EEffectIssue::UNKNOWN_IMPLEMENTATION, record.id);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::UNKNOWN_IMPLEMENTATION, record.id});
             const auto first = std::ranges::lower_bound(pin_records, record.id.value, {}, [](const auto& pin) noexcept
             {
                 return pin.owner.value;
@@ -128,7 +129,7 @@ namespace lux::render::effect_detail
             });
             const auto actual_count = static_cast<std::size_t>(last - first);
             if (actual_count != capability->ports.size())
-                return reject(EEffectIssue::SCHEMA_MISMATCH, record.id);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH, record.id});
             const auto first_pin = static_cast<std::uint32_t>(result.pins.size());
             for (std::size_t declaration = 0; declaration < capability->ports.size(); ++declaration)
             {
@@ -138,23 +139,23 @@ namespace lux::render::effect_detail
                     return pin.semantic < semantic;
                 });
                 if (found == last || found->semantic != expected.semantic)
-                    return reject(EEffectIssue::SCHEMA_MISMATCH, record.id);
+                    return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH, record.id});
                 const bool is_invalid_pin = !found->id.valid() || found->direction != expected.direction ||
                     found->fan_cap != expected.fan_cap;
                 if (is_invalid_pin)
-                    return reject(EEffectIssue::SCHEMA_MISMATCH, record.id, found->id);
+                    return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH, record.id, found->id});
                 result.pins.push_back({
                     found->id, static_cast<std::uint32_t>(node_index), static_cast<std::uint32_t>(declaration), {}, false
                 });
             }
             result.nodes.push_back({
-                record.id, capability, implementation, payload->arguments,
+                record.id, capability, implementation,
                 {first_pin, static_cast<std::uint32_t>(actual_count)}, false
             });
             capability_instances.push_back(record.type);
         }
         if (result.pins.size() != pin_records.size())
-            return reject(EEffectIssue::SCHEMA_MISMATCH);
+            return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH});
 
         // Counts span the whole declared graph, including inactive drafts. Using
         // a raster or compute pipeline does not imply this limit; the capability does.
@@ -163,9 +164,11 @@ namespace lux::render::effect_detail
         {
             const auto limit = node.capability->max_instances;
             if (limit == 0) continue;
-            const auto occurrences = std::ranges::equal_range(capability_instances, node.capability->identity.id);
+            const auto occurrences = std::ranges::equal_range(capability_instances, node.capability->id);
             if (static_cast<std::size_t>(occurrences.size()) > limit)
-                return reject(EEffectIssue::INSTANCE_LIMIT, node.source, {}, {}, limit);
+                return cxx::unexpected(EffectDiagnostic{
+                    .issue = EEffectIssue::INSTANCE_LIMIT, .node = node.source, .detail = limit
+                });
         }
 
         std::vector<std::pair<graph::PinId, std::uint32_t>> pin_index;
@@ -176,7 +179,7 @@ namespace lux::render::effect_detail
         for (std::size_t index = 1; index < pin_index.size(); ++index)
         {
             if (pin_index[index - 1].first == pin_index[index].first)
-                return reject(EEffectIssue::SCHEMA_MISMATCH, {}, pin_index[index].first);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::SCHEMA_MISMATCH, {}, pin_index[index].first});
         }
         const auto find_pin = [&](graph::PinId source_pin) noexcept -> std::uint32_t
         {
@@ -198,18 +201,18 @@ namespace lux::render::effect_detail
             const auto from = find_pin(source_link.from);
             const auto to = find_pin(source_link.to);
             if (from == kInvalidEffectIndex || to == kInvalidEffectIndex)
-                return reject(EEffectIssue::INVALID_LINK, {}, source_link.to, source_link.from);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_LINK, {}, source_link.to, source_link.from});
             const auto& output = portDefinition(result, from);
             const auto& input = portDefinition(result, to);
             const bool has_wrong_direction = output.direction != graph::EPinDirection::OUTPUT ||
                 input.direction != graph::EPinDirection::INPUT;
             if (has_wrong_direction)
-                return reject(EEffectIssue::INVALID_LINK, {}, source_link.to, source_link.from);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_LINK, {}, source_link.to, source_link.from});
             if (output.type != input.type)
-                return reject(
+                return cxx::unexpected(EffectDiagnostic{
                     EEffectIssue::TYPE_MISMATCH, result.nodes[result.pins[to].node].source,
                     source_link.to, source_link.from
-                );
+                });
             links.push_back({from, to});
             ++fan_counts[from];
             ++fan_counts[to];
@@ -223,20 +226,20 @@ namespace lux::render::effect_detail
             const bool is_duplicate = links[index - 1].from == links[index].from &&
                 links[index - 1].to == links[index].to;
             if (is_duplicate)
-                return reject(
+                return cxx::unexpected(EffectDiagnostic{
                     EEffectIssue::INVALID_LINK, {}, result.pins[links[index].to].source,
                     result.pins[links[index].from].source
-                );
+                });
         }
         std::uint32_t source_count = 0;
         for (std::uint32_t pin = 0; pin < result.pins.size(); ++pin)
         {
             const auto capacity = portDefinition(result, pin).fan_cap;
             if (capacity != graph::kUnlimitedFan && fan_counts[pin] > capacity)
-                return reject(
+                return cxx::unexpected(EffectDiagnostic{
                     EEffectIssue::FAN_LIMIT, result.nodes[result.pins[pin].node].source,
                     result.pins[pin].source, {}, capacity
-                );
+                });
             result.pins[pin].sources.first = source_count;
             source_count += result.pins[pin].sources.count;
         }
@@ -274,7 +277,7 @@ namespace lux::render::effect_detail
 
         const bool invalid_targets = std::ranges::count(source.outputs(), true, &EffectOutput::target) > 1;
         if (source.outputs().empty() || invalid_targets)
-            return reject(EEffectIssue::INVALID_OUTPUT);
+            return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_OUTPUT});
         std::vector<std::string_view> output_names;
         output_names.reserve(source.outputs().size());
         std::vector<std::uint32_t> live_queue;
@@ -292,16 +295,16 @@ namespace lux::render::effect_detail
         {
             const auto pin = find_pin(output.source);
             if (pin == kInvalidEffectIndex || output.name.empty())
-                return reject(EEffectIssue::INVALID_OUTPUT, {}, output.source);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_OUTPUT, {}, output.source});
             if (portDefinition(result, pin).direction != graph::EPinDirection::OUTPUT)
-                return reject(EEffectIssue::INVALID_OUTPUT, {}, output.source);
+                return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_OUTPUT, {}, output.source});
             output_names.push_back(output.name);
-            result.outputs.push_back({output.name, pin, output.target});
+            result.outputs.push_back({pin, output.target});
             demand_output(pin);
         }
         std::ranges::sort(output_names);
         if (std::adjacent_find(output_names.begin(), output_names.end()) != output_names.end())
-            return reject(EEffectIssue::INVALID_OUTPUT);
+            return cxx::unexpected(EffectDiagnostic{EEffectIssue::INVALID_OUTPUT});
         for (std::size_t head = 0; head < live_queue.size(); ++head)
         {
             const auto& node = result.nodes[live_queue[head]];
@@ -310,7 +313,7 @@ namespace lux::render::effect_detail
                 const auto& declaration = node.capability->ports[input.declaration];
                 if (declaration.direction != graph::EPinDirection::INPUT) continue;
                 if (declaration.required && input.sources.empty())
-                    return reject(EEffectIssue::MISSING_INPUT, node.source, input.source);
+                    return cxx::unexpected(EffectDiagnostic{EEffectIssue::MISSING_INPUT, node.source, input.source});
                 for (const auto producer : input.sources.view(result.input_sources)) demand_output(producer);
             }
         }
@@ -323,7 +326,7 @@ namespace lux::render::effect_detail
                 if (!pin.demanded) continue;
                 const auto semantic = node.capability->ports[pin.declaration].semantic;
                 if (!std::ranges::binary_search(supported, semantic))
-                    return reject(EEffectIssue::UNSUPPORTED_OUTPUT, node.source, pin.source);
+                    return cxx::unexpected(EffectDiagnostic{EEffectIssue::UNSUPPORTED_OUTPUT, node.source, pin.source});
             }
         }
         return result;

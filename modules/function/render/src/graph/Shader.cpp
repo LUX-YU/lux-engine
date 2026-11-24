@@ -9,6 +9,7 @@
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/RasterProgram.hpp>
 #include <memory>
+#include <optional>
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross_c.h>
 
@@ -109,40 +110,54 @@ namespace lux::render::detail
                    stride == field.matrix_stride;
         }
 
-        // Adapted from existing DataValidation.cpp: walk SPIRV-Cross types, not SPIR-V instructions.
-        bool
-        validateFields(
-            spvc_compiler compiler,
-            spvc_type type,
-            std::string path,
-            std::uint64_t base,
-            std::vector<rdesc::ShaderArrayDimension>& array_shape,
-            const rdesc::ShaderBlock& expected,
-            std::size_t& cursor,
-            bool array_wrapper = false
+        // One depth-first walk compares reflected members in declaration order, including nested arrays.
+        class SpirvBlockReader final
+        {
+        public:
+            SpirvBlockReader(spvc_compiler compiler, const rdesc::ShaderBlock& expected) noexcept
+                : compiler_(compiler), expected_(expected)
+            {
+            }
+
+            bool matches(spvc_type record) noexcept
+            {
+                return readFields(record, "", 0) && cursor_ == expected_.fields.size();
+            }
+
+        private:
+            bool readFields(spvc_type type, const std::string& path, std::uint64_t base, bool array_wrapper = false) noexcept;
+
+            spvc_compiler compiler_;
+            const rdesc::ShaderBlock& expected_;
+            std::vector<rdesc::ShaderArrayDimension> array_shape_;
+            std::size_t cursor_ = 0;
+        };
+
+        bool SpirvBlockReader::readFields(
+            spvc_type type, const std::string& path, std::uint64_t base, bool array_wrapper
         ) noexcept
         {
             const auto structure_id = spvc_type_get_base_type_id(type);
             for (unsigned member_index = 0; member_index < spvc_type_get_num_member_types(type); ++member_index)
             {
                 const auto member =
-                    spvc_compiler_get_type_handle(compiler, spvc_type_get_member_type(type, member_index));
+                    spvc_compiler_get_type_handle(compiler_, spvc_type_get_member_type(type, member_index));
                 unsigned member_offset = 0;
                 const auto offset_result =
-                    spvc_compiler_type_struct_member_offset(compiler, type, member_index, &member_offset);
+                    spvc_compiler_type_struct_member_offset(compiler_, type, member_index, &member_offset);
                 if (!check(offset_result))
                 {
                     return false;
                 }
                 const auto offset = base + member_offset;
-                if (offset > expected.size)
+                if (offset > expected_.size)
                 {
                     return false;
                 }
                 const auto name =
-                    array_wrapper ? path : path + spvc_compiler_get_member_name(compiler, structure_id, member_index);
+                    array_wrapper ? path : path + spvc_compiler_get_member_name(compiler_, structure_id, member_index);
                 const auto dimensions = spvc_type_get_num_array_dimensions(member);
-                unsigned count = 1, stride = array_shape.empty() ? 0 : array_shape.back().stride;
+                unsigned count = 1, stride = array_shape_.empty() ? 0 : array_shape_.back().stride;
                 if (dimensions)
                 {
                     if (dimensions != 1 || !spvc_type_array_dimension_is_literal(member, 0))
@@ -150,20 +165,20 @@ namespace lux::render::detail
                         return false;
                     }
                     count = spvc_type_get_array_dimension(member, 0);
-                    if (!count || count > expected.fields.size())
+                    if (!count || count > expected_.fields.size())
                     {
                         return false;
                     }
-                    if (!check(spvc_compiler_type_struct_member_array_stride(compiler, type, member_index, &stride)))
+                    if (!check(spvc_compiler_type_struct_member_array_stride(compiler_, type, member_index, &stride)))
                     {
                         return false;
                     }
-                    array_shape.push_back({count, stride});
+                    array_shape_.push_back({count, stride});
                 }
                 for (unsigned item = 0; item < count; ++item)
                 {
                     const auto at = offset + (dimensions ? std::uint64_t(item) * stride : 0);
-                    if (at > expected.size)
+                    if (at > expected_.size)
                     {
                         return false;
                     }
@@ -171,18 +186,18 @@ namespace lux::render::detail
                     const auto scalar = spvc_type_get_basetype(member);
                     if (scalar == SPVC_BASETYPE_STRUCT)
                     {
-                        const bool has_expected_field = cursor < expected.fields.size();
-                        const bool is_matrix = has_expected_field && expected.fields[cursor].path == item_name &&
-                                               expected.fields[cursor].columns > 1;
+                        const bool has_expected_field = cursor_ < expected_.fields.size();
+                        const bool is_matrix = has_expected_field && expected_.fields[cursor_].path == item_name &&
+                                               expected_.fields[cursor_].columns > 1;
                         if (is_matrix)
                         {
-                            const auto& field = expected.fields[cursor++];
+                            const auto& field = expected_.fields[cursor_++];
                             const bool has_matching_shape =
                                 field.matrix_order == rdesc::EShaderMatrixOrder::UNSPECIFIED ||
-                                field.array_dimensions == array_shape;
+                                field.array_dimensions == array_shape_;
                             const bool has_matching_position =
                                 field.offset == at && field.array_stride == stride && has_matching_shape;
-                            if (!has_matching_position || !matchesMatrixStorage(compiler, member, field))
+                            if (!has_matching_position || !matchesMatrixStorage(compiler_, member, field))
                             {
                                 return false;
                             }
@@ -192,21 +207,12 @@ namespace lux::render::detail
                         // Only unwrap when the target metadata describes that exact array path and zero offset.
                         unsigned wrapper_offset = 0;
                         const bool has_array_path =
-                            has_expected_field && expected.fields[cursor].path.starts_with(item_name + "[");
+                            has_expected_field && expected_.fields[cursor_].path.starts_with(item_name + "[");
                         const bool is_array_wrapper =
                             has_array_path && spvc_type_get_num_member_types(member) == 1 &&
-                            check(spvc_compiler_type_struct_member_offset(compiler, member, 0, &wrapper_offset)) &&
+                            check(spvc_compiler_type_struct_member_offset(compiler_, member, 0, &wrapper_offset)) &&
                             wrapper_offset == 0;
-                        const bool valid = validateFields(
-                            compiler,
-                            member,
-                            item_name + (is_array_wrapper ? "" : "."),
-                            at,
-                            array_shape,
-                            expected,
-                            cursor,
-                            is_array_wrapper
-                        );
+                        const bool valid = readFields(member, item_name + (is_array_wrapper ? "" : "."), at, is_array_wrapper);
                         if (!valid)
                         {
                             return false;
@@ -216,13 +222,13 @@ namespace lux::render::detail
                     const bool numeric =
                         scalar == SPVC_BASETYPE_FP32 || scalar == SPVC_BASETYPE_INT32 || scalar == SPVC_BASETYPE_UINT32;
                     const bool row_major = spvc_compiler_has_member_decoration(
-                        compiler,
+                        compiler_,
                         structure_id,
                         member_index,
                         SpvDecorationRowMajor
                     );
                     const bool invalid = !numeric || spvc_type_get_bit_width(member) != 32 || row_major ||
-                                         cursor >= expected.fields.size();
+                                         cursor_ >= expected_.fields.size();
                     if (invalid)
                     {
                         return false;
@@ -231,7 +237,7 @@ namespace lux::render::detail
                     if (spvc_type_get_columns(member) > 1)
                     {
                         const auto result = spvc_compiler_type_struct_member_matrix_stride(
-                            compiler,
+                            compiler_,
                             type,
                             member_index,
                             &matrix_stride
@@ -244,7 +250,7 @@ namespace lux::render::detail
                     const auto scalar_kind = scalar == SPVC_BASETYPE_FP32    ? rdesc::EDataScalar::FLOAT
                                              : scalar == SPVC_BASETYPE_INT32 ? rdesc::EDataScalar::SINT
                                                                              : rdesc::EDataScalar::UINT;
-                    const auto& field = expected.fields[cursor++];
+                    const auto& field = expected_.fields[cursor_++];
                     rdesc::ShaderMember actual{
                         item_name,
                         scalar_kind,
@@ -260,21 +266,21 @@ namespace lux::render::detail
                     {
                         const bool is_matrix = spvc_type_get_columns(member) > 1;
                         if (is_matrix && !spvc_compiler_has_member_decoration(
-                                             compiler, structure_id, member_index, SpvDecorationColMajor
+                                             compiler_, structure_id, member_index, SpvDecorationColMajor
                                          ))
                         {
                             return false;
                         }
                         actual.matrix_order = is_matrix ? rdesc::EShaderMatrixOrder::COLUMN_MAJOR
                                                         : rdesc::EShaderMatrixOrder::NOT_MATRIX;
-                        actual.array_dimensions = array_shape;
+                        actual.array_dimensions = array_shape_;
                     }
                     if (field != actual)
                     {
                         return false;
                     }
                 }
-                if (dimensions) array_shape.pop_back();
+                if (dimensions) array_shape_.pop_back();
             }
             return true;
         }
@@ -337,7 +343,7 @@ namespace lux::render::detail
                            field.matrix_stride == matrix_stride;
                 }
             }
-            std::size_t size = 0, cursor = 0;
+            std::size_t size = 0;
             if (!check(spvc_compiler_get_declared_struct_size(compiler, record, &size)))
             {
                 return false;
@@ -351,27 +357,33 @@ namespace lux::render::detail
                     ? size <= expected.size
                     : (rounded == expected.size ||
                        (expected.storage == rdesc::EDataLayout::TARGET_REFLECTED && size == expected.size));
-            std::vector<rdesc::ShaderArrayDimension> array_shape;
-            return size_matches && validateFields(compiler, record, "", 0, array_shape, expected, cursor) &&
-                   cursor == expected.fields.size();
+            return size_matches && SpirvBlockReader{compiler, expected}.matches(record);
         }
 
-        bool
-        validateStage(
+        std::optional<StageIo> validateStage(
+            const DeviceSession& session,
             const rdesc::ShaderStageArtifact& input,
-            SpvExecutionModel stage,
             const ShaderInterface& interface,
-            const nri::DeviceDesc& limits,
-            const GraphicsState* graphics = nullptr,
-            StageIo* io = nullptr,
-            std::uint32_t color_count = 1,
-            bool device_address = false
+            const RasterProgramKey* raster = nullptr
         ) noexcept
         {
+            SpvExecutionModel stage;
+            switch (input.stage)
+            {
+            case rdesc::EShaderType::VERTEX: stage = SpvExecutionModelVertex; break;
+            case rdesc::EShaderType::FRAGMENT: stage = SpvExecutionModelFragment; break;
+            case rdesc::EShaderType::COMPUTE: stage = SpvExecutionModelGLCompute; break;
+            default: return std::nullopt;
+            }
+            const auto& limits = session.description();
+            const auto* graphics = raster ? &raster->state : nullptr;
+            const auto color_count = raster ? raster->colors.size() : 0;
+            const bool device_address = stage != SpvExecutionModelFragment && session.enabledFeatures().buffer_device_address;
+            StageIo io;
             const bool invalid_entry = input.entry.empty() || input.entry.find('\0') != std::string::npos;
             if (invalid_entry)
             {
-                return false;
+                return std::nullopt;
             }
             const auto stage_bit = stage == SpvExecutionModelVertex ? 1u : stage == SpvExecutionModelFragment ? 2u : 4u;
             const auto words = std::span(input.words);
@@ -389,12 +401,12 @@ namespace lux::render::detail
             }
             if (valid != SPV_SUCCESS)
             {
-                return false;
+                return std::nullopt;
             }
             spvc_context raw{};
             if (!check(spvc_context_create(&raw)))
             {
-                return false;
+                return std::nullopt;
             }
             const std::unique_ptr<spvc_context_s, decltype(&spvc_context_destroy)> context(raw, spvc_context_destroy);
             spvc_parsed_ir ir{};
@@ -402,7 +414,7 @@ namespace lux::render::detail
             spvc_resources resources{};
             if (!check(spvc_context_parse_spirv(raw, words.data(), words.size(), &ir)))
             {
-                return false;
+                return std::nullopt;
             }
             if (!check(spvc_context_create_compiler(
                     raw,
@@ -412,13 +424,13 @@ namespace lux::render::detail
                     &compiler
                 )))
             {
-                return false;
+                return std::nullopt;
             }
             const SpvCapability* capabilities{};
             std::size_t capability_count = 0;
             if (!check(spvc_compiler_get_declared_capabilities(compiler, &capabilities, &capability_count)))
             {
-                return false;
+                return std::nullopt;
             }
             for (std::size_t i = 0; i < capability_count; ++i)
             {
@@ -463,20 +475,20 @@ namespace lux::render::detail
                                                        !integer64 && !draw_parameters;
                 if (is_unsupported_capability)
                 {
-                    return false;
+                    return std::nullopt;
                 }
             }
             const spvc_entry_point* entries{};
             std::size_t count = 0;
             if (!check(spvc_compiler_get_entry_points(compiler, &entries, &count)))
             {
-                return false;
+                return std::nullopt;
             }
             const bool is_entry_mismatch =
                 count != 1 || entries[0].execution_model != stage || input.entry != entries[0].name;
             if (is_entry_mismatch)
             {
-                return false;
+                return std::nullopt;
             }
             if (stage == SpvExecutionModelGLCompute)
             {
@@ -484,20 +496,20 @@ namespace lux::render::detail
                 std::size_t mode_count = 0;
                 if (!check(spvc_compiler_get_execution_modes(compiler, &modes, &mode_count)))
                 {
-                    return false;
+                    return std::nullopt;
                 }
                 const auto mode_list = std::span(modes, mode_count);
                 const bool has_local = std::ranges::find(mode_list, SpvExecutionModeLocalSize) != mode_list.end();
                 const bool specialized = std::ranges::find(mode_list, SpvExecutionModeLocalSizeId) != mode_list.end();
                 if (!has_local && !specialized)
                 {
-                    return false;
+                    return std::nullopt;
                 }
                 spvc_specialization_constant sizes[3]{};
                 spvc_compiler_get_work_group_size_specialization_constants(compiler, &sizes[0], &sizes[1], &sizes[2]);
                 if (specialized && (sizes[0].id || sizes[1].id || sizes[2].id))
                 {
-                    return false;
+                    return std::nullopt;
                 }
                 std::uint64_t invocations = 1;
                 for (unsigned axis = 0; axis < 3; ++axis)
@@ -513,18 +525,18 @@ namespace lux::render::detail
                             : argument;
                     if (!size || size > limits.shaderStage.compute.workGroupMaxDim[axis])
                     {
-                        return false;
+                        return std::nullopt;
                     }
                     invocations *= size;
                     if (invocations > limits.shaderStage.compute.workGroupInvocationMaxNum)
                     {
-                        return false;
+                        return std::nullopt;
                     }
                 }
             }
             if (!check(spvc_compiler_create_shader_resources(compiler, &resources)))
             {
-                return false;
+                return std::nullopt;
             }
             for (unsigned kind = SPVC_RESOURCE_TYPE_UNIFORM_BUFFER; kind <= SPVC_RESOURCE_TYPE_SHADER_RECORD_BUFFER;
                  ++kind)
@@ -543,21 +555,21 @@ namespace lux::render::detail
                         &count
                     )))
                 {
-                    return false;
+                    return std::nullopt;
                 }
                 if (kind == SPVC_RESOURCE_TYPE_PUSH_CONSTANT)
                 {
                     const bool declared = (interface.parameter_stages & stage_bit) != 0;
                     if (count != unsigned(declared))
                     {
-                        return false;
+                        return std::nullopt;
                     }
                     if (declared)
                     {
                         const auto structure = spvc_compiler_get_type_handle(compiler, list[0].base_type_id);
                         if (!validateBlock(compiler, structure, interface.parameters))
                         {
-                            return false;
+                            return std::nullopt;
                         }
                     }
                 }
@@ -577,7 +589,7 @@ namespace lux::render::detail
                     );
                     if (count != expected_count)
                     {
-                        return false;
+                        return std::nullopt;
                     }
                     for (std::size_t i = 0; i < count; ++i)
                     {
@@ -594,7 +606,7 @@ namespace lux::render::detail
                         );
                         if (expected == interface.bindings.end())
                         {
-                            return false;
+                            return std::nullopt;
                         }
                         const auto type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
                         if (expected_kind == EDescriptorKind::SAMPLED_IMAGE ||
@@ -616,7 +628,7 @@ namespace lux::render::detail
                                 spvc_compiler_get_type_handle(compiler, spvc_type_get_image_sampled_type(type));
                             if (invalid_array || invalid_image || spvc_type_get_basetype(sampled) != SPVC_BASETYPE_FP32)
                             {
-                                return false;
+                                return std::nullopt;
                             }
                         }
                         else if (expected_kind == EDescriptorKind::SAMPLER)
@@ -626,7 +638,7 @@ namespace lux::render::detail
                                     ? expected->count != 1
                                     : dimensions != 1 || spvc_type_get_array_dimension(type, 0) != expected->count)
                             {
-                                return false;
+                                return std::nullopt;
                             }
                         }
                         else
@@ -640,7 +652,7 @@ namespace lux::render::detail
                                     &decoration_count
                                 )))
                             {
-                                return false;
+                                return std::nullopt;
                             }
                             const auto flags = std::span(decorations, decoration_count);
                             const bool read = std::ranges::find(flags, SpvDecorationNonReadable) == flags.end();
@@ -649,7 +661,7 @@ namespace lux::render::detail
                                                          write != (expected->access != EShaderAccess::READ_ONLY);
                             if (expected_kind == EDescriptorKind::STORAGE_BUFFER && access_mismatch)
                             {
-                                return false;
+                                return std::nullopt;
                             }
                             const auto structure = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
                             const auto dimensions = spvc_type_get_num_array_dimensions(type);
@@ -661,7 +673,7 @@ namespace lux::render::detail
                                 wrong_array || !validateBlock(compiler, structure, expected->block);
                             if (invalid_block)
                             {
-                                return false;
+                                return std::nullopt;
                             }
                         }
                     }
@@ -670,7 +682,7 @@ namespace lux::render::detail
                 {
                     if (!graphics || count != graphics->vertex_attributes.size())
                     {
-                        return false;
+                        return std::nullopt;
                     }
                     for (std::size_t item = 0; item < count; ++item)
                     {
@@ -680,7 +692,7 @@ namespace lux::render::detail
                             std::ranges::find(graphics->vertex_attributes, location, &VertexAttribute::location);
                         if (found == graphics->vertex_attributes.end())
                         {
-                            return false;
+                            return std::nullopt;
                         }
                         const auto format = vertexFormat(found->format);
                         const auto type = spvc_compiler_get_type_handle(compiler, list[item].type_id);
@@ -693,18 +705,14 @@ namespace lux::render::detail
                                               spvc_type_get_num_array_dimensions(type) != 0;
                         if (mismatch)
                         {
-                            return false;
+                            return std::nullopt;
                         }
                     }
                 }
                 else if ((stage == SpvExecutionModelVertex && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT) ||
                          (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_INPUT))
                 {
-                    if (!io)
-                    {
-                        return false;
-                    }
-                    auto& fields = kind == SPVC_RESOURCE_TYPE_STAGE_INPUT ? io->inputs : io->outputs;
+                    auto& fields = kind == SPVC_RESOURCE_TYPE_STAGE_INPUT ? io.inputs : io.outputs;
                     for (std::size_t item = 0; item < count; ++item)
                     {
                         const auto type = spvc_compiler_get_type_handle(compiler, list[item].type_id);
@@ -715,7 +723,7 @@ namespace lux::render::detail
                                              spvc_type_get_num_array_dimensions(type) != 0;
                         if (invalid)
                         {
-                            return false;
+                            return std::nullopt;
                         }
                         fields.push_back(
                             {spvc_compiler_get_decoration(compiler, list[item].id, SpvDecorationLocation),
@@ -729,7 +737,7 @@ namespace lux::render::detail
                 {
                     if (count != color_count)
                     {
-                        return false;
+                        return std::nullopt;
                     }
                     std::vector<bool> locations(color_count, false);
                     for (std::size_t i = 0; i < count; ++i)
@@ -739,17 +747,17 @@ namespace lux::render::detail
                                              !float4(spvc_compiler_get_type_handle(compiler, list[i].type_id));
                         if (invalid || locations[location])
                         {
-                            return false;
+                            return std::nullopt;
                         }
                         locations[location] = true;
                     }
                 }
                 else if (count != 0)
                 {
-                    return false;
+                    return std::nullopt;
                 }
             }
-            return true;
+            return io;
         }
     } // namespace
 
@@ -847,16 +855,7 @@ namespace lux::render::detail
         {
             return cxx::unexpected(RenderError{kDeviceUnsupported});
         }
-        if (shader.target == rdesc::EShaderTarget::SPIRV && !validateStage(
-                                                                code,
-                                                                SpvExecutionModelGLCompute,
-                                                                *projected,
-                                                                session.description(),
-                                                                nullptr,
-                                                                {},
-                                                                0,
-                                                                enabled.buffer_device_address
-                                                            ))
+        if (shader.target == rdesc::EShaderTarget::SPIRV && !validateStage(session, code, *projected))
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
         }
@@ -887,7 +886,6 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& graphics = program.state;
-        const auto& limits = session.description();
         const auto& enabled = session.enabledFeatures();
         const auto color_count = program.colors.size();
         const auto depth = program.depth;
@@ -975,35 +973,16 @@ namespace lux::render::detail
             // The D3D12 PSO compiler validates the actual DXIL stage signatures and root signature together.
             return std::array{vertex_stage, fragment_stage};
         }
-        StageIo vertex_io, fragment_io;
-        const bool valid_vertex = validateStage(
-            *vertex_stage,
-            SpvExecutionModelVertex,
-            *projected,
-            limits,
-            &graphics,
-            &vertex_io,
-            true,
-            enabled.buffer_device_address
-        );
-        const bool valid_fragment = !fragment_stage || validateStage(
-                                                           *fragment_stage,
-                                                           SpvExecutionModelFragment,
-                                                           *projected,
-                                                           limits,
-                                                           &graphics,
-                                                           &fragment_io,
-                                                           static_cast<std::uint32_t>(color_count)
-                                                       );
-        if (!valid_vertex || !valid_fragment)
+        const auto vertex_io = validateStage(session, *vertex_stage, *projected, &program);
+        if (!vertex_io) return cxx::unexpected(RenderError{kDeviceArgument});
+        if (fragment_stage)
         {
-            return cxx::unexpected(RenderError{kDeviceArgument});
-        }
-        for (const auto& input : fragment_io.inputs)
-        {
-            if (std::ranges::find(vertex_io.outputs, input) == vertex_io.outputs.end())
+            const auto fragment_io = validateStage(session, *fragment_stage, *projected, &program);
+            if (!fragment_io) return cxx::unexpected(RenderError{kDeviceArgument});
+            for (const auto& input : fragment_io->inputs)
             {
-                return cxx::unexpected(RenderError{kDeviceArgument});
+                if (std::ranges::find(vertex_io->outputs, input) == vertex_io->outputs.end())
+                    return cxx::unexpected(RenderError{kDeviceArgument});
             }
         }
         return std::array{vertex_stage, fragment_stage};

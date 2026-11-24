@@ -3,9 +3,9 @@
 #include <cmath>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
-#include <lux/engine/render/graph/Work.hpp>
-#include <lux/engine/render/graph/ShaderInterface.hpp>
+#include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <lux/engine/render/graph/compile/BuiltinPass.hpp>
+#include <lux/engine/render/graph/execute/CommandExtent.hpp>
 
 namespace lux::render::detail
 {
@@ -16,7 +16,8 @@ namespace lux::render::detail
             return left.version == right.version && left.range == right.range && left.access == right.access;
         }
 
-        RenderResult<void> validateTransfer(const TransferWork& work, std::span<const GraphResource> resources) noexcept
+        RenderResult<void>
+        validateTransfer(const TransferWork& work, std::span<const CompiledResource> resources) noexcept
         {
             for (const auto& operation : work.operations)
             {
@@ -37,7 +38,8 @@ namespace lux::render::detail
                             const bool is_valid_clear =
                                 std::isfinite(copy.depth) &&
                                 std::ranges::all_of(copy.color, [](float value) { return std::isfinite(value); });
-                            return is_valid_range && is_valid_clear;
+                            const auto* image = std::get_if<GraphImageDesc>(&destination);
+                            return is_valid_range && is_valid_clear && image && !image->volume_depth;
                         }
                         else
                         {
@@ -64,11 +66,16 @@ namespace lux::render::detail
                                                                         : std::max(1u, b.width >> to_image->first_mip);
                                 const auto bh = copy.destination_region ? copy.destination_region->height
                                                                         : std::max(1u, b.height >> to_image->first_mip);
-                                const bool is_same_format = a.format == b.format && a.samples == b.samples;
+                                const auto az = copy.source_region ? copy.source_region->depth :
+                                    std::max(1u, a.volume_depth.value_or(1) >> from_image->first_mip);
+                                const auto bz = copy.destination_region ? copy.destination_region->depth :
+                                    std::max(1u, b.volume_depth.value_or(1) >> to_image->first_mip);
+                                const bool is_same_format = a.format == b.format && a.samples == b.samples &&
+                                    a.volume_depth.has_value() == b.volume_depth.has_value();
                                 const bool comparable_mips = a.extent.source == EImageExtentSource::FIXED ||
                                                              from_image->first_mip == to_image->first_mip;
                                 const bool is_same_extent =
-                                    comparable_mips && aw == bw && ah == bh && a.extent == b.extent;
+                                    comparable_mips && aw == bw && ah == bh && az == bz && a.extent == b.extent;
                                 const bool is_same_subresources = from_image->aspects == to_image->aspects &&
                                                                   from_image->mip_count == to_image->mip_count &&
                                                                   from_image->layer_count == to_image->layer_count;
@@ -98,7 +105,7 @@ namespace lux::render::detail
         }
 
         RenderResult<void> validateDraw(
-            const RasterWork::FixedProgram& work, std::span<const GraphResource> resources,
+            const RasterWork::FixedProgram& work, std::span<const CompiledResource> resources,
             const nri::DeviceDesc& limits
         ) noexcept
         {
@@ -217,19 +224,35 @@ namespace lux::render::detail
         }
     } // namespace
 
-    RenderResult<RasterCommands> RasterPass::compile(const RasterWork& value, PassCompileContext& context) noexcept
+    RenderResult<RasterCommands>
+    compileRasterCommands(
+        const RasterWork& value,
+        std::span<const CompiledResource> resources,
+        const nri::DeviceDesc& limits,
+        RecordingProgram& program
+    ) noexcept
     {
-        const auto* raster = &value;
         const auto* fixed = std::get_if<RasterWork::FixedProgram>(&value.program);
-        const auto& limits = context.limits;
         RasterCommands recorded;
         if (fixed)
         {
-            if (auto valid = validateDraw(*fixed, context.resources, limits); !valid)
+            if (auto valid = validateDraw(*fixed, resources, limits); !valid)
             {
                 return cxx::unexpected(valid.error());
             }
-            recorded.draw = std::visit([](const auto& draw) noexcept -> VRasterDraw
+            const auto* indirect = std::get_if<DrawIndexedIndirect>(&fixed->draw);
+            const auto address_count = indirect ? 2u + indirect->count_resource.has_value() :
+                static_cast<unsigned>(std::holds_alternative<DrawIndexed>(fixed->draw));
+            if (address_count > kGraphInvalidIndex - program.raster_addresses.size() ||
+                fixed->vertex_buffers.size() > kGraphInvalidIndex - program.raster_vertices.size())
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+            const auto address = [&](BufferLocation location, std::uint64_t bytes, std::uint32_t alignment) noexcept
+            {
+                const auto slot = static_cast<std::uint32_t>(program.raster_addresses.size());
+                program.raster_addresses.push_back({location, bytes, alignment});
+                return slot;
+            };
+            recorded.draw = std::visit([&](const auto& draw) noexcept -> VRasterDraw
             {
                 using Draw = std::remove_cvref_t<decltype(draw)>;
                 if constexpr (std::same_as<Draw, DrawVertices>)
@@ -237,46 +260,58 @@ namespace lux::render::detail
                 else
                 {
                     const auto type = draw.type == EIndexType::UINT16 ? nri::IndexType::UINT16 : nri::IndexType::UINT32;
+                    const auto width = draw.type == EIndexType::UINT16 ? 2u : 4u;
                     const auto buffer = draw.index_resource.resource.index;
                     if constexpr (std::same_as<Draw, DrawIndexed>)
                     {
+                        const auto bytes = std::max<std::uint64_t>(1, std::uint64_t{draw.first} + draw.count) * width;
                         return IndexedDrawPacket{
-                            {{buffer, draw.offset}, type},
+                            {address({buffer, draw.offset}, bytes, width), type},
                             {draw.count, draw.instances, draw.first, draw.vertex_offset, draw.first_instance}
                         };
                     }
                     else
                     {
-                        const auto count = draw.count_resource ? draw.count_resource->resource.index : kGraphInvalidIndex;
+                        const auto bytes = sizeof(nri::DrawIndexedDesc) + std::uint64_t{draw.count - 1} * draw.stride;
+                        const auto arguments = address({draw.commands_resource.resource.index, draw.commands_offset}, bytes, 4);
+                        const auto count = draw.count_resource ?
+                            address({draw.count_resource->resource.index, draw.count_offset}, sizeof(std::uint32_t), 4) :
+                            kGraphInvalidIndex;
                         return IndirectDrawPacket{
-                            {{buffer, draw.index_offset}, type}, {draw.commands_resource.resource.index, draw.commands_offset},
-                            {count, draw.count_offset}, draw.count, draw.stride
+                            {address({buffer, draw.index_offset}, width, width), type}, arguments, count, draw.count, draw.stride
                         };
                     }
                 }
             }, fixed->draw);
+            recorded.first_vertex = static_cast<std::uint32_t>(program.raster_vertices.size());
+            recorded.vertex_count = static_cast<std::uint32_t>(fixed->vertex_buffers.size());
             for (const auto& source : fixed->vertex_buffers)
             {
                 const auto binding =
                     std::ranges::find(fixed->graphics.vertex_bindings, source.binding, &VertexBinding::binding);
-                recorded.vertices.push_back({
+                program.raster_vertices.push_back({
                     source.resource.resource.index, source.binding, source.offset, binding->stride
                 });
             }
         }
         else
         {
-            const auto& stage = std::get<RasterPassTemplate>(raster->program);
-            recorded.draw = RasterListCommands{(*context.raster_list_count)++, stage.usesStreamProducer()};
+            const auto& stage = std::get<RasterPassTemplate>(value.program);
+            recorded.draw = RasterListCommands{kGraphInvalidIndex, stage.usesStreamProducer()};
         }
         return recorded;
     }
 
-    RenderResult<ComputeCommands> ComputePass::compile(const ComputeWork& value, PassCompileContext& context) noexcept
+    RenderResult<ComputeCommands>
+    compileComputeCommands(
+        const ComputeWork& value,
+        std::span<const CompiledResource> resources,
+        const nri::DeviceDesc& limits
+    ) noexcept
     {
         if (const auto* direct = std::get_if<DispatchArguments>(&value.dispatch))
         {
-            const auto& limit = context.limits.shaderStage.compute.dispatchMaxDim;
+            const auto& limit = limits.shaderStage.compute.dispatchMaxDim;
             for (unsigned axis = 0; axis < direct->groups.size(); ++axis)
             {
                 if (!direct->groups[axis] || direct->groups[axis] > limit[axis])
@@ -287,30 +322,40 @@ namespace lux::render::detail
         if (const auto* dispatch = std::get_if<ImageDispatchArguments>(&value.dispatch))
         {
             const auto slot = dispatch->resource.index;
-            const bool materialized = slot < context.materialized_resources.size() &&
-                context.materialized_resources[slot];
-            const auto* image = slot < context.resources.size()
-                ? std::get_if<GraphImageDesc>(&context.resources[slot].description) : nullptr;
-            const bool valid_image = materialized && image && dispatch->mip < image->mips;
-            const bool valid_group = dispatch->group_size[0] && dispatch->group_size[1];
+            const auto* image = slot < resources.size() && resources[slot].memory_used
+                ? std::get_if<GraphImageDesc>(&resources[slot].description) : nullptr;
+            const bool valid_image = image && dispatch->mip < image->mips;
+            const bool valid_group = dispatch->group_size[0] && dispatch->group_size[1] && dispatch->group_depth;
             if (!valid_image || !valid_group) return cxx::unexpected(RenderError{kDeviceArgument});
-            return ComputeCommands{ImageDispatchExtent{slot, dispatch->mip, dispatch->group_size}};
+            const std::array group_size{dispatch->group_size[0], dispatch->group_size[1], dispatch->group_depth};
+            const ImageDispatchExtent extent{slot, dispatch->mip, group_size};
+            if (image->extent.source == EImageExtentSource::FIXED && !resources[slot].target_sized)
+            {
+                const ImageDimensions dimensions{image->width, image->height, image->volume_depth.value_or(1)};
+                auto groups = dispatchGroups(extent, dimensions, limits);
+                if (!groups) return cxx::unexpected(groups.error());
+                return ComputeCommands{*groups};
+            }
+            return ComputeCommands{extent};
         }
         const auto& indirect = std::get<IndirectDispatchArguments>(value.dispatch);
         const auto slot = indirect.buffer.resource.index;
-        const auto& buffer = std::get<GraphBufferDesc>(context.resources[slot].description);
+        const auto& buffer = std::get<GraphBufferDesc>(resources[slot].description);
         const bool fits = indirect.offset <= buffer.size && buffer.size - indirect.offset >= sizeof(nri::DispatchDesc);
         if (indirect.offset % 4 || !fits) return cxx::unexpected(RenderError{kDeviceArgument});
         return ComputeCommands{BufferLocation{slot, indirect.offset}};
     }
 
     RenderResult<TransferCommands>
-    TransferPass::compile(
-        const TransferWork& value, std::span<const ResourceAccess> storage_fills,
-        PassCompileContext& context, TransferProgram& program
+    compileTransferCommands(
+        const GraphTransferCommand& command,
+        std::span<const CompiledResource> resources,
+        nri::GraphicsAPI backend,
+        TransferProgram& program
     ) noexcept
     {
-        if (auto valid = validateTransfer(value, context.resources); !valid)
+        const auto& [value, storage_fills] = command;
+        if (auto valid = validateTransfer(value, resources); !valid)
         {
             return cxx::unexpected(valid.error());
         }
@@ -328,7 +373,7 @@ namespace lux::render::detail
         const auto image = [&](const ResourceAccess& access, std::optional<ImageCopyRegion> region = {}) noexcept
         {
             const auto slot = access.version.resource.index;
-            const auto format = std::get<GraphImageDesc>(context.resources[slot].description).format;
+            const auto format = std::get<GraphImageDesc>(resources[slot].description).format;
             const auto& range = std::get<GraphImageRange>(access.range);
             return ImageOperand{
                 slot, fallback(access), range, region, imageFormat(format).block,
@@ -343,10 +388,14 @@ namespace lux::render::detail
         };
         const auto emit = [&](ETransferOpcode opcode, auto& column, auto value)
         {
+            const bool copy_only = opcode == ETransferOpcode::COPY_BUFFER || opcode == ETransferOpcode::COPY_IMAGE ||
+                opcode == ETransferOpcode::UPLOAD || opcode == ETransferOpcode::READBACK ||
+                opcode == ETransferOpcode::ZERO_BUFFER;
+            commands.preserves_bindings &= copy_only;
             program.instructions.push_back({opcode, static_cast<std::uint32_t>(column.size())});
             column.push_back(std::move(value));
         };
-        const bool serialize_buffer_writes = context.limits.graphicsAPI == nri::GraphicsAPI::D3D12;
+        const bool serialize_buffer_writes = backend == nri::GraphicsAPI::D3D12;
         std::vector<std::uint32_t> filled_resources;
         std::uint32_t next_descriptor = 0;
         for (const auto& operation : value.operations)
@@ -404,12 +453,12 @@ namespace lux::render::detail
         return commands;
     }
 
-    std::optional<PassNativeAccess> TransferPass::access(
-        const TransferWork& work, std::span<const ResourceAccess> storage_fills, const ResourceAccess& use,
+    std::optional<PassNativeAccess> transferAccess(
+        const GraphTransferCommand& command, const ResourceAccess& use,
         const VGraphResourceDesc& description, nri::GraphicsAPI backend
     ) noexcept
     {
-        for (const auto& operation : work.operations)
+        for (const auto& operation : command.work.operations)
         {
             if (const auto* clear = std::get_if<ClearImage>(&operation);
                 clear && isSameWrite(clear->destination, use))
@@ -425,7 +474,7 @@ namespace lux::render::detail
             if (const auto* fill = std::get_if<FillBuffer>(&operation);
                 fill && isSameWrite(fill->destination, use))
             {
-                const bool storage = std::ranges::any_of(storage_fills, [&](const auto& write) noexcept
+                const bool storage = std::ranges::any_of(command.typed_buffer_writes, [&](const auto& write) noexcept
                 {
                     return isSameWrite(write, use);
                 });

@@ -1,4 +1,5 @@
 #include "../Common.slang"
+#include "../SceneView.slang"
 
 struct ClusterBounds
 {
@@ -26,11 +27,10 @@ struct Status
 
 [[vk::binding(2, 0)]] RWStructuredBuffer<Status> status : register(u2, space0);
 
+[[vk::binding(3, 0)]] StructuredBuffer<SceneViewGpu> scene_view : register(t3, space0);
+
 struct Parameters
 {
-    mat4 inverse_view_projection;
-    vec4 position_near;
-    vec4 direction_far;
     uvec4 cells;
     uvec4 limits;
 };
@@ -45,7 +45,7 @@ bool finiteVector(vec4 value)
 float sliceDistance(uint z)
 {
     float t = float(z) / float(parameters.cells.z);
-    float near_z = parameters.position_near.w, far_z = parameters.direction_far.w;
+    float near_z = scene_view[0].position_near.w, far_z = scene_view[0].direction_far.w;
     return parameters.cells.w == 0 ? mix(near_z, far_z, t) : near_z * pow(far_z / near_z, t);
 }
 
@@ -61,17 +61,17 @@ void luxMain()
         (index / parameters.cells.x) % parameters.cells.y,
         index / (parameters.cells.x * parameters.cells.y)
     );
-    bool valid = finiteVector(parameters.position_near) && finiteVector(parameters.direction_far) &&
-                 parameters.position_near.w > 0 && parameters.direction_far.w > parameters.position_near.w &&
-                 abs(dot(parameters.direction_far.xyz, parameters.direction_far.xyz) - 1) < 0.001;
+    bool valid = finiteVector(scene_view[0].position_near) && finiteVector(scene_view[0].direction_far) &&
+                 scene_view[0].position_near.w > 0 && scene_view[0].direction_far.w > scene_view[0].position_near.w &&
+                 abs(dot(scene_view[0].direction_far.xyz, scene_view[0].direction_far.xyz) - 1) < 0.001;
     vec3 minimum = vec3(3.402823e38), maximum = -minimum;
     for (uint y = 0; y < 2; ++y)
     {
         for (uint x = 0; x < 2; ++x)
         {
             vec2 xy = vec2(cell.xy + uvec2(x, y)) / vec2(parameters.cells.xy) * 2 - 1;
-            vec4 a = mul(parameters.inverse_view_projection, vec4(xy, 0, 1));
-            vec4 b = mul(parameters.inverse_view_projection, vec4(xy, 1, 1));
+            vec4 a = mul(scene_view[0].inverse_view_projection, vec4(xy, 0, 1));
+            vec4 b = mul(scene_view[0].inverse_view_projection, vec4(xy, 1, 1));
             bool ray_valid = finiteVector(a) && finiteVector(b) && abs(a.w) > 1e-12 && abs(b.w) > 1e-12;
             if (!ray_valid)
             {
@@ -79,8 +79,8 @@ void luxMain()
                 continue;
             }
             vec3 origin = a.xyz / a.w, ray = b.xyz / b.w - origin;
-            float depth = dot(origin - parameters.position_near.xyz, parameters.direction_far.xyz);
-            float length_z = dot(ray, parameters.direction_far.xyz);
+            float depth = dot(origin - scene_view[0].position_near.xyz, scene_view[0].direction_far.xyz);
+            float length_z = dot(ray, scene_view[0].direction_far.xyz);
             if (length_z <= 1e-7)
             {
                 valid = false;
@@ -104,7 +104,7 @@ void luxMain()
     }
     if (index == 0)
     {
-        mat4 projection = inverse(parameters.inverse_view_projection);
+        mat4 projection = inverse(scene_view[0].inverse_view_projection);
         if (!finiteVector(projection[0]) || !finiteVector(projection[1]) || !finiteVector(projection[2]) ||
             !finiteVector(projection[3]))
         {
@@ -112,8 +112,8 @@ void luxMain()
         }
         grid_data[0].cells = parameters.cells;
         grid_data[0].limits = parameters.limits;
-        grid_data[0].position_near = parameters.position_near;
-        grid_data[0].direction_far = parameters.direction_far;
+        grid_data[0].position_near = scene_view[0].position_near;
+        grid_data[0].direction_far = scene_view[0].direction_far;
         grid_data[0].world_to_clip = projection;
     }
 }

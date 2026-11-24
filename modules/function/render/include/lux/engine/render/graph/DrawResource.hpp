@@ -1,40 +1,36 @@
 #pragma once
 
-#include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/resource/ResourceDefinition.hpp>
+#include <lux/cxx/core/EnumFlags.hpp>
+#include <lux/engine/render/core/Error.hpp>
+#include <lux/engine/render/resource/ResourceRequirement.hpp>
 #include <string>
 
 namespace lux::render
 {
-    struct DrawResourceType final
+    enum class EDrawResourceRead : std::uint8_t
     {
-        ResourceName type;
-        cxx::basic_type_info implementation;
+        INDEXED_GEOMETRY = 1,
+        SAMPLED_IMAGES = 2,
+        STORAGE_RECORDS = 4
     };
+}
 
-    namespace extension_detail
-    {
-        struct DrawSourceAddress final
-        {
-            std::uint32_t pass, source;
-        };
-    }
+template <> struct lux::cxx::enable_enum_flags<lux::render::EDrawResourceRead> : std::true_type {};
 
-    template <class Storage> class DrawResourceSlot final
-    {
-        friend class CpuCallFrame;
-        friend class RasterRecordWriter;
-        friend class RasterOperands;
-        explicit constexpr DrawResourceSlot(extension_detail::DrawSourceAddress address) noexcept : address_(address) {}
-        extension_detail::DrawSourceAddress address_;
-    };
+namespace lux::render
+{
+    using DrawResourceReads = cxx::EnumFlags<EDrawResourceRead>;
+
+    // Dense index of a declared Raster resource in this compiled graph.
+    struct RasterResourceSlot final { std::uint32_t index = UINT32_MAX; };
+
+    class InstalledDrawSources;
 
     struct DrawResourceInput final
     {
         std::string binding;
-        DrawResourceType source;
-        std::uint32_t required_capabilities = 0;
+        ResourceName source;
+        DrawResourceReads reads;
         bool optional = false;
-        bool indexed_geometry = false;
     };
 }

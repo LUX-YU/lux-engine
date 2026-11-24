@@ -4,7 +4,6 @@
 #include <lux/engine/render/device/SubmissionFrontiers.hpp>
 #include <lux/engine/render/visibility.h>
 #include <exec/task.hpp>
-#include <lux/engine/render/resource/ReplicaMutation.hpp>
 #include <optional>
 #include <span>
 
@@ -23,21 +22,14 @@ namespace lux::render::detail
     class LUX_RENDER_PUBLIC FrameProgress final
     {
     public:
-        struct SlotSelection final
-        {
-            FrameContext frame;
-            std::uint64_t epoch = 0;
-        };
-
         FrameProgress(std::uint32_t frames_in_flight, const void* domain, std::size_t queues) noexcept;
         ~FrameProgress() noexcept;
         FrameProgress(const FrameProgress&) = delete;
         FrameProgress& operator=(const FrameProgress&) = delete;
-        [[nodiscard]] RenderResult<std::optional<SlotSelection>> tryBegin(const DeviceSession&) noexcept;
-        void adopt(SlotSelection, SubmissionPoint) noexcept;
-        void endFrame(SlotSelection) noexcept;
-        [[nodiscard]] bool canBegin(const SubmissionFrontiers& completed) const noexcept;
-        [[nodiscard]] bool canBegin(const DeviceSession&) noexcept;
+        [[nodiscard]] RenderResult<std::optional<FrameContext>> availableFrame(const DeviceSession&) noexcept;
+        void beginFrame(FrameContext) noexcept;
+        void adopt(FrameContext, SubmissionPoint) noexcept;
+        void endFrame(FrameContext) noexcept;
         [[nodiscard]] RenderResult<bool> waitForProgress(DeviceSession&, std::uint64_t timeout_ns) noexcept;
         [[nodiscard]] std::uint32_t nextSlot() const noexcept;
         [[nodiscard]] std::uint32_t frameCount() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
@@ -46,27 +38,16 @@ namespace lux::render::detail
 
         [[nodiscard]] bool active() const noexcept
         {
-            return access_ == ECpuAccess::FRAME;
+            return active_;
         }
 
     private:
-        friend class ::lux::render::ReplicaMutation;
-        [[nodiscard]] exec::task<RenderResult<ReplicaFrame>> acquireReplica(DeviceSession&) noexcept;
-        [[nodiscard]] SubmissionFrontiers& replicaFrontiers(ReplicaFrame) noexcept;
-        void endReplica(ReplicaFrame) noexcept;
-
-        enum class ECpuAccess : std::uint8_t { IDLE, FRAME, REPLICA };
-
-        [[nodiscard]] SlotSelection beginCpuAccess(ECpuAccess) noexcept;
-        void requireAccess(ReplicaFrame, ECpuAccess) const noexcept;
-        void endCpuAccess(ReplicaFrame, ECpuAccess) noexcept;
+        void requireFrame(FrameContext) const noexcept;
 
         std::vector<SubmissionFrontiers> slots_;
         SubmissionFrontiers completed_;
         std::uint64_t next_frame_index_ = 0;
-        std::uint64_t epoch_ = 0;
-        std::uint32_t access_slot_ = 0;
-        ECpuAccess access_ = ECpuAccess::IDLE;
+        bool active_ = false;
         std::size_t wait_queue_cursor_ = 0;
     };
 } // namespace lux::render::detail

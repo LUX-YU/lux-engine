@@ -78,7 +78,6 @@ namespace lux::render
         // All lighting records contribute to the dense lighting-table offsets.
         std::array<std::uint32_t, 3> counts{};
         std::vector<ShadowLightRecord> casters;
-        std::uint64_t revision = 0;
     };
 
     struct LightData final

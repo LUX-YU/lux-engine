@@ -1,4 +1,3 @@
-#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <algorithm>
 #include <exception>
@@ -7,6 +6,7 @@
 #include <lux/engine/render/device/NativeExecution.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/DeviceEntry.hpp>
+#include <lux/engine/render/runtime/RenderJob.hpp>
 
 namespace lux::render::detail
 {
@@ -14,42 +14,32 @@ namespace lux::render::detail
         ResourceRegistry& registry,
         std::unique_ptr<NativeExecution> native,
         std::unique_ptr<DeviceSession> session,
-        std::uint32_t frame_count,
-        std::size_t preparation_capacity
+        Host host
     ) noexcept
-        : native_(std::move(native)), session_(std::move(session)),
-          frame_progress_(frame_count, session_.get(), session_->queueCount()),
-          frame_workspace_(frame_count, session_->queueCount(), preparation_capacity),
-          resources_(registry, *session_)
+        : jobs_(host.jobs), workers_(host.workers), native_(std::move(native)), session_(std::move(session)),
+          frame_progress_(host.config.frames_in_flight, session_.get(), session_->queueCount()),
+          resources_(registry, *this),
+          round(*session_, frame_progress_)
     {
     }
 
-    RenderResult<std::unique_ptr<DeviceEntry>> DeviceEntry::create(
-        ResourceRegistry& registry,
-        const DeviceOptions& options,
-        const nri::CallbackInterface& callbacks,
-        const RenderServerConfig& config,
-        execution::CpuScheduler cpu
-    ) noexcept
+    RenderResult<std::unique_ptr<DeviceEntry>>
+    DeviceEntry::create(ResourceRegistry& registry, const DeviceOptions& options, Host host) noexcept
     {
         auto native = NativeExecution::create();
         if (!native)
         {
             return cxx::unexpected(native.error());
         }
-        auto session = DeviceSession::create(options, callbacks, config.validation, (*native)->scheduler());
+        auto session = DeviceSession::create(options, host.callbacks, host.config.validation, (*native)->scheduler());
         if (!session)
         {
             return cxx::unexpected(session.error());
         }
-        const auto preparation_capacity = config.uploads ? config.uploads->window_regions : 0;
-        auto entry = std::unique_ptr<DeviceEntry>(
-            new DeviceEntry(registry, std::move(*native), std::move(*session), config.frames_in_flight,
-                preparation_capacity)
-        );
-        if (config.uploads)
+        auto entry = std::unique_ptr<DeviceEntry>(new DeviceEntry(registry, std::move(*native), std::move(*session), host));
+        if (host.config.uploads)
         {
-            auto uploader = ResourceUploader::create(entry->session(), *config.uploads, cpu);
+            auto uploader = ResourceUploader::create(entry->session(), *host.config.uploads, host.workers.recordingScheduler());
             if (!uploader)
             {
                 return cxx::unexpected(uploader.error());
@@ -61,23 +51,7 @@ namespace lux::render::detail
 
     DeviceEntry::~DeviceEntry() noexcept
     {
-        if (!job_resources_.empty() || !pending_program_bindings_.empty()) std::terminate();
-    }
-
-    void DeviceEntry::activateProgramBinding(ExecutionBindingId id) noexcept
-    {
-        pending_program_bindings_.push_back(id);
-    }
-
-    void DeviceEntry::retireProgramBinding(ExecutionBindingId id) noexcept
-    {
-        const auto found = std::ranges::find(pending_program_bindings_, id);
-        if (found == pending_program_bindings_.end()) std::terminate();
-        const auto removed = static_cast<std::size_t>(found - pending_program_bindings_.begin());
-        pending_program_bindings_.erase(found);
-        auto& cursor = round.preparation_cursor;
-        if (removed < cursor) --cursor;
-        if (cursor >= pending_program_bindings_.size()) cursor = 0;
+        if (!job_resources_.empty()) std::terminate();
     }
 
     std::unique_ptr<JobGpuResources> DeviceEntry::prepareJobResources(ExecutionBindingId identity) noexcept
@@ -115,26 +89,20 @@ namespace lux::render::detail
         return retired;
     }
 
-    void DeviceEntry::installEffectResources(EffectId effect, std::span<const ConstantBufferInput> constants) noexcept
+    void DeviceEntry::installEffectResources(EffectId effect, std::span<BoundConstantBuffer> constants) noexcept
     {
         if (constants.empty()) return;
         EffectBuffers buffers;
         buffers.reserve(constants.size());
         const auto frame_count = frame_progress_.frameCount();
-        for (const auto& input : constants)
+        for (auto& input : constants)
         {
-            buffers.push_back(std::make_unique<ConstantBufferStorage>(session(), input.bytes, frame_count));
+            const auto bytes = static_cast<std::uint32_t>(input.value.bytes.size());
+            auto& buffer = buffers.emplace_back(std::make_unique<ConstantBufferStorage>(session(), bytes, frame_count));
+            input.storage = buffer.get();
         }
         effect_buffers_.prepareCapacity(effect_buffers_.size() + 1, std::size_t(effect.index) + 1);
         effect_buffers_.emplace(effect, std::move(buffers));
-    }
-
-    std::span<const std::unique_ptr<ConstantBufferStorage>>
-    DeviceEntry::effectResources(EffectId effect) const & noexcept
-    {
-        const auto* buffers = effect_buffers_.tryGet(effect);
-        return buffers ? std::span<const std::unique_ptr<ConstantBufferStorage>>{*buffers} :
-            std::span<const std::unique_ptr<ConstantBufferStorage>>{};
     }
 
     void DeviceEntry::removeEffectResources(EffectId effect) noexcept
@@ -147,17 +115,22 @@ namespace lux::render::detail
         return ResourceCreateContext(*this);
     }
 
-    ResourceSet* DeviceEntry::scopedResources(SceneId scene, ViewId view, bool create) noexcept
+    ResourceSet* DeviceEntry::scopedResources(SceneId scene, ViewId view, ResourceCreateContext* creation) noexcept
     {
         if (scene.isNull()) return &resources_;
         const ScopeKey scene_key{scene.index, scene.gen};
-        auto parent = create ? scene_resources_.try_emplace(scene_key, resources_).first :
+        auto parent = creation ? scene_resources_.try_emplace(scene_key, resources_, *session_, frame_progress_.frameCount()).first :
             scene_resources_.find(scene_key);
         if (parent == scene_resources_.end()) return nullptr;
         auto& scope = parent->second;
         if (view.isNull()) return &scope.resources;
         const ScopeKey view_key{view.index, view.gen};
-        auto child = create ? scope.views.try_emplace(view_key, scope.resources, EResourceDomain::VIEW).first :
+        if (creation)
+        {
+            creation->view_table_ = &scope.view_table;
+            creation->view_index_ = view.index;
+        }
+        auto child = creation ? scope.views.try_emplace(view_key, scope.resources, EResourceDomain::VIEW).first :
             scope.views.find(view_key);
         return child == scope.views.end() ? nullptr : &child->second;
     }
@@ -184,12 +157,23 @@ namespace lux::render::detail
         return child != found->second.views.end() && child->second.hasBorrows();
     }
 
-    void DeviceEntry::eraseResourceScope(SceneId scene, ViewId view) noexcept
+    void DeviceEntry::eraseSceneResources(SceneId scene) noexcept
     {
-        const ScopeKey key{scene.index, scene.gen};
-        if (view.isNull()) scene_resources_.erase(key);
-        else if (auto parent = scene_resources_.find(key); parent != scene_resources_.end())
-            parent->second.views.erase({view.index, view.gen});
+        scene_resources_.erase({scene.index, scene.gen});
+    }
+
+    SubmissionFrontiers DeviceEntry::retireViewResources(SceneId scene, ViewId view) noexcept
+    {
+        const auto parent = scene_resources_.find({scene.index, scene.gen});
+        if (parent == scene_resources_.end()) return {};
+        auto& scope = parent->second;
+        scope.views.erase({view.index, view.gen});
+        auto uses = scope.view_table.takePendingUses(view.index);
+        const auto page = view.index / SceneViewStorage::rows_per_page;
+        const auto next = scope.views.lower_bound({page * SceneViewStorage::rows_per_page, 0});
+        if (next == scope.views.end() || next->first.first / SceneViewStorage::rows_per_page != page)
+            scope.view_table.releasePage(page);
+        return uses;
     }
 
     std::optional<exec::task<RenderResult<void>>> DeviceEntry::startReadyUploads() noexcept
@@ -204,16 +188,16 @@ namespace lux::render::detail
         return native_->idle();
     }
 
-    bool DeviceEntry::preparingProgramsFor(ExecutionBindingId binding) const noexcept
+    bool DeviceEntry::jobUsesResource(ResourceInstanceId id) const noexcept
     {
-        return program_update && program_update->binding == binding;
+        return std::ranges::any_of(jobs_, [id](const auto& job) noexcept { return job.usesResource(id); });
     }
 
     bool DeviceEntry::hasBorrows() const noexcept
     {
         const bool has_uploads = upload_pending || (uploader_ && uploader_->hasPendingTransfers());
-        return program_update || !job_resources_.empty() || has_uploads || resources_.hasBorrows() ||
-            scopedResourceBorrows() || round.operation || !nativeIdle();
+        return !job_resources_.empty() || has_uploads || resources_.hasBorrows() ||
+            scopedResourceBorrows() || round.stage != runtime_detail::DeviceRound::EStage::IDLE || !nativeIdle();
     }
 } // namespace lux::render::detail
 
@@ -221,7 +205,7 @@ namespace lux::render
 {
     ResourceCreateContext::ResourceCreateContext(detail::DeviceEntry& entry) noexcept
         : device(entry.session()), uploads(entry.uploader()), frame_count(entry.frameProgress().frameCount()),
-          resources(entry.resources().registry()), retirement_progress_(entry.frameProgress())
+          resources(entry.resources().registry()), device_owner_(entry), retirement_progress_(entry.frameProgress())
     {
     }
 }

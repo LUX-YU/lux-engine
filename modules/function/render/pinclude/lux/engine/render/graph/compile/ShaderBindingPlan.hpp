@@ -66,15 +66,9 @@ namespace lux::render::detail
         const ParameterBinding&
     ) noexcept;
 
-    [[nodiscard]] RenderResult<nri::PipelineLayout*> createPipelineLayout(
-        nri::Device& device,
-        const nri::CoreInterface& core,
-        const PassBindings& program,
-        std::span<const nri::DescriptorRangeDesc> local,
-        const std::array<nri::DescriptorRangeDesc, 3>& shared,
-        std::uint32_t color_count,
-        std::uint32_t& max_colors
-    ) noexcept;
+    // Qualifies the native descriptor table and root constants. The cache retains the remaining fragment color budget.
+    [[nodiscard]] RenderResult<std::uint32_t>
+    qualifyPipelineLayout(const nri::DeviceDesc&, const nri::PipelineLayoutDesc&, std::uint32_t color_count) noexcept;
 
     [[nodiscard]] RenderResult<ShaderBindingPlan> planLayouts(
         const nri::DeviceDesc& limits,
@@ -83,6 +77,9 @@ namespace lux::render::detail
         bool device_addresses = false
     ) noexcept;
 
+    [[nodiscard]] bool
+    requiresShaderRelocation(const rdesc::ShaderProgramArtifact&, std::span<const ShaderBinding>) noexcept;
+
     [[nodiscard]] RenderResult<rdesc::ShaderProgramArtifact>
-    relocateShader(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept;
+    relocateSpirv(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept;
 } // namespace lux::render::detail

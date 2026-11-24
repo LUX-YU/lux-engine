@@ -1,7 +1,5 @@
 #include <lux/engine/render/device/CopyEncoding.hpp>
-#include <lux/engine/render/device/BufferAccess.hpp>
 #include <algorithm>
-#include <array>
 
 namespace lux::render::detail
 {
@@ -22,6 +20,7 @@ namespace lux::render::detail
             to.mipOffset += static_cast<nri::Dim_t>(mip);
             from.width = to.width = static_cast<nri::Dim_t>(std::max(1u, std::uint32_t(from.width) >> mip));
             from.height = to.height = static_cast<nri::Dim_t>(std::max(1u, std::uint32_t(from.height) >> mip));
+            from.depth = to.depth = static_cast<nri::Dim_t>(std::max(1u, std::uint32_t(from.depth) >> mip));
             for (std::uint32_t layer = 0; layer < copy.layer_count; ++layer)
             {
                 core.CmdCopyTexture(command, *copy.destination, &to, *copy.source, &from);
@@ -41,25 +40,4 @@ namespace lux::render::detail
         core.CmdReadbackTextureToBuffer(command, copy.destination, copy.layout, copy.source, copy.region);
     }
 
-    void
-    recordPreservingCopies(
-        const nri::CoreInterface& core,
-        nri::CommandBuffer& command,
-        std::span<const BufferCopyRegion> copies
-    ) noexcept
-    {
-        for (const auto& copy : copies)
-        {
-            const std::array<nri::BufferBarrierDesc, 2> barriers{
-                {{copy.source,
-                  {bufferAccess(core.GetBufferDesc(*copy.source).usage), nri::StageBits::ALL},
-                  {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY}},
-                 {copy.destination,
-                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                  {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}}}
-            };
-            core.CmdBarrier(command, {nullptr, 0, barriers.data(), static_cast<std::uint32_t>(barriers.size())});
-            recordCopy(core, command, copy);
-        }
-    }
 } // namespace lux::render::detail

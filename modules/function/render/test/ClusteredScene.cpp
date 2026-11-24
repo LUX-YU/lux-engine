@@ -1,4 +1,10 @@
-#include <lux/engine/render/runtime/commands/ViewParameterCommands.hpp>
+#include "FixtureEffect.hpp"
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
+#include <lux/engine/render/resource/instance/Requirement.hpp>
+#include <lux/engine/render/resource/lighting/Resource.hpp>
+#include <lux/engine/render/resource/lighting/Binding.hpp>
+#include <lux/engine/render/runtime/commands/ViewCommands.hpp>
 #include <lux/engine/render/runtime/JobId.hpp>
 #include <lux/engine/render/device/DeviceId.hpp>
 #include "MaterialFixture.hpp"
@@ -14,10 +20,10 @@
 #include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
 #include <lux/engine/render/resource/lighting/Binding.hpp>
 #include <lux/engine/render/resource/mesh/Binding.hpp>
-#include <lux/engine/render/effect/builtin/ClusterLists.hpp>
-#include <lux/engine/render/effect/builtin/GBuffer.hpp>
-#include <lux/engine/render/effect/builtin/Lighting.hpp>
-#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
+#include <lux/engine/render/effect/resources/ClusterLists.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredGeometry.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredLighting.hpp>
+#include <lux/engine/render/effect/capabilities/MeshVisibility.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/instance/Binding.hpp>
@@ -50,7 +56,7 @@ struct ClusterReadbackDescriptor final
     using Config = void;
 
     static inline const ResourceDefinition descriptor{
-        ResourceNameView{"test.cluster.readback"}, 0, 0, {}, "View-owned Clustered Lighting readback.",
+        ResourceNameView{"test.cluster.readback"}, {}, {}, {}, "View-owned Clustered Lighting readback.",
         EResourceDomain::VIEW
     };
 };
@@ -80,12 +86,12 @@ struct ClusterReadback final
     {
         static const StorageBindingOps binding{
             .describeGraphImport = [](const void* object, std::uint32_t projection) noexcept
-                -> RenderResult<StorageGraphImport>
+                -> RenderResult<ResourceProjection>
             {
                 const auto& readback = *static_cast<const ClusterReadback*>(object);
                 if (projection >= readback.configuration.size())
                     return lux::cxx::unexpected(RenderError{kStorageContract});
-                return StorageGraphImport::bufferOutput(
+                return ResourceProjection::bufferOutput(
                     readback.configuration[projection].bytes, EGraphUse::TRANSFER_DESTINATION
                 );
             },
@@ -122,7 +128,7 @@ static RenderResult<void> copyReadback(
         bytes += buffer->size;
     }
     const auto bound = context.importFinalBuffer(
-        readback_bindings[projection], {ResourceName{ClusterReadbackDescriptor::descriptor.type.name()}},
+        readback_bindings[projection], ClusterReadbackDescriptor::descriptor.type,
         {"", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
     );
     if (!bound) return lux::cxx::unexpected(bound.error());
@@ -133,34 +139,25 @@ static RenderResult<void> copyReadback(
     return context.publish(name, {{name, copied->written.front()}});
 }
 
-static EffectNodeDefinition inspectionDefinition(std::string_view name, bool scene)
+static EffectCapability inspectionDefinition(std::string_view name, bool scene)
 {
-    EffectNodeDefinition definition;
-    definition.identity = {graph::nodeTypeId(name), std::string{name}, 1};
-    definition.ports = {
+    static constexpr EffectPortDefinition ports[]{
         {first_bytes, "first", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT},
-        {second_bytes, "second", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT}
+        {second_bytes, "second", {"test.cluster.readback-bytes", 1}, graph::EPinDirection::OUTPUT},
+        {reference_hdr, "reference", {HdrColorBundle::type, 1}, graph::EPinDirection::INPUT, 1, true},
+        {candidate_hdr, "candidate", {HdrColorBundle::type, 1}, graph::EPinDirection::INPUT, 1, true},
+        {DeferredLightingPorts::cluster_lists.semantic, "cluster_lists", {ClusterListBundle::type, 1}, graph::EPinDirection::INPUT, 1, true}
     };
-    if (scene)
-    {
-        const EffectValueType hdr{std::string{HdrColorBundle::type}, HdrColorBundle::version};
-        definition.ports.push_back({reference_hdr, "reference", hdr, graph::EPinDirection::INPUT, 1, true});
-        definition.ports.push_back({candidate_hdr, "candidate", hdr, graph::EPinDirection::INPUT, 1, true});
-        definition.ports.push_back({
-            Lighting::cluster_lists, "cluster_lists", {std::string{ClusterListBundle::type}, ClusterListBundle::version},
-            graph::EPinDirection::INPUT, 1, true
-        });
-    }
-    return definition;
+    return {.id = graph::nodeTypeId(name), .canonical_name = name, .ports = std::span{ports}.first(scene ? 5 : 2)};
 }
 
 static RenderResult<void> compareClustered(EffectCompileContext& context, std::string_view) noexcept
 {
     const auto reference = context.inputs(reference_hdr);
     const auto candidate = context.inputs(candidate_hdr);
-    const auto lists = context.inputs(Lighting::cluster_lists);
-    CHECK(reference.size() == 1 && reference.front().size() == 1 && reference.front().front().member == Lighting::hdr);
-    CHECK(candidate.size() == 1 && candidate.front().size() == 1 && candidate.front().front().member == Lighting::hdr);
+    const auto lists = context.inputs(DeferredLightingPorts::cluster_lists.semantic);
+    CHECK(reference.size() == 1 && reference.front().size() == 1 && reference.front().front().member == DeferredLightingPorts::hdr.semantic);
+    CHECK(candidate.size() == 1 && candidate.front().size() == 1 && candidate.front().front().member == DeferredLightingPorts::hdr.semantic);
     CHECK(lists.size() == 1 && lists.front().size() == outputs.size());
     const auto difference = take(context.declareResource({"HDR differences", GraphBufferDesc{difference_bytes}}));
     ComputeWork work;
@@ -211,22 +208,18 @@ static RenderResult<void> testScanOverflow(EffectCompileContext& context, std::s
 }
 
 static void
-registerInspection(RenderServer& server, std::string_view name, bool scene, EffectImplementation::Build build)
+registerInspection(RenderServer& server, std::string_view name, bool scene, ImplementationEntry::Create create)
 {
     CHECK(server.registerEffectCapability(inspectionDefinition(name, scene)));
-    EffectImplementation implementation;
+    ImplementationEntry implementation;
     implementation.identity = {std::string{name}, 1};
     implementation.capability = graph::nodeTypeId(name);
     implementation.supported_outputs = {first_bytes, second_bytes};
-    implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-    {
-        return {};
-    };
-    implementation.build = build;
+    implementation.create = create;
     CHECK(server.registerEffectImplementation(std::move(implementation)));
 }
 
-static ViewGpuParameters parameters(bool perspective)
+static ViewGpuParameters parameters(bool perspective, float camera_x)
 {
     ViewGpuParameters result;
     result.view[10] = -1;
@@ -243,7 +236,10 @@ static ViewGpuParameters parameters(bool perspective)
         result.projection[14] = -near_z / (far_z - near_z);
         result.inverse_view_projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, near_z - far_z, 0, 0, 0, 2 - near_z, 1};
     }
-    result.position_near = {0, 0, 2, near_z};
+    result.view[12] = -camera_x;
+    for (unsigned c = 0; c < 4; ++c)
+        result.inverse_view_projection[c * 4] += camera_x * result.inverse_view_projection[c * 4 + 3];
+    result.position_near = {camera_x, 0, 2, near_z};
     result.direction_far = {0, 0, -1, far_z};
     result.background = {0, 0, 0, 1};
     return result;
@@ -378,24 +374,24 @@ static CreateEffectRequest inspectionEffect(const ClusterGrid* grid = nullptr)
     if (grid)
     {
         const auto surface = take(edit.addNode(
-            GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version}
+            capabilities::DeferredGeometry, {std::string{"lux.render.gbuffer.indexed.clockwise"}, capabilities::DeferredGeometry.version}
         ));
         const auto reference = take(edit.addNode(
-            Lighting::definition(), {std::string{Lighting::direct}, Lighting::version}
+            capabilities::DeferredLighting, {std::string{"lux.render.lighting.deferred.direct"}, capabilities::DeferredLighting.version}
         ));
         const auto args = "x=" + std::to_string(grid->cells[0]) + " y=" + std::to_string(grid->cells[1]) +
             " z=" + std::to_string(grid->cells[2]) + " index-capacity=" + std::to_string(grid->index_capacity) +
             (grid->depth == EClusterDepth::LINEAR ? " depth=linear" : " depth=logarithmic");
         const auto clustered = take(edit.addNode(
-            Lighting::definition(), {std::string{Lighting::clustered}, Lighting::version}, args
+            capabilities::DeferredLighting, {std::string{"lux.render.lighting.deferred.clustered"}, capabilities::DeferredLighting.version}, args
         ));
-        const auto gbuffer = edit.pinId(surface, GBuffer::surface);
-        CHECK(edit.connect(gbuffer, edit.pinId(reference, Lighting::surface)));
-        CHECK(edit.connect(gbuffer, edit.pinId(clustered, Lighting::surface)));
-        CHECK(edit.connect(edit.pinId(reference, Lighting::hdr), edit.pinId(inspection, reference_hdr)));
-        CHECK(edit.connect(edit.pinId(clustered, Lighting::hdr), edit.pinId(inspection, candidate_hdr)));
+        const auto gbuffer = edit.pinId(surface, DeferredGeometryPorts::surface.semantic);
+        CHECK(edit.connect(gbuffer, edit.pinId(reference, DeferredLightingPorts::surface.semantic)));
+        CHECK(edit.connect(gbuffer, edit.pinId(clustered, DeferredLightingPorts::surface.semantic)));
+        CHECK(edit.connect(edit.pinId(reference, DeferredLightingPorts::hdr.semantic), edit.pinId(inspection, reference_hdr)));
+        CHECK(edit.connect(edit.pinId(clustered, DeferredLightingPorts::hdr.semantic), edit.pinId(inspection, candidate_hdr)));
         CHECK(edit.connect(
-            edit.pinId(clustered, Lighting::cluster_lists), edit.pinId(inspection, Lighting::cluster_lists)
+            edit.pinId(clustered, DeferredLightingPorts::cluster_lists.semantic), edit.pinId(inspection, DeferredLightingPorts::cluster_lists.semantic)
         ));
     }
     CHECK(edit.setOutput("first", edit.pinId(inspection, first_bytes)));
@@ -448,8 +444,8 @@ int main(int argc, char** argv)
     }
     auto server = take(RenderServer::create(config, **execution));
     take(server->registerResource(ClusterReadback::factory()));
-    registerInspection(*server, cluster_inspection, true, compareClustered);
-    registerInspection(*server, scan_inspection, false, testScanOverflow);
+    registerInspection(*server, cluster_inspection, true, fixture::Effect<compareClustered>::create);
+    registerInspection(*server, scan_inspection, false, fixture::Effect<testScanOverflow>::create);
 
     auto client = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(client);
@@ -501,6 +497,7 @@ int main(int argc, char** argv)
     auto compiled = deriveFixtureMaterial(author, purposes, shader_target);
     CHECK(compiled);
     const auto program = registerMaterialProgram(*client, commands, materials, std::move(compiled->material.programs));
+    call<MaterialCommands::PrepareMeshPipelines>(*client, commands, {program, rdesc::EMaterialPurpose::GBUFFER, {{mesh, false}}});
     const auto material = createMaterialInstance(*client, commands, program, {{.5F, .6F, .7F, 1}});
     const TargetDesc target{64, 64, rdesc::ETextureFormat::RGBA16_SFLOAT, 1, ETargetKind::OFFSCREEN};
     for (unsigned scenario = 0; scenario < 6; ++scenario)
@@ -508,7 +505,7 @@ int main(int argc, char** argv)
         const bool perspective = scenario % 2 != 0;
         const auto scene = call<CreateScene>(*client, commands, {}).scene;
         const auto instances = call<GetOrCreateResource>(
-            *client, commands, {session, scene, kInstanceResourceName}
+            *client, commands, {session, scene, kInstanceResourceName, std::string{"mesh.instances"}}
         ).resource_id;
         const auto storage = sceneTransformStorage(*client, commands, session, scene);
         const auto transform = createTransform(*client, commands, storage);
@@ -551,69 +548,46 @@ int main(int argc, char** argv)
             scenario >= 4 ? 1u : 65536u,
             perspective ? EClusterDepth::LOGARITHMIC : EClusterDepth::LINEAR
         };
-        CapturedPixels differences, lists;
+        CapturedPixels differences;
+        std::array<CapturedPixels, 2> lists;
         const auto lengths = sizes(grid);
-        const ClusterReadback::Configuration capture{{
-            {.result = &differences, .bytes = difference_bytes},
-            {.result = &lists, .bytes = std::accumulate(lengths.begin(), lengths.end(), 0u)}
-        }};
+        const auto list_bytes = std::accumulate(lengths.begin(), lengths.end(), 0u);
         const auto effect = createPreparedEffect(*client, commands, session, inspectionEffect(&grid));
         std::array<RenderJobId, 2> attachments;
-        for (unsigned i = 0; i < 2; ++i)
+        std::array<ViewId, 2> views;
+        for (unsigned i = 0; i < views.size(); ++i)
         {
-            auto input = parameters(perspective);
-            if (i)
-            {
-                input.view[12] = -.3F;
-                input.position_near[0] = .3F;
-                for (unsigned c = 0; c < 4; ++c)
-                {
-                    input.inverse_view_projection[c * 4] +=
-                        .3F * input.inverse_view_projection[c * 4 + 3];
-                }
-            }
-            auto view = call<CreateView>(*client, commands, {scene}).view;
+            const ClusterReadback::Configuration capture{{
+                {.result = &differences, .bytes = difference_bytes}, {.result = &lists[i], .bytes = list_bytes}
+            }};
+            const auto input = parameters(perspective, i ? .3F : 0.F);
+            const auto view = call<CreateView>(*client, commands, {scene}).view;
+            views[i] = view;
             auto output = call<CreateTarget>(*client, commands, {session, target}).target;
             JobBinding binding;
             const ViewScope scope{scene, view};
             const auto camera_resource = call<GetOrCreateResource>(*client, commands, {
                 session, scope, kViewParameterResourceName
             }).resource_id;
+            binding.resources.push_back({std::string{ViewParameterResource::gpu_binding}, camera_resource});
             binding.resources.push_back({
-                std::string{ViewParameterResource::snapshot_binding}, camera_resource, 0, EJobResourceUse::CPU_SNAPSHOT
+                std::string{kViewParameters.binding}, camera_resource, 0
             });
-            call<ViewParameterCommands::Update>(*client, commands, {
-                camera_resource, std::span{&input, 1}
-            });
+            call<UpdateView>(*client, commands, {scope, input});
             bindReadback({*client, commands, session}, scope, capture, binding);
             const auto transforms = device.buffer_device_address ?
                 ETransformGraphProjection::PAGE_ADDRESSES : ETransformGraphProjection::RECORDS;
-            const auto properties = device.buffer_device_address ?
-                EMeshInstanceBinding::PAGED_ROOT : EMeshInstanceBinding::PROPERTIES;
             binding.resources.push_back({
-                std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT
+                std::string{"mesh.transforms"}, storage, static_cast<std::uint32_t>(transforms)
             });
             binding.resources.push_back({
-                std::string{MeshVisibility::transforms_binding}, storage, static_cast<std::uint32_t>(transforms)
+                std::string{"mesh.geometry"}, meshes, 0
             });
             binding.resources.push_back({
-                std::string{MeshVisibility::properties_binding}, instances, static_cast<std::uint32_t>(properties)
+                std::string{"mesh.materials"}, materials, 0
             });
-            if (!device.buffer_device_address)
-            {
-                binding.resources.push_back({
-                    std::string{MeshVisibility::alive_binding}, instances,
-                    static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)
-                });
-            }
-            binding.resources.push_back({
-                std::string{GBuffer::geometry_binding}, meshes, 0, EJobResourceUse::DRAW_RESOURCE
-            });
-            binding.resources.push_back({
-                std::string{GBuffer::materials_binding}, materials, 0, EJobResourceUse::DRAW_RESOURCE
-            });
-            for (std::uint32_t light = 0; light < Lighting::light_bindings.size(); ++light)
-                binding.resources.push_back({std::string{Lighting::light_bindings[light]}, light_storage, light});
+            for (std::uint32_t light = 0; light < kLightBindings.size(); ++light)
+                binding.resources.push_back({std::string{kLightBindings[light]}, light_storage, light});
             attachments[i] = startRenderJob(
                 *client, commands, session, scene, view, output, effect, std::move(binding)
             );
@@ -628,16 +602,33 @@ int main(int argc, char** argv)
                 CHECK(Clock::now() < deadline);
                 std::this_thread::yield();
             }
-            stopAndRemoveJob(*client, commands, attachment);
         }
+
+        // Preserve the first View's last two receipts and the peer's current row for independent GPU readback.
+        const auto previous = call<RequestRenderJob>(*client, commands, {attachments[0]});
+        call<UpdateView>(*client, commands, {{scene, views[0]}, parameters(perspective, -.25F)});
+        const auto changed = call<RequestRenderJob>(*client, commands, {attachments[0]});
+        const auto peer = call<RequestRenderJob>(*client, commands, {attachments[1]});
+        for (auto attachment : attachments) stopAndRemoveJob(*client, commands, attachment);
         call<RemoveScene>(*client, commands, {scene});
-        while (differences.ready.load() != 2 || lists.ready.load() != 2)
+        while (differences.ready.load() != 2 || !lists[0].ready.load() || !lists[1].ready.load())
         {
             CHECK(Clock::now() < deadline);
             std::this_thread::yield();
         }
+        const auto camera_x = [&](unsigned view, const JobSubmitted& submitted)
+        {
+            return load<ClusterGridGpu>(lists[view].frames.at(submitted.slot_index), 0).position_near[0];
+        };
+        if (fif > 1)
+        {
+            CHECK(previous.slot_index != changed.slot_index);
+            CHECK(camera_x(0, previous) == 0.F);
+        }
+        CHECK(camera_x(0, changed) == -.25F);
+        CHECK(camera_x(1, peer) == .3F);
         verifyEqualPixels(differences, scenario != 0);
-        verifyLists(lists, grid, lights, perspective);
+        for (const auto& captured : lists) verifyLists(captured, grid, lights, perspective);
         call<RemoveEffect>(*client, commands, {effect});
     }
     // Inject unrepresentable count sums into the actual production Scan shader, not a CPU imitation.

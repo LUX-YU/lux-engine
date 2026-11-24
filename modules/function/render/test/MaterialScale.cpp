@@ -1,3 +1,8 @@
+#include "FixtureEffect.hpp"
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
+#include <lux/engine/render/resource/instance/Requirement.hpp>
 #include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
 #include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
 #include <lux/engine/render/runtime/commands/MeshCommands.hpp>
@@ -10,6 +15,8 @@
 #include <lux/engine/render/resource/transform/Resource.hpp>
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 
 #include <bit>
 #include <ctime>
@@ -17,12 +24,12 @@
 #include <set>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/render/effect/builtin/DepthPyramid.hpp>
-#include <lux/engine/render/effect/builtin/GBuffer.hpp>
-#include <lux/engine/render/effect/builtin/Lighting.hpp>
-#include <lux/engine/render/effect/builtin/MeshRaster.hpp>
-#include <lux/engine/render/effect/builtin/MeshVisibility.hpp>
-#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/effect/capabilities/DepthReduction.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredGeometry.hpp>
+#include <lux/engine/render/effect/capabilities/DeferredLighting.hpp>
+#include <lux/engine/render/effect/capabilities/ForwardGeometry.hpp>
+#include <lux/engine/render/effect/capabilities/MeshVisibility.hpp>
+#include <lux/engine/render/effect/capabilities/ToneMapping.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/transform/Binding.hpp>
@@ -54,6 +61,21 @@ namespace
 #endif
     }
 
+    constexpr std::uint32_t kFif = 3;
+
+    struct WatchMeshUploads final
+    {
+        static constexpr std::string_view name = "test.material.watch_mesh_uploads";
+        struct Request final { ResourceInstanceId probe, instances; bool begin; };
+        using Data = Request;
+        struct Response final
+        {
+            RenderError error{};
+            std::uint64_t groups, visibility, raster_layout;
+        };
+        static ResourceInstanceId resourceId(const Request& input) noexcept { return input.probe; }
+    };
+
     struct MemorySample final
     {
         std::uint64_t buffers = 0, views = 0, buffer_bytes = 0, memory_bytes = 0, upload_bytes = 0;
@@ -67,10 +89,11 @@ namespace
         {
             using Config = void;
 
-            static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.allocations"}, 0, 0, {}};
+            static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.allocations"}, {}, {}, {}};
         };
 
         static inline std::atomic<bool> measuring = false;
+        static inline std::atomic<bool> reject_group_growth = false;
         static inline std::atomic<std::uint64_t> buffers = 0, views = 0, buffer_bytes = 0;
         static inline std::atomic<std::uint64_t> memory_bytes = 0, upload_bytes = 0;
 
@@ -87,8 +110,8 @@ namespace
                 desc.usage == material_usage;
         }
 
-        explicit MaterialAllocationProbe(const nri::CoreInterface& core) noexcept
-            : core_(const_cast<nri::CoreInterface&>(core))
+        explicit MaterialAllocationProbe(ResourceCreateContext& context) noexcept
+            : core_(const_cast<nri::CoreInterface&>(context.device.nriCore())), registry_(context.resources)
         {
             original_ = core_;
             core_.CreatePlacedBuffer = [](
@@ -96,6 +119,9 @@ namespace
                 const nri::BufferDesc& desc, nri::Buffer*& buffer
             ) noexcept
             {
+                const bool growing_candidates = desc.structureStride == sizeof(std::uint32_t) &&
+                    desc.usage == nri::BufferUsageBits::SHADER_RESOURCE && desc.size == 8 * sizeof(std::uint32_t);
+                if (growing_candidates && reject_group_growth.exchange(false)) return nri::Result::OUT_OF_MEMORY;
                 const auto result = original_.CreatePlacedBuffer(device, memory, offset, desc, buffer);
                 if (result == nri::Result::SUCCESS && measuredBuffer(desc))
                 {
@@ -123,10 +149,49 @@ namespace
             ) noexcept
             {
                 if (measuredBuffer(original_.GetBufferDesc(destination))) upload_bytes += bytes;
+                if (watch_groups.load(std::memory_order_acquire))
+                {
+                    for (std::size_t i = 0; i < group_buffers.size(); ++i)
+                        if (group_buffers[i] == &destination) group_bytes[i / kFif] += bytes;
+                }
                 original_.CmdCopyBuffer(command, destination, offset, source, source_offset, bytes);
             };
         }
 
+        static void
+        watchGroups(
+            MaterialAllocationProbe& probe,
+            const WatchMeshUploads::Request& input,
+            WatchMeshUploads::Response& reply
+        ) noexcept
+        {
+            auto& registry = probe.registry_;
+            const auto* ops = registry.factory(registry.declarationOf(input.instances))->storage().bindings();
+            auto* storage = registry.resourceInstance(input.instances);
+            constexpr std::array roles{EMeshInstanceBinding::CANDIDATES, EMeshInstanceBinding::CHUNKS};
+            std::set<const nri::Buffer*> unique;
+            for (std::uint32_t i = 0; i < roles.size(); ++i)
+            {
+                const auto projection = static_cast<std::uint32_t>(roles[i]);
+                const auto contract = take(ops->describeGraphImport(storage, projection));
+                std::array<ResourceInput, kFif> slices{};
+                CHECK(ops->resolveGraphImport(storage, projection, contract.description, slices));
+                for (std::uint32_t frame = 0; frame < kFif; ++frame)
+                {
+                    CHECK(slices[frame].buffer && unique.insert(slices[frame].buffer).second);
+                    const auto slot = i * kFif + frame;
+                    if (input.begin) group_buffers[slot] = slices[frame].buffer;
+                    else CHECK(group_buffers[slot] == slices[frame].buffer);
+                }
+                if (input.begin) group_bytes[i] = 0;
+            }
+            watch_groups.store(input.begin, std::memory_order_release);
+            const auto view = take(ops->cpu_view->select(storage));
+            const auto& snapshot = *static_cast<const MeshDrawTopology*>(view.value);
+            reply = {{}, view.revision, snapshot.visibility_revision, snapshot.raster_layout_revision};
+        }
+
+        static inline std::array<std::atomic<std::uint64_t>, 2> group_bytes{};
         ~MaterialAllocationProbe() noexcept
         {
             core_.CreatePlacedBuffer = original_.CreatePlacedBuffer;
@@ -137,7 +202,7 @@ namespace
         static RenderResult<std::unique_ptr<MaterialAllocationProbe>>
         create(ResourceCreateContext& context, ResourceInstanceId) noexcept
         {
-            return std::make_unique<MaterialAllocationProbe>(context.device.nriCore());
+            return std::make_unique<MaterialAllocationProbe>(context);
         }
 
         static ResourceRegistration factory() noexcept
@@ -147,7 +212,10 @@ namespace
 
     private:
         static inline nri::CoreInterface original_{};
+        static inline std::atomic_bool watch_groups{};
+        static inline std::array<const nri::Buffer*, 2 * kFif> group_buffers{};
         nri::CoreInterface& core_;
+        ResourceRegistry& registry_;
     };
 
     class PipelineIsolationProbe final
@@ -157,7 +225,7 @@ namespace
         {
             using Config = void;
 
-            static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.pipeline_gate"}, 0, 0, {}};
+            static inline const ResourceDefinition descriptor{ResourceNameView{"test.material.pipeline_gate"}, {}, {}, {}};
         };
 
         enum class EGate { OPEN, ARMED, HOLDING };
@@ -165,6 +233,7 @@ namespace
         static inline std::atomic<std::uint64_t> accepted_submits = 0, raster_submits = 0;
         static inline std::atomic<std::uint64_t> pipeline_calls = 0, created_pipelines = 0, destroyed_pipelines = 0;
         static inline std::atomic<bool> fail_pipeline = false;
+        static inline std::atomic_uint64_t reject_pipeline_call{};
 
         static void trackCreations(bool enabled)
         {
@@ -202,13 +271,13 @@ namespace
                 nri::Device& device, const nri::GraphicsPipelineDesc& description, nri::Pipeline*& pipeline
             ) noexcept
             {
-                ++pipeline_calls;
+                const auto call = ++pipeline_calls;
                 auto armed = EGate::ARMED;
                 if (gate.compare_exchange_strong(armed, EGate::HOLDING))
                 {
                     gate.wait(EGate::HOLDING);
                 }
-                if (fail_pipeline.exchange(false)) return nri::Result::OUT_OF_MEMORY;
+                if (call == reject_pipeline_call || fail_pipeline.exchange(false)) return nri::Result::OUT_OF_MEMORY;
                 const auto result = original_.CreateGraphicsPipeline(device, description, pipeline);
                 if (result == nri::Result::SUCCESS)
                 {
@@ -296,7 +365,6 @@ namespace
 
     namespace graph = lux::graph;
 
-    constexpr std::uint32_t kFif = 3;
     constexpr TargetDesc kTarget{64, 64, ETextureFormat::RGBA8_UNORM};
     constexpr std::uint32_t row_pitch = 256;
     constexpr std::uint32_t capture_bytes = row_pitch * 64;
@@ -308,16 +376,12 @@ namespace
     constexpr auto capture_input = effectPortSemantic("input");
     constexpr auto capture_output = effectPortSemantic("bytes");
 
-    using MaterialFrameResources = std::tuple<
-        MaterialResource, InstanceResource, TransformResource, ViewParameterResource
-    >;
-
     struct MaterialReadbackDescriptor final
     {
         using Config = void;
 
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.material.readback"}, 0, 0, {}, "View-owned material capture.", EResourceDomain::VIEW
+            ResourceNameView{"test.material.readback"}, {}, {}, {}, "View-owned material capture.", EResourceDomain::VIEW
         };
     };
 
@@ -346,12 +410,12 @@ namespace
         {
             static const StorageBindingOps binding{
                 .describeGraphImport = [](const void* object, std::uint32_t projection) noexcept
-                    -> RenderResult<StorageGraphImport>
+                    -> RenderResult<ResourceProjection>
                 {
                     const auto& capture = *static_cast<const MaterialReadback*>(object);
                     if (projection >= capture.configuration.size() || !capture.configuration[projection].result)
                         return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport::bufferOutput(capture_bytes, EGraphUse::TRANSFER_DESTINATION);
+                    return ResourceProjection::bufferOutput(capture_bytes, EGraphUse::TRANSFER_DESTINATION);
                 },
                 .resolveGraphImport = [](
                     void* object, std::uint32_t projection, const VGraphResourceDesc& description,
@@ -371,20 +435,22 @@ namespace
         Configuration configuration;
     };
 
-    EffectNodeDefinition captureDefinition(EMaterialPurpose purpose)
+    EffectCapability captureDefinition(EMaterialPurpose purpose)
     {
-        constexpr auto direction = graph::EPinDirection::INPUT;
-        const auto name = purpose == EMaterialPurpose::GBUFFER ? "test.material.capture.gbuffer" :
-            purpose == EMaterialPurpose::SHADOW ? "test.material.capture.depth" : "test.material.capture.color";
-        const auto type = purpose == EMaterialPurpose::GBUFFER ? GBufferBundle::type :
-            purpose == EMaterialPurpose::SHADOW ? DepthPyramid::depth_type : ToneMapping::display_type;
-        return {
-            .identity = {graph::nodeTypeId(name), name, 1},
-            .ports = {
-                {capture_input, "input", {std::string{type}, 1}, direction, 1, true},
-                {capture_output, "bytes", {"test.material.readback.bytes", 1}, graph::EPinDirection::OUTPUT}
-            }
+        static constexpr auto ports = [](std::string_view input)
+        {
+            return std::array{
+                inputPort("input", {input, 1}, true), outputPort("bytes", {"test.material.readback.bytes", 1})
+            };
         };
+        static constexpr auto geometry = ports(GBufferBundle::type);
+        static constexpr auto depth = ports(DepthPyramid::depth_type);
+        static constexpr auto color = ports(kDisplayColorType);
+        const bool gbuffer = purpose == EMaterialPurpose::GBUFFER;
+        const bool shadow = purpose == EMaterialPurpose::SHADOW;
+        const auto name = gbuffer ? "test.material.capture.gbuffer" :
+            shadow ? "test.material.capture.depth" : "test.material.capture.color";
+        return {.id = graph::nodeTypeId(name), .canonical_name = name, .ports = gbuffer ? geometry : shadow ? depth : color};
     }
 
     template <EMaterialPurpose Purpose>
@@ -392,14 +458,14 @@ namespace
     {
         constexpr bool depth = Purpose == EMaterialPurpose::SHADOW;
         constexpr auto member = Purpose == EMaterialPurpose::GBUFFER ?
-            effectPortSemantic(GBufferBundle::members.front()) : depth ? MeshRaster::depth : MeshRaster::color;
+            effectPortSemantic(GBufferBundle::members.front()) : depth ? ForwardGeometryPorts::depth.semantic : ForwardGeometryPorts::color.semantic;
         const auto inputs = context.inputs(capture_input);
         CHECK(inputs.size() == 1);
         const auto source = std::ranges::find(inputs.front(), member, &EffectResourceValue::member);
         CHECK(source != inputs.front().end());
         const std::uint32_t projection = arguments == "extra" ? 1 : 0;
         const auto readback = take(context.importFinalBuffer(
-            capture_bindings[projection], {ResourceName{MaterialReadbackDescriptor::descriptor.type.name()}},
+            capture_bindings[projection], MaterialReadbackDescriptor::descriptor.type,
             {"", GraphBufferDesc{capture_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}, projection
         ));
         const auto copied = take(context.addTransferPass(
@@ -413,12 +479,10 @@ namespace
         return context.publish(capture_output, {{capture_output, copied.written.front()}});
     }
 
-    EffectNodeDefinition hdrDefinition()
+    EffectCapability hdrDefinition()
     {
-        return {
-            .identity = {graph::nodeTypeId(hdr_capability), std::string{hdr_capability}, 1},
-            .ports = {{Lighting::hdr, "hdr_color", {std::string{HdrColorBundle::type}, HdrColorBundle::version}, graph::EPinDirection::OUTPUT}}
-        };
+        static constexpr EffectPortDefinition ports[]{{DeferredLightingPorts::hdr.semantic, "hdr_color", {HdrColorBundle::type, HdrColorBundle::version}, graph::EPinDirection::OUTPUT}};
+        return {.id = graph::nodeTypeId(hdr_capability), .canonical_name = hdr_capability, .ports = ports};
     }
 
     template <bool Import>
@@ -441,41 +505,26 @@ namespace
             ));
             color = cleared.written.front();
         }
-        return context.publish(Lighting::hdr, {{Lighting::hdr, color}});
-    }
-
-    void registerMaterialNode(
-        RenderServer& server, graph::NodeTypeId type, std::string_view name, graph::PinSemanticId output,
-        EffectImplementation::Build build
-    )
-    {
-        EffectImplementation implementation;
-        implementation.capability = type;
-        implementation.identity = {std::string{name}, 1};
-        implementation.supported_outputs = {output};
-        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-        {
-            return {};
-        };
-        implementation.build = build;
-        CHECK(server.registerEffectImplementation(std::move(implementation)));
+        return context.publish(DeferredLightingPorts::hdr.semantic, {{DeferredLightingPorts::hdr.semantic, color}});
     }
 
     template <EMaterialPurpose Purpose> void registerMaterialCapture(RenderServer& server)
     {
         const auto definition = captureDefinition(Purpose);
         CHECK(server.registerEffectCapability(definition));
-        registerMaterialNode(
-            server, definition.identity.id, definition.identity.canonical_name, capture_output,
-            buildMaterialCapture<Purpose>
-        );
+        ImplementationEntry implementation;
+        implementation.capability = definition.id;
+        implementation.identity = {std::string{definition.canonical_name}, 1};
+        implementation.supported_outputs = {capture_output};
+        implementation.create = fixture::Effect<buildMaterialCapture<Purpose>>::create;
+        CHECK(server.registerEffectImplementation(std::move(implementation)));
     }
 
     graph::PinId addMaterialCapture(EffectGraphEdit& edit, EMaterialPurpose purpose, graph::PinId source,
                                     std::string arguments = {})
     {
         const auto definition = captureDefinition(purpose);
-        const auto node = take(edit.addNode(definition, {definition.identity.canonical_name, 1}, std::move(arguments)));
+        const auto node = take(edit.addNode(definition, {std::string{definition.canonical_name}, 1}, std::move(arguments)));
         CHECK(edit.connect(source, edit.pinId(node, capture_input)));
         return edit.pinId(node, capture_output);
     }
@@ -489,16 +538,16 @@ namespace
         if (purpose == EMaterialPurpose::GBUFFER)
         {
             const auto node = take(edit.addNode(
-                GBuffer::definition(), {std::string{GBuffer::indexed_clockwise}, GBuffer::version}
+                capabilities::DeferredGeometry, {std::string{"lux.render.gbuffer.indexed.clockwise"}, capabilities::DeferredGeometry.version}
             ));
-            output = edit.pinId(node, GBuffer::surface);
+            output = edit.pinId(node, DeferredGeometryPorts::surface.semantic);
         }
         else
         {
             const bool forward = purpose == EMaterialPurpose::FORWARD;
-            const auto name = forward ? MeshRaster::forward_clockwise : MeshRaster::depth_only_clockwise;
-            const auto node = take(edit.addNode(MeshRaster::definition(), {std::string{name}, MeshRaster::version}));
-            output = edit.pinId(node, forward ? MeshRaster::color : MeshRaster::depth);
+            const auto name = forward ? "lux.render.mesh_raster.forward.clockwise" : "lux.render.mesh_raster.depth.clockwise";
+            const auto node = take(edit.addNode(capabilities::ForwardGeometry, {std::string{name}, capabilities::ForwardGeometry.version}));
+            output = edit.pinId(node, forward ? ForwardGeometryPorts::color.semantic : ForwardGeometryPorts::depth.semantic);
             if (forward) CHECK(edit.setOutput("color", output, true));
         }
         CHECK(edit.setOutput("pixels", addMaterialCapture(edit, purpose, output)));
@@ -506,10 +555,10 @@ namespace
         {
             const auto input = take(edit.addNode(hdrDefinition(), {std::string{sample_hdr}, 1}));
             const auto tone = take(edit.addNode(
-                ToneMapping::definition(), {std::string{ToneMapping::linear}, ToneMapping::version}
+                capabilities::ToneMapping, {std::string{"lux.render.tone_mapping.linear"}, capabilities::ToneMapping.version}
             ));
-            CHECK(edit.connect(edit.pinId(input, Lighting::hdr), edit.pinId(tone, ToneMapping::hdr_color)));
-            const auto converted = edit.pinId(tone, ToneMapping::color);
+            CHECK(edit.connect(edit.pinId(input, DeferredLightingPorts::hdr.semantic), edit.pinId(tone, ToneMappingPorts::hdr_color.semantic)));
+            const auto converted = edit.pinId(tone, ToneMappingPorts::color.semantic);
             CHECK(edit.setOutput("sampled_pixels", addMaterialCapture(edit, EMaterialPurpose::FORWARD, converted, "extra")));
         }
         CHECK(edit.commit());
@@ -523,7 +572,7 @@ namespace
         request.graph = std::make_unique<EffectGraph>();
         EffectGraphEdit edit{*request.graph};
         const auto node = take(edit.addNode(hdrDefinition(), {std::string{clear_hdr}, 1}));
-        CHECK(edit.setOutput("color", edit.pinId(node, Lighting::hdr), true));
+        CHECK(edit.setOutput("color", edit.pinId(node, DeferredLightingPorts::hdr.semantic), true));
         CHECK(edit.commit());
         return request;
     }
@@ -542,20 +591,16 @@ namespace
         MaterialReadback::creation_input.store(&capture);
         const auto readback = local(MaterialReadbackDescriptor::descriptor.type);
         MaterialReadback::creation_input.store(nullptr);
-        const auto instances = local(kInstanceResourceName);
+        const auto camera = local(kViewParameterResourceName);
         binding.resources = {
-            {std::string{ViewParameterResource::snapshot_binding}, local(kViewParameterResourceName),
-                0, EJobResourceUse::CPU_SNAPSHOT},
-            {std::string{MeshVisibility::instances_binding}, instances, 0, EJobResourceUse::CPU_SNAPSHOT},
-            {std::string{MeshVisibility::transforms_binding}, local(kTransformResourceName),
+            {std::string{ViewParameterResource::gpu_binding}, camera},
+            {std::string{kViewParameters.binding}, camera,
+                0},
+            {std::string{"mesh.transforms"}, local(kTransformResourceName),
                 static_cast<std::uint32_t>(ETransformGraphProjection::RECORDS)},
-            {std::string{MeshVisibility::properties_binding}, instances,
-                static_cast<std::uint32_t>(EMeshInstanceBinding::PROPERTIES)},
-            {std::string{MeshVisibility::alive_binding}, instances,
-                static_cast<std::uint32_t>(EMeshInstanceBinding::ALIVE)},
-            {std::string{GBuffer::geometry_binding}, local(kMeshResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
-            {std::string{GBuffer::materials_binding}, local(kMaterialResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
-            {std::string{GBuffer::textures_binding}, local(kTextureResourceName), 0, EJobResourceUse::DRAW_RESOURCE},
+            {std::string{"mesh.geometry"}, local(kMeshResourceName), 0},
+            {std::string{"mesh.materials"}, local(kMaterialResourceName), 0},
+            {std::string{"mesh.textures"}, local(kTextureResourceName), 0},
             {std::string{capture_bindings[0]}, readback}
         };
         if (capture[1].result) binding.resources.push_back({std::string{capture_bindings[1]}, readback, 1});
@@ -706,18 +751,92 @@ namespace
         TargetId output_;
     };
 
+    struct ProbeMaterial final
+    {
+        MaterialProgramId program;
+        MaterialId instance;
+    };
+
     // One asset is visible to both installed Jobs. Only the requested GBuffer specialization fails.
     void verifyPurposeFailure(
-        MaterialTestScene scene, ResourceInstanceId instances, MeshInstanceUpdate old, MaterialId replacement
+        MaterialTestScene scene, MeshInstanceUpdate old, MaterialProgramId original, ProbeMaterial replacement
     )
     {
+        const auto instances = extension_detail::ResourceIdentity::parent(old.instance);
+        using Cold = MaterialCommands::PrepareMeshPipelines;
+        const MeshPipelineUse clockwise{old.description.mesh, false};
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::SHADOW, {clockwise}});
+        call<Cold>(scene.ipc, scene.commands, {replacement.program, EMaterialPurpose::SHADOW, {clockwise}});
         PurposeCapture gbuffer{scene, EMaterialPurpose::GBUFFER};
         PurposeCapture shadow{scene, EMaterialPurpose::SHADOW};
+        std::array additions{old.description, old.description, old.description};
+        additions.back().render_enabled = false;
+        const auto members = call<InstanceCommands::CreateInstances>(scene.ipc, scene.commands, {instances, additions}).instances;
         PipelineIsolationProbe::trackCreations(true);
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::GBUFFER, {clockwise}});
         gbuffer.renderReplicas();
         PipelineIsolationProbe::trackCreations(false);
         CHECK(PipelineIsolationProbe::trackedPipelines() == 2);
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::GBUFFER, {}});
+        const auto withdrawn = call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false).error;
+        CHECK(withdrawn.type == kMeshPipelineNotReady);
+        CHECK(withdrawn.args[0] == extension_detail::ResourceIdentity::local(original).index);
+        CHECK(withdrawn.args[1] == static_cast<std::uint32_t>(EMaterialPurpose::GBUFFER));
+        CHECK(withdrawn.args[2] == extension_detail::ResourceIdentity::local(old.description.mesh).index);
+        const auto before_republish = PipelineIsolationProbe::pipeline_calls.load();
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::GBUFFER, {clockwise}});
+        gbuffer.renderReplicas();
+        CHECK(PipelineIsolationProbe::pipeline_calls == before_republish);
+        std::puts("MESH PUBLICATION PASS: active Job observed withdrawal and recovered without a scene update");
+        const auto probe = call<QueryResource>(scene.ipc, scene.commands, {
+            scene.session, DeviceScope{}, MaterialAllocationProbe::Descriptor::descriptor.type
+        }).resource_id;
+        const auto before = call<WatchMeshUploads>(scene.ipc, scene.commands, {probe, instances, true});
         shadow.renderReplicas();
+        CHECK(MaterialAllocationProbe::group_bytes[0] == 0 && MaterialAllocationProbe::group_bytes[1] == 0);
+        additions[1].render_enabled = false;
+        additions[2].render_enabled = true;
+        const std::array swapped{MeshInstanceUpdate{members[1], additions[1]}, MeshInstanceUpdate{members[2], additions[2]}};
+        call<InstanceCommands::Update>(scene.ipc, scene.commands, {instances, swapped});
+        shadow.renderReplicas();
+        gbuffer.renderReplicas();
+        CHECK(MaterialAllocationProbe::group_bytes[0] == kFif * sizeof(std::uint32_t));
+        CHECK(MaterialAllocationProbe::group_bytes[1] == 0);
+        const auto swapped_rows = call<WatchMeshUploads>(scene.ipc, scene.commands, {probe, instances, true});
+        CHECK(before.groups != swapped_rows.groups && before.visibility && before.raster_layout);
+        CHECK(before.visibility == swapped_rows.visibility && before.raster_layout == swapped_rows.raster_layout);
+        std::puts("SHARED MEMBERSHIP PASS: 12 candidate bytes, zero chunk bytes; visibility and raster revisions reused");
+
+        // Two successive changes touch the same candidate. An idle replica must catch up by one word.
+        const auto before_lag = MaterialAllocationProbe::group_bytes[0].load();
+        for (unsigned turn = 0; turn < 2; ++turn)
+        {
+            additions[1].render_enabled = turn == 0;
+            additions[2].render_enabled = turn != 0;
+            const std::array edits{
+                MeshInstanceUpdate{members[1], additions[1]}, MeshInstanceUpdate{members[2], additions[2]}
+            };
+            call<InstanceCommands::Update>(scene.ipc, scene.commands, {instances, edits});
+            renderFrame(scene.ipc, scene.commands, gbuffer.job);
+        }
+        gbuffer.renderReplicas();
+        CHECK(MaterialAllocationProbe::group_bytes[0] - before_lag == (kFif + 1) * sizeof(std::uint32_t));
+        CHECK(MaterialAllocationProbe::group_bytes[1] == 0);
+
+        // Five active slots exceed the four-word allocation. Failed growth must preserve all six published bindings.
+        const std::array extra{old.description, old.description};
+        const auto grown = call<InstanceCommands::CreateInstances>(scene.ipc, scene.commands, {instances, extra});
+        MaterialAllocationProbe::reject_group_growth = true;
+        const auto failed_growth = call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false);
+        CHECK(!MaterialAllocationProbe::reject_group_growth && failed_growth.error.type == kDeviceFailure);
+        CHECK(failed_growth.error.args[0] == static_cast<std::uint32_t>(nri::Result::OUT_OF_MEMORY));
+        const auto grown_rows = call<WatchMeshUploads>(scene.ipc, scene.commands, {probe, instances, false});
+        CHECK(grown_rows.visibility != swapped_rows.visibility && grown_rows.raster_layout == swapped_rows.raster_layout);
+        gbuffer.renderReplicas();
+        shadow.renderReplicas();
+        for (auto id : grown.instances) call<InstanceCommands::ReleaseInstance>(scene.ipc, scene.commands, {id});
+        for (auto id : members) call<InstanceCommands::ReleaseInstance>(scene.ipc, scene.commands, {id});
+        std::puts("MEMBERSHIP GROWTH PASS: allocation failure kept six published bindings; both Jobs retried");
         const auto source = call<GetOrCreateResource>(
             scene.ipc, scene.commands, {scene.session, DeviceScope{}, kMaterialResourceName}
         ).resource_id;
@@ -731,14 +850,14 @@ namespace
         call<MaterialCommands::UpdateColor>(scene.ipc, scene.commands, {source, original_colors});
 
         auto changed = old;
-        changed.description.material = replacement;
+        changed.description.material = replacement.instance;
         call<InstanceCommands::Update>(scene.ipc, scene.commands, {instances, {&changed, 1}});
         shadow.renderReplicas();
         PipelineIsolationProbe::fail_pipeline = true;
-        const auto rejected = call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false);
+        const auto rejected = call<Cold>(scene.ipc, scene.commands, {replacement.program, EMaterialPurpose::GBUFFER, {clockwise}}, false);
         CHECK(rejected.error.type == kDeviceFailure && !PipelineIsolationProbe::fail_pipeline.load());
         const auto calls = PipelineIsolationProbe::pipeline_calls.load();
-        CHECK(call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false).error == rejected.error);
+        CHECK(call<RequestRenderJob>(scene.ipc, scene.commands, {gbuffer.job}, false).error.type == kMeshPipelineNotReady);
         shadow.renderReplicas();
         const auto depth = std::bit_cast<float>(shadow.finish());
         CHECK(depth == 1.F);
@@ -750,13 +869,23 @@ namespace
         std::printf("PURPOSE FAILURE PASS: ready Shadow depth=%g, restored GBuffer red=%u, parameter PSOs=0, extra PSOs=0\n",
             depth, std::to_integer<unsigned>(color[0]));
 
-        CHECK(PipelineIsolationProbe::trackedPipelines() == 2);
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::GBUFFER, {}});
+        const auto retire_deadline = Clock::now() + 10s;
+        while (PipelineIsolationProbe::trackedPipelines())
+        {
+            CHECK(Clock::now() < retire_deadline);
+            std::this_thread::yield();
+        }
         PurposeCapture restarted{scene, EMaterialPurpose::GBUFFER};
+        CHECK(call<RequestRenderJob>(scene.ipc, scene.commands, {restarted.job}, false).error.type == kMeshPipelineNotReady);
+        const auto before_cold = PipelineIsolationProbe::pipeline_calls.load();
+        call<Cold>(scene.ipc, scene.commands, {original, EMaterialPurpose::GBUFFER, {clockwise}});
+        CHECK(PipelineIsolationProbe::pipeline_calls == before_cold + 2);
         const auto before_restart_draw = PipelineIsolationProbe::pipeline_calls.load();
         restarted.renderReplicas();
         const auto restart_calls = PipelineIsolationProbe::pipeline_calls.load() - before_restart_draw;
         CHECK(restart_calls == 0 && restarted.finish() == color);
-        std::printf("MATERIAL READY RESIDENCY idle_cache=0 first_draw_after_restart_psos=%llu\n",
+        std::printf("MATERIAL CACHE RETIREMENT idle_cache=0 first_draw_after_restart_psos=%llu\n",
             static_cast<unsigned long long>(restart_calls));
     }
 
@@ -772,15 +901,12 @@ namespace
         const auto job = capture.job;
         if (!colors.empty())
         {
-            const auto schema = call<QueryRenderJobInputLayout>(ipc, commands, job).layout;
-            auto packet = take(FrameData::create<MaterialFrameResources>(schema));
+            auto packet = framePacket<MaterialResource, TransformResource>(ipc, commands, session, job);
             for (const auto& value : colors) CHECK(packet.addData<MaterialResource>(value));
             if (reject_transform) CHECK(packet.addData<TransformResource>(TransformRecordUpdate{}));
-            CHECK(packet.seal());
-            const auto reply = call<RequestRenderJob>(ipc, commands, {job, &packet}, !reject_transform);
+            const auto reply = call<RequestRenderJob>(ipc, commands, {job, std::move(packet)}, !reject_transform);
             if (reject_transform) CHECK(reply.error.type == kStorageIdentity);
             else CHECK(reply.job == job);
-            packet.release();
         }
         const auto before = server.developmentStats();
         CHECK(before);
@@ -817,23 +943,90 @@ namespace
         constexpr std::array purposes{EMaterialPurpose::FORWARD, EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW};
         auto program = cookProgram(compiler, target, purposes, 1, .125F);
         CHECK(program.programs.size() == purposes.size());
-        const auto registered = registerMaterialProgram(ipc, commands, materials, program);
-        const auto equal_code = registerMaterialProgram(ipc, commands, materials, std::move(program));
+        const auto driver_calls = PipelineIsolationProbe::pipeline_calls.load();
+        const auto qualified = call<MaterialCommands::RegisterProgram>(ipc, commands, {materials, program});
+        CHECK(std::ranges::all_of(qualified.indexed_mesh_shader, [](bool usable) { return usable; }));
+        const auto registered = qualified.program;
+        const auto equal_code = registerMaterialProgram(ipc, commands, materials, program);
+        const auto incompatible_output = std::ranges::find(
+            program.programs, EMaterialPurpose::GBUFFER, &rdesc::MaterialShader::purpose
+        );
+        CHECK(incompatible_output != program.programs.end());
+        auto& varyings = incompatible_output->shader.interface.entry_points.front().inputs;
+        CHECK(!varyings.empty());
+        const auto scalar = varyings.front().base;
+        varyings.front().base = scalar == rdesc::EVertexScalarBase::FLOAT ?
+            rdesc::EVertexScalarBase::UINT : rdesc::EVertexScalarBase::FLOAT;
+        const auto varying_mismatch = call<MaterialCommands::RegisterProgram>(ipc, commands, {materials, program});
+        CHECK(!varying_mismatch.indexed_mesh_shader[static_cast<std::size_t>(EMaterialPurpose::GBUFFER)]);
+        CHECK(varying_mismatch.indexed_mesh_shader[static_cast<std::size_t>(EMaterialPurpose::SHADOW)]);
+        call<MaterialCommands::UnregisterProgram>(ipc, commands, {varying_mismatch.program});
+        varyings.front().base = scalar;
+        incompatible_output->output_semantic = "test.other.attachments";
+        const auto mesh_qualification = call<MaterialCommands::RegisterProgram>(ipc, commands, {materials, std::move(program)});
+        for (auto purpose : purposes)
+        {
+            const bool supported = mesh_qualification.indexed_mesh_shader[static_cast<std::size_t>(purpose)];
+            CHECK(supported == (purpose != EMaterialPurpose::GBUFFER));
+        }
+        const auto incompatible_code = mesh_qualification.program;
+        CHECK(PipelineIsolationProbe::pipeline_calls == driver_calls);
+        std::puts("COLD MESH SHADER PASS: zero Jobs; three purposes qualified; varying and output mismatches isolated");
         CHECK(equal_code != registered);
+        using Cold = MaterialCommands::PrepareMeshPipelines;
+        const MeshPipelineUse clockwise{mesh, false};
+        for (const auto purpose : {EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW})
+            call<Cold>(ipc, commands, {registered, purpose, {clockwise}});
+        CHECK(PipelineIsolationProbe::pipeline_calls == driver_calls + 4);
+        call<Cold>(ipc, commands, {registered, EMaterialPurpose::GBUFFER, {clockwise}});
+        CHECK(PipelineIsolationProbe::pipeline_calls == driver_calls + 4);
+        const auto created_before = PipelineIsolationProbe::created_pipelines.load();
+        PipelineIsolationProbe::reject_pipeline_call = driver_calls + 6;
+        const auto failed_replace = call<Cold>(ipc, commands, {registered, EMaterialPurpose::GBUFFER, {{mesh, true}}}, false);
+        CHECK(failed_replace.error.type == kDeviceFailure && PipelineIsolationProbe::created_pipelines == created_before + 1);
+        PipelineIsolationProbe::reject_pipeline_call = 0;
+        call<Cold>(ipc, commands, {incompatible_code, EMaterialPurpose::SHADOW, {clockwise}});
+        call<Cold>(ipc, commands, {registered, EMaterialPurpose::FORWARD, {clockwise}});
         const auto material = createMaterialInstance(ipc, commands, registered, {{1, 0, 0, 0}}, {textures[0]});
         const auto transform_storage = sceneTransformStorage(ipc, commands, session, scene);
         MeshInstanceData input{mesh, material};
-        input.transform_id = createTransform(ipc, commands, transform_storage);
-        const auto original_transform = input.transform_id;
+        input.transform = createTransform(ipc, commands, transform_storage);
+        const auto original_transform = input.transform;
         input.render_enabled = true;
         const auto instance = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
+        {
+            const auto alternate = createMaterialInstance(ipc, commands, incompatible_code, {{1, 0, 0, 0}}, {textures[0]});
+            auto description = input;
+            description.material = alternate;
+            MeshInstanceUpdate select{instance, description};
+            call<InstanceCommands::Update>(ipc, commands, {instances, {&select, 1}});
+            MaterialTestScene context{ipc, commands, session, scene};
+            PurposeCapture gbuffer{context, EMaterialPurpose::GBUFFER};
+            PurposeCapture shadow{context, EMaterialPurpose::SHADOW};
+            const auto calls = PipelineIsolationProbe::pipeline_calls.load();
+            CHECK(call<RequestRenderJob>(ipc, commands, {gbuffer.job}, false).error.type == kGraphInvalidDescriptor);
+            CHECK(PipelineIsolationProbe::pipeline_calls == calls);
+            shadow.renderReplicas();
+            CHECK(std::abs(std::bit_cast<float>(shadow.finish()) - .5F) < 1e-5F);
+            select.description = input;
+            call<InstanceCommands::Update>(ipc, commands, {instances, {&select, 1}});
+            gbuffer.renderReplicas();
+            CHECK(std::abs(std::to_integer<int>(gbuffer.finish()[0]) - 64) <= 1);
+            CHECK(PipelineIsolationProbe::pipeline_calls == calls);
+            for (const auto purpose : {EMaterialPurpose::GBUFFER, EMaterialPurpose::SHADOW})
+                call<Cold>(ipc, commands, {registered, purpose, {}});
+            std::puts("COLD MESH PIPELINE PASS: four native PSOs with zero Jobs; failed second winding preserved both draws; Job program builds 0");
+            call<MaterialCommands::ReleaseInstance>(ipc, commands, {alternate});
+            call<MaterialCommands::UnregisterProgram>(ipc, commands, {incompatible_code});
+            std::puts("MESH MATERIAL QUALIFICATION PASS: incompatible GBuffer reached no driver compile; Shadow depth=0.5");
+        }
         {
             auto changed = cookProgram(compiler, target, purposes, 2, .75F);
             auto values = changed.parameter_defaults;
             values.front()[0] = .25F;
             const auto code = registerMaterialProgram(ipc, commands, materials, std::move(changed));
             const auto replacement = createMaterialInstance(ipc, commands, code, std::move(values), {textures[0]});
-            verifyPurposeFailure({ipc, commands, session, scene}, instances, {instance, input}, replacement);
+            verifyPurposeFailure({ipc, commands, session, scene}, {instance, input}, registered, {code, replacement});
             call<MaterialCommands::ReleaseInstance>(ipc, commands, {replacement});
             call<MaterialCommands::UnregisterProgram>(ipc, commands, {code});
         }
@@ -876,7 +1069,7 @@ namespace
         auto sibling_matrix = kIdentityTransform;
         sibling_matrix[0] = sibling_matrix[5] = .25F;
         sibling_matrix[12] = .5F;
-        input.transform_id = createTransform(ipc, commands, transform_storage, sibling_matrix);
+        input.transform = createTransform(ipc, commands, transform_storage, sibling_matrix);
         const auto sibling = call<InstanceCommands::CreateInstance>(ipc, commands, {instances, input}).instance;
         input.material = material;
         const InstanceSwitch change{instances, {sibling, input}, kFif};
@@ -888,37 +1081,29 @@ namespace
             );
         CHECK(together.buffer_ranges == kFif && together.image_ranges == 2 * kFif);
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {sibling});
-        call<TransformCommands::Release>(ipc, commands, input.transform_id);
+        call<TransformCommands::Release>(ipc, commands, input.transform);
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {other});
+        call<Cold>(ipc, commands, {equal_code, EMaterialPurpose::GBUFFER, {clockwise}});
         const auto twin = createMaterialInstance(ipc, commands, equal_code, {{1, 0, 0, 0}}, {textures[0]});
         MeshInstanceData same_mesh{mesh, twin};
-        same_mesh.transform_id = original_transform;
+        same_mesh.transform = original_transform;
         same_mesh.render_enabled = true;
         const MeshInstanceUpdate use_twin{instance, same_mesh};
+        PurposeCapture first{{ipc, commands, session, scene}, EMaterialPurpose::GBUFFER};
+        first.renderReplicas();
         call<InstanceCommands::Update>(ipc, commands, {instances, {&use_twin, 1}});
-        const auto reuse = [&]
-        {
-            PurposeCapture capture{{ipc, commands, session, scene}, EMaterialPurpose::GBUFFER};
-            const auto before = PipelineIsolationProbe::pipeline_calls.load();
-            capture.renderReplicas();
-            CHECK(PipelineIsolationProbe::pipeline_calls.load() == before);
-            CHECK(capture.finish() == gbuffer.center && PipelineIsolationProbe::trackedPipelines() == 2);
-        };
-        reuse();
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {material});
         call<MaterialCommands::UnregisterProgram>(ipc, commands, {registered});
-        reuse();
+        PurposeCapture second{{ipc, commands, session, scene}, EMaterialPurpose::GBUFFER};
+        const auto before_shared_draw = PipelineIsolationProbe::pipeline_calls.load();
+        second.renderReplicas();
+        CHECK(PipelineIsolationProbe::pipeline_calls.load() == before_shared_draw);
+        CHECK(first.finish() == gbuffer.center && second.finish() == gbuffer.center);
         call<InstanceCommands::ReleaseInstance>(ipc, commands, {instance});
         call<TransformCommands::Release>(ipc, commands, original_transform);
         call<MaterialCommands::ReleaseInstance>(ipc, commands, {twin});
         call<MaterialCommands::UnregisterProgram>(ipc, commands, {equal_code});
-        const auto retired = Clock::now() + 10s;
-        while (PipelineIsolationProbe::trackedPipelines())
-        {
-            CHECK(Clock::now() < retired);
-            std::this_thread::yield();
-        }
-        std::puts("MATERIAL READY RETIREMENT shared_assets=2 survived_first_unregister=2 destroyed_after_last_unregister=2");
+        std::puts("MATERIAL PROGRAM SHARE: overlapping draws reused both winding pipelines");
         std::printf(
             "MATERIAL_PURPOSES forward_red=%u gbuffer_red=%u shadow_depth=0.5 masked_depth=1 shadow_image_ranges=%llu "
             "group_image_ranges=%llu switched_image_ranges=%llu\n",
@@ -928,21 +1113,21 @@ namespace
         );
     }
 
-    std::uint64_t requestFrame(
-        ipc::IpcRequester& client, const CommandList& commands, RenderJobId job, FrameData* packet = nullptr
+    template <class Command> std::uint64_t sendRequest(
+        ipc::IpcRequester& client, const CommandList& commands, typename Command::Request request
     )
     {
-        const auto command = std::ranges::find(commands.commands, RequestRenderJob::name, &CommandInfo::name);
+        const auto command = std::ranges::find(commands.commands, Command::name, &CommandInfo::name);
         CHECK(command != commands.commands.end());
         const auto request_id = nextSceneRequest();
         ipc::IpcMessage message;
-        message.emplace<RequestRenderJob::Request>(RequestRenderJob::Request{job, packet});
+        message.emplace<typename Command::Request>(std::move(request));
         CHECK(client.trySend(commandTag(command->id), request_id, message));
         return request_id;
     }
 
-    std::optional<JobSubmitted>
-    receiveFrameBefore(ipc::IpcRequester& client, std::uint64_t request_id, Clock::time_point deadline)
+    template <class Response> std::optional<Response>
+    receiveBefore(ipc::IpcRequester& client, std::uint64_t request_id, Clock::time_point deadline)
     {
         auto& notifications = ipc::IpcCore::instance();
         for (ipc::IpcMessage message; Clock::now() < deadline;)
@@ -954,7 +1139,7 @@ namespace
             if (status == ipc::EIpcReceive::RECEIVED)
             {
                 CHECK(correlation == request_id);
-                return message.get<JobSubmitted>();
+                return std::move(message.get<Response>());
             }
             notifications.waitUntil(epoch, deadline);
         }
@@ -973,13 +1158,7 @@ namespace
         JobBinding binding;
         ResourceInstanceId instances;
         MeshInstanceId member;
-        TransformId transform;
-    };
-
-    struct ProbeMaterial final
-    {
-        MaterialProgramId program;
-        MaterialId instance;
+        TransformRef transform;
     };
 
     struct PipelineInterruption final
@@ -998,127 +1177,76 @@ namespace
     {
         const auto& [client, commands, session, scene] = owner;
         const auto& [server, requests, input, mesh, replace_job] = interruption;
+        using Cold = MaterialCommands::PrepareMeshPipelines;
         using Probe = PipelineIsolationProbe;
-        const auto changeMaterial = [&](MaterialId material)
+        constexpr auto purpose = EMaterialPurpose::FORWARD;
+        const MeshPipelineUse clockwise{mesh, false};
+        const auto select = [&](MaterialId material)
         {
             MeshInstanceData value{mesh, material};
-            value.transform_id = job.transform;
+            value.transform = job.transform;
             value.render_enabled = true;
             const MeshInstanceUpdate update{job.member, value};
             call<InstanceCommands::Update>(client, commands, {job.instances, {&update, 1}});
         };
-        const auto snapshot = [&]()
-        {
-            auto stats = server.developmentStats();
-            CHECK(stats);
-            return *stats;
-        };
-        const auto resizeDuringCompilation = [&]
-        {
-            // The imported target must stay sampleable. Rejection leaves its previously published pixels intact.
-            auto invalid = kTarget;
-            invalid.format = ETextureFormat::RGBA16_SFLOAT;
-            invalid.sampled = false;
-            CHECK(call<ResizeTarget>(client, commands, {input, invalid}, false).error.type == kCommandContract);
-            CHECK(call<RemoveTarget>(client, commands, input, false).error.type == kDeviceBusy);
-            auto larger = kTarget;
-            larger.height *= 2;
-            const auto changed = call<ResizeTarget>(client, commands, {job.target, larger});
-            const auto restored = call<ResizeTarget>(client, commands, {job.target, kTarget});
-            CHECK(restored.epoch == changed.epoch + 1 && restored.description == kTarget);
-            call<SetTargetActive>(client, commands, {job.target, true, restored.epoch});
-        };
-        const auto waitForDiscard = [&](std::uint64_t previous)
-        {
-            const auto deadline = Clock::now() + 15s;
-            while (snapshot().discarded_preparations == previous)
-            {
-                CHECK(Clock::now() < deadline);
-                std::this_thread::sleep_for(1ms);
-            }
-            CHECK(snapshot().discarded_preparations == previous + 1);
-        };
-
-        EffectId successor;
-        if (replace_job)
-            successor = createPreparedEffect(client, commands, session, rasterEffect(EMaterialPurpose::FORWARD, true));
-        changeMaterial(variants[0].instance);
-        const auto stop_before = snapshot();
-        const auto stop_creates = Probe::created_pipelines.load();
-        const auto stop_destroys = Probe::destroyed_pipelines.load();
+        // The cold request owns all native input independently of Job, View and Target.
+        const auto source_geometry = makeQuad();
+        const auto mesh_owner = extension_detail::ResourceIdentity::parent(mesh);
+        const auto transient_mesh = call<MeshCommands::UploadMesh>(client, commands, {mesh_owner, &source_geometry}).mesh;
         Probe::gate = Probe::EGate::ARMED;
-        const auto interrupted = requestFrame(requests, commands, job.job);
+        const auto pending = sendRequest<Cold>(requests, commands, {variants[0].program, purpose, {{transient_mesh, false}}});
         Probe::waitForDriver();
-        CHECK(call<RebindRenderJobEffect>(client, commands, {session, job.job, job.effect}, false).error.type == kJobBusy);
-        resizeDuringCompilation();
+        CHECK(call<Cold>(client, commands, {variants[0].program, purpose, {clockwise}}, false).error.type == kDeviceBusy);
+        call<MeshCommands::ReleaseMesh>(client, commands, {transient_mesh});
+        auto invalid = kTarget;
+        invalid.format = ETextureFormat::RGBA16_SFLOAT;
+        CHECK(call<ResizeTarget>(client, commands, {input, invalid}, false).error.type == kCommandContract);
+        CHECK(call<RemoveTarget>(client, commands, input, false).error.type == kDeviceBusy);
+        auto larger = kTarget;
+        larger.width = 80;
+        const auto resized = call<ResizeTarget>(client, commands, {job.target, larger});
+        const auto restored = call<ResizeTarget>(client, commands, {job.target, kTarget});
+        CHECK(restored.epoch == resized.epoch + 1 && restored.description == kTarget);
+        call<SetTargetActive>(client, commands, {job.target, true, restored.epoch});
         call<StopRenderJob>(client, commands, job.job);
-        const auto stopped = receiveFrameBefore(requests, interrupted, Clock::now() + 10s);
-        CHECK(stopped && stopped->error.type == kJobStopped);
-        changeMaterial(job.material);
-        call<MaterialCommands::ReleaseInstance>(client, commands, {variants[0].instance});
-        call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
         if (replace_job)
         {
             const auto previous = job.job;
             call<RemoveRenderJob>(client, commands, previous);
             call<RemoveEffect>(client, commands, {job.effect});
-            job.effect = successor;
-            job.job = call<CreateRenderJob>(client, commands,
-                {scene, job.view, job.effect, EJobCadence::REQUESTED}
-            ).job;
-            CHECK(job.job != previous);
+            // Build the replacement after the driver returns; its Effect preparation uses the same cold worker.
+            job.job = {};
         }
-        call<RebindRenderJobEffect>(client, commands, {{}, job.job, job.effect});
+        Probe::releaseDriver();
+        const auto prepared = receiveBefore<AckResponse>(requests, pending, Clock::now() + 15s);
+        CHECK(prepared && !prepared->error.type);
+        CHECK(!receiveBefore<AckResponse>(requests, pending, Clock::now() + 20ms));
+        if (replace_job)
+        {
+            job.effect = createPreparedEffect(client, commands, session, rasterEffect(purpose, true));
+            job.job = call<CreateRenderJob>(client, commands, {scene, job.view, job.effect, EJobCadence::REQUESTED}).job;
+        }
         call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
-        Probe::releaseDriver();
-        waitForDiscard(stop_before.discarded_preparations);
-        CHECK(Probe::created_pipelines.load() == stop_creates + 1);
-        CHECK(Probe::destroyed_pipelines.load() == stop_destroys + 1);
+        select(variants[0].instance);
         renderFrame(client, commands, job.job);
-
-        changeMaterial(variants[1].instance);
-        const auto failure_before = snapshot();
-        const auto calls_before = Probe::pipeline_calls.load();
+        select(variants[1].instance);
+        const auto calls = Probe::pipeline_calls.load();
         Probe::fail_pipeline = true;
-        const auto failed = call<RequestRenderJob>(client, commands, {job.job}, false);
-        CHECK(failed.error.type == kDeviceFailure);
-        const auto repeated = call<RequestRenderJob>(client, commands, {job.job}, false);
-        CHECK(repeated.error == failed.error);
-        CHECK(Probe::pipeline_calls.load() == calls_before + 1);
-        CHECK(snapshot().program_preparations == failure_before.program_preparations + 1);
-        changeMaterial(job.material);
-        renderFrame(client, commands, job.job);
-
-        const auto layout = call<QueryRenderJobInputLayout>(client, commands, job.job).layout;
-        auto packet = take(FrameData::create<MaterialFrameResources>(layout));
-        MeshInstanceData value{mesh, variants[1].instance};
-        value.transform_id = job.transform;
-        value.render_enabled = true;
-        CHECK(packet.addData<InstanceResource>(MeshInstanceUpdate{job.member, value}));
-        CHECK(packet.seal());
-        const auto stale_before = snapshot();
-        const auto stale_destroys = Probe::destroyed_pipelines.load();
-        Probe::gate = Probe::EGate::ARMED;
-        const auto pending = requestFrame(requests, commands, job.job, &packet);
-        Probe::waitForDriver();
-        for (unsigned update = 0; update < 2048; ++update) changeMaterial(variants[1 + (update + 1) % 2].instance);
-        changeMaterial(variants[2].instance);
-        CHECK(packet.sealed());
-        CHECK(!receiveFrameBefore(requests, pending, Clock::now() + 20ms));
-        Probe::releaseDriver();
-        const auto final = receiveFrameBefore(requests, pending, Clock::now() + 15s);
-        CHECK(final && !final->error.type && final->job == job.job);
-        packet.release();
-        CHECK(packet.writable());
-        CHECK(!receiveFrameBefore(requests, pending, Clock::now() + 20ms));
-        const auto after = snapshot();
-        CHECK(after.program_preparations == stale_before.program_preparations + 2);
-        CHECK(after.discarded_preparations == stale_before.discarded_preparations + 1);
-        CHECK(Probe::destroyed_pipelines.load() == stale_destroys + 1);
-        std::puts("PIPELINE_LIFETIME stale_revisions=2048 discarded=1 stopped=1 failure_attempts=1 terminal_replies=1");
-        std::printf("MATERIAL_PROGRAM_INPUT unregistered_during_native_compile=1 stale_candidate_destroyed=1 "
-                    "resize_epochs=2 replaced_job_and_effect=%u\n", replace_job ? 1u : 0u);
-        return *final;
+        const auto rejected = call<Cold>(client, commands, {variants[1].program, purpose, {clockwise}}, false);
+        CHECK(rejected.error.type == kDeviceFailure);
+        CHECK(call<RequestRenderJob>(client, commands, {job.job}, false).error.type == kMeshPipelineNotReady);
+        CHECK(Probe::pipeline_calls == calls + 1);
+        for (const auto& variant : variants.subspan(1))
+            call<Cold>(client, commands, {variant.program, purpose, {clockwise}});
+        const auto ready_calls = Probe::pipeline_calls.load();
+        const auto before = server.developmentStats();
+        for (unsigned i = 0; i < 2048; ++i) select(variants[1 + i % 2].instance);
+        auto final = call<RequestRenderJob>(client, commands, {job.job});
+        CHECK(Probe::pipeline_calls == ready_calls);
+        call<MaterialCommands::ReleaseInstance>(client, commands, {variants[0].instance});
+        call<MaterialCommands::UnregisterProgram>(client, commands, {variants[0].program});
+        std::puts("PIPELINE_LIFETIME ready_switches=2048 job_preparations=0 mesh_released_while_compiling=1 resize_epochs=2 terminal_replies=1");
+        return final;
     }
 
     void verifyPipelineIsolation(
@@ -1147,7 +1275,7 @@ namespace
             const auto effect = createPreparedEffect(client, commands, session, hdrEffect());
             const auto view = call<CreateView>(client, commands, {scenes[0]}).view;
             const auto writer = startRenderJob(client, commands, session, scenes[0], view, source, effect);
-            renderFrame(client, commands, writer);
+            CHECK(!call<RequestRenderJob>(client, commands, {writer}, false).error.type);
             stopAndRemoveJob(client, commands, writer);
             call<RemoveView>(client, commands, {scenes[0], view});
             call<RemoveEffect>(client, commands, {effect});
@@ -1158,10 +1286,10 @@ namespace
             const auto created = createMaterial(i + 1, float(i + 1) / 8);
             job.program = created.program;
             job.material = created.instance;
-            job.instances = call<GetOrCreateResource>(client, commands, {session, scenes[i], kInstanceResourceName}).resource_id;
+            job.instances = call<GetOrCreateResource>(client, commands, {session, scenes[i], kInstanceResourceName, std::string{"mesh.instances"}}).resource_id;
             MeshInstanceData input{mesh, job.material};
             job.transform = createTransform(client, commands, sceneTransformStorage(client, commands, session, scenes[i]));
-            input.transform_id = job.transform;
+            input.transform = job.transform;
             input.render_enabled = true;
             job.member = call<InstanceCommands::CreateInstance>(client, commands, {job.instances, input}).instance;
             const bool samples_hdr = i == 1 && expect_progress;
@@ -1172,57 +1300,49 @@ namespace
                 {&job.pixels, kTarget.format}, {samples_hdr ? &imported_pixels : nullptr, kTarget.format}
             }};
             job.binding = materialBinding({client, commands, session}, {scenes[i], job.view}, capture);
-            if (samples_hdr) job.binding.target_images.push_back({.target = source, .binding = std::string{imported_hdr}});
+            if (samples_hdr) job.binding.target_images.push_back({.target = source, .binding = std::string{imported_hdr}, .read = EProductRead::LATEST_PUBLISHED});
             job.job = call<CreateRenderJob>(client, commands, {
                 scenes[i], job.view, job.effect, EJobCadence::REQUESTED
             }).job;
             call<StartRenderJob>(client, commands, {session, job.job, job.target, job.binding});
         }
 
+        using Cold = MaterialCommands::PrepareMeshPipelines;
+        const MeshPipelineUse clockwise{mesh, false};
+        call<Cold>(client, commands, {jobs[0].program, purposes[0], {clockwise}});
         const auto warm = jobs[0].job;
         const auto cold = jobs[1].job;
-        for (unsigned slot = 0; slot < kFif; ++slot) renderFrame(client, commands, warm);
+        for (unsigned slot = 0; slot < kFif; ++slot) CHECK(!call<RequestRenderJob>(client, commands, {warm}, false).error.type);
         auto cold_client = ipc::IpcCore::instance().createRequester(channel);
         CHECK(cold_client);
         const auto before = server.developmentStats();
         CHECK(before);
         using Probe = PipelineIsolationProbe;
-        std::optional<FrameData> stop_packet;
-        if (stop_server)
-        {
-            const auto layout = call<QueryRenderJobInputLayout>(client, commands, cold).layout;
-            stop_packet.emplace(take(FrameData::create<MaterialFrameResources>(layout)));
-            MeshInstanceData value{mesh, jobs[1].material};
-            value.transform_id = jobs[1].transform;
-            value.render_enabled = true;
-            CHECK(stop_packet->addData<InstanceResource>(MeshInstanceUpdate{jobs[1].member, value}));
-            CHECK(stop_packet->seal());
-        }
         Probe::gate = Probe::EGate::ARMED;
-        const auto cold_request = requestFrame(*cold_client, commands, cold, stop_packet ? &*stop_packet : nullptr);
+        const auto cold_request = sendRequest<Cold>(*cold_client, commands, {jobs[1].program, purposes[0], {clockwise}});
         Probe::waitForDriver();
+        // An already published set is selected on the owner even while the only compiler worker is blocked.
+        const auto native_calls = Probe::pipeline_calls.load();
+        call<Cold>(client, commands, {jobs[0].program, purposes[0], {clockwise, clockwise}});
+        CHECK(Probe::pipeline_calls == native_calls);
         if (expect_progress)
         {
             const auto held = server.developmentStats();
             CHECK(held && held->rounds_opened == before->rounds_opened);
-            CHECK(held->program_preparations == before->program_preparations + 1);
         }
         if (stop_server)
         {
             server.stop();
-            const auto stopped = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 10s);
-            CHECK(stopped && stopped->error.type == kJobStopped);
-            stop_packet->release();
-            CHECK(stop_packet->writable());
+            CHECK(!receiveBefore<AckResponse>(*cold_client, cold_request, Clock::now() + 100ms));
             const auto created = Probe::created_pipelines.load();
             const auto destroyed = Probe::destroyed_pipelines.load();
             Probe::releaseDriver();
+            const auto stopped = receiveBefore<AckResponse>(*cold_client, cold_request, Clock::now() + 10s);
+            CHECK(stopped && stopped->error.type == kCommandCancelled);
             server_thread.join();
-            const auto joined = server.developmentStats();
-            CHECK(joined && joined->discarded_preparations == before->discarded_preparations + 1);
-            CHECK(Probe::created_pipelines.load() == created + 1);
-            CHECK(Probe::destroyed_pipelines.load() >= destroyed + 1);
-            std::puts("PIPELINE_SHUTDOWN cancelled_request=1 packet_returned=1 candidate_destroyed=1 joined=1");
+            CHECK(Probe::created_pipelines == created + 1);
+            CHECK(Probe::destroyed_pipelines >= destroyed + 1);
+            std::puts("PIPELINE_SHUTDOWN cold_request_cancelled=1 candidate_destroyed=1 joined=1");
             return;
         }
         const auto submits_before = Probe::accepted_submits.load();
@@ -1230,21 +1350,21 @@ namespace
         std::optional<FrameData> warm_packet;
         if (expect_progress)
         {
-            const auto layout = call<QueryRenderJobInputLayout>(client, commands, warm).layout;
-            warm_packet.emplace(take(FrameData::create<MaterialFrameResources>(layout)));
+            warm_packet.emplace(framePacket<TransformResource>(client, commands, session, warm));
             auto moved = kIdentityTransform;
             moved[12] = .125F;
             CHECK(warm_packet->addData<TransformResource>(TransformRecordUpdate{jobs[0].transform, moved}));
-            CHECK(warm_packet->seal());
         }
-        const auto warm_request = requestFrame(client, commands, warm, warm_packet ? &*warm_packet : nullptr);
-        const auto early = receiveFrameBefore(client, warm_request, Clock::now() + 2s);
+        WindowUpdates warm_updates;
+        if (warm_packet) warm_updates.append(std::move(*warm_packet));
+        const auto warm_request = sendRequest<RequestRenderJob>(client, commands, {warm, std::move(warm_updates)});
+        auto early = receiveBefore<JobSubmitted>(client, warm_request, Clock::now() + 2s);
         if (early && expect_progress)
         {
             for (unsigned i = 1; i < kFif; ++i)
             {
-                const auto next = requestFrame(client, commands, warm);
-                const auto reply = receiveFrameBefore(client, next, Clock::now() + 2s);
+                const auto next = sendRequest<RequestRenderJob>(client, commands, {warm});
+                const auto reply = receiveBefore<JobSubmitted>(client, next, Clock::now() + 2s);
                 CHECK(reply && !reply->error.type && reply->job == warm);
                 CHECK(reply->frame_index == early->frame_index + i);
                 CHECK(reply->slot_index == (early->slot_index + i) % kFif);
@@ -1255,26 +1375,17 @@ namespace
         const auto blocked = server.developmentStats();
         Probe::releaseDriver();
 
-        const auto warm_reply = early ? early : receiveFrameBefore(client, warm_request, Clock::now() + 15s);
-        const auto cold_reply = receiveFrameBefore(*cold_client, cold_request, Clock::now() + 15s);
+        const auto warm_reply = early ? std::move(early) : receiveBefore<JobSubmitted>(client, warm_request, Clock::now() + 15s);
+        const auto cold_reply = receiveBefore<AckResponse>(*cold_client, cold_request, Clock::now() + 15s);
         CHECK(warm_reply && !warm_reply->error.type && warm_reply->job == warm);
-        if (warm_packet) warm_packet->release();
-        if (cold_reply && cold_reply->error.type)
-            std::fprintf(stderr, "Cold Job error %llu with arguments %llu/%llu/%llu\n",
-                static_cast<unsigned long long>(cold_reply->error.type),
-                static_cast<unsigned long long>(cold_reply->error.args[0]),
-                static_cast<unsigned long long>(cold_reply->error.args[1]),
-                static_cast<unsigned long long>(cold_reply->error.args[2])
-            );
-        CHECK(cold_reply && !cold_reply->error.type && cold_reply->job == cold);
+        CHECK(cold_reply && !cold_reply->error.type);
+        CHECK(!call<RequestRenderJob>(client, commands, {cold}, false).error.type);
         CHECK(blocked);
-        const auto holding_slot = blocked->program_preparations_holding_slot - before->program_preparations_holding_slot;
         std::printf(
             "PIPELINE_ISOLATION workers=%u warm_reply_while_cold_blocked=%u native_submits=%llu "
-            "raster_submits=%llu preparations_holding_slot=%llu\n",
+            "raster_submits=%llu\n",
             workers, unsigned(early.has_value()), static_cast<unsigned long long>(accepted),
-            static_cast<unsigned long long>(raster_accepted),
-            static_cast<unsigned long long>(holding_slot)
+            static_cast<unsigned long long>(raster_accepted)
         );
         std::fflush(stdout);
         const bool should_submit = expect_progress && workers > 1;
@@ -1284,7 +1395,6 @@ namespace
         const bool should_upload = expect_progress && workers == 1;
         if (should_upload) CHECK(accepted == 1);
         else CHECK((accepted > 0) == should_submit);
-        CHECK((holding_slot == 0) == expect_progress);
 
         std::optional<JobSubmitted> newest;
         std::array<ProbeMaterial, 3> variants;
@@ -1385,6 +1495,7 @@ namespace
             const auto stride = program.parameters.size;
             auto defaults = program.parameter_defaults;
             const auto id = registerMaterialProgram(ipc, commands, materials, std::move(program));
+            call<MaterialCommands::PrepareMeshPipelines>(ipc, commands, {id, purposes[0], {{mesh, false}}});
             programs.push_back({id, std::move(defaults), texture_count, stride});
         }
         CHECK(projections.size() == abi_count && textures.size() == 9);
@@ -1454,7 +1565,7 @@ namespace
             input.push_back(value);
             matrices.push_back(matrix);
         }
-        bindTransforms(ipc, commands, sceneTransformStorage(ipc, commands, session, scene), input, matrices);
+        bindTransforms(ipc, commands, {sceneTransformStorage(ipc, commands, session, scene), matrices}, input);
         constexpr unsigned sparse = 8;
         std::size_t previous = 0;
         for (const auto active : {sparse, count})
@@ -1513,6 +1624,7 @@ namespace
         const auto registration_start = Clock::now();
         const auto id = registerMaterialProgram(ipc, commands, materials, std::move(program));
         const auto registration_us = std::chrono::duration<double, std::micro>(Clock::now() - registration_start);
+        call<MaterialCommands::PrepareMeshPipelines>(ipc, commands, {id, purposes[0], {{mesh, false}}});
 
         std::vector<MaterialId> ids;
         ids.reserve(count);
@@ -1566,7 +1678,7 @@ namespace
         const auto pose = createTransform(ipc, commands, sceneTransformStorage(ipc, commands, session, scene));
         for (auto& instance : live)
         {
-            instance.transform_id = pose;
+            instance.transform = pose;
             instance.render_enabled = true;
         }
         call<InstanceCommands::CreateInstances>(ipc, commands, {instances, live});
@@ -1627,7 +1739,8 @@ int main(int argc, char** argv)
     config.uploads->chunk_bytes = 4 * 1024 * 1024;
     config.uploads->window_regions = 8192;
     auto server = take(RenderServer::create(config, **runtime));
-    take(server->registerResource<MaterialAllocationProbe>());
+    const std::array mesh_upload_commands{CommandBinding::declare<WatchMeshUploads, &MaterialAllocationProbe::watchGroups>()};
+    take(server->registerResource<MaterialAllocationProbe>(mesh_upload_commands));
     const bool observe_pipelines = pipeline_isolation.has_value() || (!count && !instance_profile);
     if (observe_pipelines) take(server->registerResource<PipelineIsolationProbe>());
     take(server->registerResource(MaterialReadback::factory()));
@@ -1638,8 +1751,17 @@ int main(int argc, char** argv)
     {
         const auto hdr = hdrDefinition();
         CHECK(server->registerEffectCapability(hdr));
-        registerMaterialNode(*server, hdr.identity.id, clear_hdr, Lighting::hdr, buildHdr<false>);
-        registerMaterialNode(*server, hdr.identity.id, sample_hdr, Lighting::hdr, buildHdr<true>);
+        const auto register_hdr = [&](std::string_view name, ImplementationEntry::Create create)
+        {
+            ImplementationEntry implementation;
+            implementation.capability = hdr.id;
+            implementation.identity = {std::string{name}, 1};
+            implementation.supported_outputs = {DeferredLightingPorts::hdr.semantic};
+            implementation.create = create;
+            CHECK(server->registerEffectImplementation(std::move(implementation)));
+        };
+        register_hdr(clear_hdr, fixture::Effect<buildHdr<false>>::create);
+        register_hdr(sample_hdr, fixture::Effect<buildHdr<true>>::create);
     }
     auto ipc = ipc::IpcCore::instance().createRequester(config.channel_name);
     CHECK(ipc);
@@ -1655,7 +1777,7 @@ int main(int argc, char** argv)
         );
     }
     const auto scene = call<CreateScene>(*ipc, commands, {}).scene;
-    const auto instances = call<GetOrCreateResource>(*ipc, commands, {session, scene, kInstanceResourceName}).resource_id;
+    const auto instances = call<GetOrCreateResource>(*ipc, commands, {session, scene, kInstanceResourceName, std::string{"mesh.instances"}}).resource_id;
     const auto meshes = call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, kMeshResourceName}).resource_id;
     const auto textures = call<GetOrCreateResource>(*ipc, commands, {session, DeviceScope{}, kTextureResourceName}).resource_id;
     const auto materials =

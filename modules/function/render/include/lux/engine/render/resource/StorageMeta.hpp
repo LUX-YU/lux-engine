@@ -1,7 +1,7 @@
 #pragma once
 
 #include <concepts>
-#include <lux/engine/render/resource/FrameDataCall.hpp>
+#include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/resource/ResourceCreateContext.hpp>
 #include <lux/engine/render/resource/ResourceDefinition.hpp>
@@ -17,12 +17,7 @@ namespace lux::render
     // Immutable implementation metadata. It has no Resource declaration or global identity.
     struct StorageMeta final
     {
-        StorageMeta() noexcept = default;
-        StorageMeta(const StorageMeta&) = delete;
-        StorageMeta& operator=(const StorageMeta&) = delete;
-
         RenderResult<StorageOwner> (*create)(ResourceCreateContext&, ResourceInstanceId, const void*) noexcept = nullptr;
-        std::optional<detail::StorageSnapshotOps> snapshot_ops;
         std::optional<detail::StorageBindingOps> binding_ops;
         cxx::basic_type_info config_type;
         cxx::basic_type_info implementation_type;
@@ -33,62 +28,52 @@ namespace lux::render
         }
     };
 
+    struct ResourceRegistration;
+    template <class Declaration, class Implementation, auto Create, auto Update = nullptr>
+    [[nodiscard]] ResourceRegistration
+    makeResourceRegistration(const detail::StorageBindingOps* bindings = nullptr) noexcept;
+
     struct ResourceRegistration final
     {
-        ResourceRegistration(
-            const ResourceDefinition* definition,
-            std::unique_ptr<StorageMeta> metadata,
-            FrameDataCall inputs
-        ) noexcept
-            : descriptor(definition), frame_call(inputs), storage_(std::move(metadata))
-        {
-        }
+        using ApplyFrame = RenderResult<void> (*)(void*, const FrameData&, std::size_t) noexcept;
 
-        [[nodiscard]] const StorageMeta* storage() const & noexcept { return storage_.get(); }
-        [[nodiscard]] const StorageMeta* storage() const && = delete;
+        ResourceRegistration(const ResourceDefinition* definition, StorageMeta metadata) noexcept
+            : descriptor(definition), storage_(std::move(metadata)) {}
+
+        ResourceRegistration(ResourceRegistration&&) noexcept = default;
+        ResourceRegistration& operator=(ResourceRegistration&&) noexcept = default;
+
+        [[nodiscard]] const StorageMeta& storage() const & noexcept { return storage_; }
+        const StorageMeta& storage() const && = delete;
 
         const ResourceDefinition* descriptor;
-        FrameDataCall frame_call;
+        [[nodiscard]] std::span<const FrameChannel> channels() const & noexcept { return frame_channels_; }
+        std::span<const FrameChannel> channels() const && = delete;
+        [[nodiscard]] ApplyFrame applyFrame() const noexcept { return apply_frame_; }
 
     private:
         friend class ResourceRegistry;
-        std::unique_ptr<StorageMeta> storage_;
+        template <class Declaration, class Implementation, auto Create, auto Update>
+        friend ResourceRegistration makeResourceRegistration(const detail::StorageBindingOps*) noexcept;
+        StorageMeta storage_;
+        std::span<const FrameChannel> frame_channels_{};
+        ApplyFrame apply_frame_ = nullptr;
     };
 
     template <class Config, class Implementation, auto Create>
-    [[nodiscard]] std::unique_ptr<StorageMeta>
+    [[nodiscard]] StorageMeta
     makeStorageMeta(const detail::StorageBindingOps* binding_ops) noexcept
     {
-        constexpr bool has_config = !std::is_void_v<Config>;
-        constexpr cxx::basic_type_info config_type = []() noexcept
-        {
-            if constexpr (has_config)
-            {
-                return cxx::make_basic_type_info<Config>();
-            }
-            else
-            {
-                return cxx::basic_type_info{};
-            }
-        }();
-        auto metadata = std::make_unique<StorageMeta>();
-        if (binding_ops)
-        {
-            metadata->binding_ops = *binding_ops;
-            if (binding_ops->cpu_snapshot)
-            {
-                metadata->snapshot_ops = *binding_ops->cpu_snapshot;
-                metadata->binding_ops->cpu_snapshot = &*metadata->snapshot_ops;
-            }
-        }
-        metadata->config_type = config_type;
-        metadata->implementation_type = cxx::make_basic_type_info<Implementation>();
-        metadata->create = [](ResourceCreateContext& dependencies, ResourceInstanceId id, const void* config)
+        StorageMeta metadata;
+        if (binding_ops) metadata.binding_ops = *binding_ops;
+        if constexpr (!std::is_void_v<Config>) metadata.config_type = cxx::make_basic_type_info<Config>();
+        metadata.implementation_type = cxx::make_basic_type_info<Implementation>();
+        metadata.create = [](ResourceCreateContext& dependencies, ResourceInstanceId id, const void* config)
             noexcept -> RenderResult<StorageOwner>
         {
             auto candidate = [&]() noexcept
             {
-                if constexpr (has_config)
+                if constexpr (!std::is_void_v<Config>)
                 {
                     using Factory = RenderResult<std::unique_ptr<Implementation>> (*)(
                         ResourceCreateContext&, ResourceInstanceId, const Config&
@@ -117,20 +102,43 @@ namespace lux::render
         return metadata;
     }
 
-    template <class Declaration, class Implementation, auto Create>
-    [[nodiscard]] ResourceRegistration makeResourceRegistration(
-        const detail::StorageBindingOps* binding_ops = nullptr,
-        FrameDataCall frame_call = {}
-    ) noexcept
+    namespace frame_detail
     {
-        return {
-            &Declaration::descriptor,
-            makeStorageMeta<
-                typename Declaration::Config,
-                Implementation,
-                Create>(binding_ops),
-            frame_call
+        template <class T> std::span<const T> readColumn(const FrameData& packet, std::size_t index) noexcept
+        {
+            const auto column = packet.column(index);
+            return {static_cast<const T*>(column.data), column.count};
+        }
+    }
+
+    template <class Declaration, class Implementation, auto Create, auto Update>
+    [[nodiscard]] ResourceRegistration makeResourceRegistration(const detail::StorageBindingOps* bindings) noexcept
+    {
+        ResourceRegistration result{
+            &Declaration::descriptor, makeStorageMeta<typename Declaration::Config, Implementation, Create>(bindings)
         };
+        if constexpr (Update != nullptr)
+        {
+            result.frame_channels_ = frameChannels<Declaration>();
+            result.apply_frame_ = []<class... T>(std::type_identity<std::tuple<T...>>) noexcept
+            {
+                using Apply = RenderResult<void> (*)(Implementation&, std::span<const T>...) noexcept;
+                using Member = RenderResult<void> (Implementation::*)(std::span<const T>...) noexcept;
+                static_assert(std::same_as<decltype(Update), Apply> || std::same_as<decltype(Update), Member>);
+                constexpr auto explicit_parameters = sizeof...(T) + std::same_as<decltype(Update), Apply>;
+                static_assert(explicit_parameters <= 4, "Group related update fields into typed records");
+                return +[](void* owner, const FrameData& packet, std::size_t first) noexcept
+                {
+                    return [&]<std::size_t... I>(std::index_sequence<I...>) noexcept
+                    {
+                        return std::invoke(
+                            Update, *static_cast<Implementation*>(owner), frame_detail::readColumn<T>(packet, first + I)...
+                        );
+                    }(std::index_sequence_for<T...>{});
+                };
+            }(std::type_identity<typename Declaration::PerFrameData>{});
+        }
+        return result;
     }
 
     [[nodiscard]] LUX_RENDER_PUBLIC RenderResult<void>

@@ -15,9 +15,6 @@
 #include <lux/engine/render/graph/CommandPackets.hpp>
 #include <memory>
 
-#include <lux/engine/render/effect/EffectStorageImport.hpp>
-#include <lux/engine/render/effect/CpuCall.hpp>
-#include <lux/engine/render/resource/RasterProgramBuild.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
 #include <lux/engine/render/graph/TargetImageSlot.hpp>
 
@@ -25,140 +22,23 @@ namespace lux::render::compiled { class RenderGraph; }
 
 namespace lux::render::detail
 {
-    struct ConstantBufferInput final
-    {
-        std::uint32_t state, bytes;
-        GraphResourceId resource;
-        extension_detail::BoundConstantValue (*bind)(const void*) noexcept;
-    };
-
-    struct InputSlot final
-    {
-        std::uint32_t index;
-    };
-
     struct CompiledPassSlot final
     {
         std::uint32_t index = kGraphInvalidIndex;
     };
 
-    struct CpuByteRange final
+    struct DynamicBuffer final
     {
-        std::size_t size, offset = 0;
-
-        [[nodiscard]] std::span<std::byte> slice(std::span<std::byte> storage) const noexcept
-        {
-            return storage.subspan(offset, size);
-        }
-    };
-
-    struct PreparationRange final
-    {
-        std::uint32_t first = 0, count = 0;
-    };
-
-    struct LinkedRasterStream final
-    {
-        std::uint32_t pass, list;
-    };
-
-    struct LinkedRasterBuild final
-    {
-        std::uint32_t input_owner;
-        RasterProgramBuilder::Build build = nullptr;
-        PreparationRange snapshots;
-
-        [[nodiscard]] bool link(const RasterProgramBuilder& builder, const extension_detail::PreparationCall& call) noexcept
-        {
-            build = builder.link(call.inputs.type(), call.methods->mapping_type);
-            return build != nullptr;
-        }
-    };
-
-    struct CpuCall final
-    {
-        extension_detail::PreparationCall call;
-        std::uint32_t workspace_slot = kGraphInvalidIndex;
-        std::uint32_t program_slot = kGraphInvalidIndex;
-        PreparationRange streams, buffers;
-        std::uint32_t upload_count = 0, first_snapshot = 0, first_input = 0, first_output = 0;
-    };
-
-    struct CpuProgram final
-    {
-        struct Buffer final
-        {
-            std::uint32_t resource;
-            std::uint64_t minimum_bytes, maximum_bytes;
-            bool upload;
-            bool used;
-        };
-
-        struct Snapshot final
-        {
-            cxx::basic_type_info type;
-            std::uint32_t binding;
-        };
-
-        struct EffectInput final
-        {
-            std::uint32_t source;
-            InputSlot destination;
-            std::span<const std::byte> (*bind)(const void*) noexcept = nullptr;
-        };
-
-        struct ConstantCopy final
-        {
-            InputSlot input;
-            CompiledPassSlot pass;
-            std::uint32_t bytes, revision_offset = kGraphInvalidIndex;
-        };
-
-        static_assert(std::is_standard_layout_v<ConstantCopy> && std::is_trivially_copyable_v<ConstantCopy>);
-
-        std::vector<ConstantBufferInput> constant_buffers;
-        std::vector<ConstantCopy> constant_copies;
-        std::vector<EffectInput> effect_inputs;
-        std::vector<CpuByteRange> cpu_values;
-        std::size_t byte_count = 0;
-        std::vector<InputSlot> cpu_reads;
-        std::vector<Buffer> buffers;
-        // Frame-selected sources are the leading range; program-only sources are bound for cold builds.
-        std::uint32_t frame_snapshot_count = 0;
-        std::vector<Snapshot> snapshots;
-        std::vector<std::uint32_t> snapshot_reads;
-        struct DrawSourceRange final
-        {
-            std::uint32_t first = 0, count = 0;
-            std::uint32_t producer = kGraphInvalidIndex, list = kGraphInvalidIndex;
-        };
-
-        std::vector<DrawSourceRange> draw_resource_ranges;
-        struct DrawBinding final
-        {
-            std::uint32_t binding;
-            std::uint32_t capabilities;
-            bool indexed_geometry;
-        };
-
-        std::vector<DrawBinding> draw_resource_bindings;
-        std::vector<LinkedRasterBuild> raster_builds;
-        std::vector<std::uint32_t> program_reads;
-        std::uint32_t workspace_count = 0;
-        std::vector<CpuCall> calls;
-        std::vector<LinkedRasterStream> streams;
-
-        [[nodiscard]] std::span<const LinkedRasterStream> streamsFor(const CpuCall& call) const & noexcept
-        {
-            return std::span{streams}.subspan(call.streams.first, call.streams.count);
-        }
+        std::uint32_t resource;
+        std::uint64_t minimum_bytes, maximum_bytes;
+        bool upload, used;
     };
 
     struct GraphBindingPlan;
     struct RecordingDependencies;
     struct DescriptorAccess;
     class DeviceSession;
-    class GraphCompiler;
+    class RenderGraphCompiler;
     class FrameExecutor;
     class SubmissionOperation;
     class NativeProgramBindings;
@@ -196,9 +76,11 @@ namespace lux::render::detail
         bool shared_table = false;
         bool sampled_target_input = false;
         std::uint32_t history = kGraphInvalidIndex;
+        std::uint32_t layer_slot = kGraphInvalidIndex;
         // Immutable reverse indexes shared by every Context frame slice.
-        std::vector<std::pair<std::uint32_t, std::uint32_t>> barrier_uses, descriptor_uses;
-        std::vector<std::uint32_t> final_barrier_uses;
+        std::vector<std::size_t> barrier_uses;
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> descriptor_uses;
+        std::vector<std::uint32_t> exit_barrier_uses;
         std::vector<ImageViewBinding> image_views;
         std::vector<std::uint32_t> extent_uses;
     };
@@ -207,7 +89,9 @@ namespace lux::render::detail
     {
         PASS,
         RESTORE_IMPORTED,
-        EXPORT
+        RESTORE_TRANSIENT,
+        EXPORT,
+        PUBLISH_READS
     };
 
     struct ImageTransition final
@@ -259,8 +143,15 @@ namespace lux::render::detail
 
     struct IndexSource final
     {
-        BufferLocation location;
+        std::uint32_t address;
         nri::IndexType type;
+    };
+
+    struct RasterBufferAddress final
+    {
+        BufferLocation location;
+        std::uint64_t bytes;
+        std::uint32_t alignment;
     };
 
     struct IndexedDrawPacket final
@@ -272,7 +163,7 @@ namespace lux::render::detail
     struct IndirectDrawPacket final
     {
         IndexSource index;
-        BufferLocation arguments, count_buffer;
+        std::uint32_t arguments, count_buffer;
         std::uint32_t count, stride;
     };
 
@@ -281,7 +172,7 @@ namespace lux::render::detail
     struct RasterCommands final
     {
         // Fixed raster program. Dynamic raster lists carry the program on each draw packet.
-        std::vector<VertexSource> vertices;
+        std::uint32_t first_vertex = 0, vertex_count = 0;
         VRasterDraw draw;
     };
 
@@ -302,6 +193,7 @@ namespace lux::render::detail
         bool exclusive = false;
         nri::DepthBiasDesc depth_bias{};
         bool section_depth_bias = false;
+        bool initialize_resolve_targets = false;
         bool reset_viewport = false;
     };
 
@@ -326,12 +218,23 @@ namespace lux::render::detail
         FixedBindingDelta commands;
     };
 
+    struct BarrierRange final
+    {
+        std::size_t first = 0, count = 0;
+
+        template <class T>
+        [[nodiscard]] std::span<T> select(std::span<T> rows) const noexcept
+        {
+            return rows.subspan(first, count);
+        }
+    };
+
     struct CompiledPass final
     {
         VCommandSlot commands;
         FixedBindingDelta fixed_bindings;
         std::uint32_t binding_join = kGraphInvalidIndex;
-        BarrierBatch before;
+        BarrierRange entry_images, entry_buffers;
         std::uint32_t binding_slot = kGraphInvalidIndex;
         std::uint32_t unit = kGraphInvalidIndex;
         std::uint32_t submission = kGraphInvalidIndex;
@@ -400,13 +303,32 @@ namespace lux::render::detail
         // Both raster tables are indexed by the same RasterCommandSlot.
         std::vector<CompiledRasterScope> raster_scopes;
         std::vector<RasterCommands> raster;
+        std::vector<VertexSource> raster_vertices;
+        std::vector<RasterBufferAddress> raster_addresses;
         std::vector<ComputeCommands> compute;
         std::vector<TransferCommands> transfer;
         TransferProgram transfers;
         std::vector<RenderingGroup> groups;
         std::vector<ConditionalRegion> conditions;
         std::vector<BindingJoin> binding_joins;
-        BarrierBatch after;
+        BarrierBatch before, after;
+        [[nodiscard]] std::span<const ImageTransition> imageBarriers(const CompiledPass& pass) const & noexcept
+        {
+            return pass.entry_images.select(std::span{before.images});
+        }
+        [[nodiscard]] std::span<const BufferTransition> bufferBarriers(const CompiledPass& pass) const & noexcept
+        {
+            return pass.entry_buffers.select(std::span{before.buffers});
+        }
+        std::span<const ImageTransition> imageBarriers(const CompiledPass&) const && = delete;
+        std::span<const BufferTransition> bufferBarriers(const CompiledPass&) const && = delete;
+
+        // Legacy textures retain their state across FIF reuse. Close each physical subresource at its last use.
+        std::vector<ImageTransition> transient_exits;
+        std::vector<std::uint32_t> transient_exit_offsets;
+        // Whole-buffer write-to-read transitions executed before the producer signals its queue.
+        std::vector<BufferTransition> buffer_read_releases;
+        std::vector<std::uint32_t> buffer_release_offsets;
     };
 
     template <class Recorder>
@@ -439,6 +361,20 @@ namespace lux::render::detail
         // Publication is proved complete for every selected path during range analysis.
     };
 
+    // Device qualifications for dynamic Raster operands, fixed when native programs are linked.
+    struct RasterDrawLimits final
+    {
+        std::uint64_t uniform_alignment = 1;
+        std::uint32_t indirect_count = 1;
+        bool multi_draw = false, indirect_count_buffer = false;
+    };
+
+    struct ResourceUseStages final
+    {
+        std::uint32_t resource_index;
+        nri::StageBits stages;
+    };
+
     struct SubmissionDependency final
     {
         std::uint32_t producer;
@@ -451,20 +387,36 @@ namespace lux::render::detail
         nri::StageBits stages = nri::StageBits::ALL;
     };
 
+    struct BatchRecording final
+    {
+        std::uint32_t first_pass, end_pass;
+        bool reusable = false, output_tail = false;
+        bool initialize_history = false, restore_graph = false;
+    };
+
     struct SubmissionBatch final
     {
         EQueueRole queue = EQueueRole::GRAPHICS;
         std::uint32_t first_pass = 0;
         std::uint32_t pass_count = 0;
-        std::vector<SubmissionDependency> dependencies;
-        std::vector<SubmissionSuccessor> successors;
-        std::vector<GraphResourceId> histories;
-        std::vector<GraphResourceId> imported_resources;
-        std::uint32_t output_begin = kGraphInvalidIndex;
-        bool reusable_recording = true;
-        bool writes_output = false;
-        std::uint32_t first_output_region = 0, output_region_count = 0;
-        std::vector<std::uint32_t> shared_draw_reads;
+        std::span<const SubmissionDependency> dependencies;
+        std::span<const SubmissionSuccessor> successors;
+        // Imported bindings and selected History banks share the same wait and acceptance contract.
+        std::span<const ResourceUseStages> resource_frontiers;
+        std::span<const BatchRecording> recordings;
+        bool uses_history = false, writes_output = false, accesses_output = false;
+        std::span<const std::uint32_t> output_regions;
+        std::span<const std::uint32_t> raster_list_passes;
+
+        [[nodiscard]] std::uint32_t outputBegin() const noexcept
+        {
+            return recordings.back().output_tail ? recordings.back().first_pass : kGraphInvalidIndex;
+        }
+
+        [[nodiscard]] bool reusesPass(std::uint32_t pass) const noexcept
+        {
+            return recordings.front().reusable && pass < recordings.front().end_pass;
+        }
     };
 
     enum class ETransientAllocation : std::uint8_t
@@ -538,6 +490,16 @@ namespace lux::render::detail
         std::vector<PhysicalResourceSlotIndex> resource_slots;
         std::vector<AliasUseFrontier> alias_frontiers;
         std::vector<AliasUsePoint> alias_points;
+
+        [[nodiscard]] bool reusesObjects() const noexcept
+        {
+            for (std::size_t i = 0; i < resource_slots.size(); ++i)
+            {
+                const auto slot = resource_slots[i];
+                if (slot.valid() && slots[slot.index].resource.index != i) return true;
+            }
+            return false;
+        }
     };
 
     struct NativeProgramSlot final
@@ -566,21 +528,21 @@ namespace lux::render::detail
         [[nodiscard]] std::size_t size() const noexcept { return slots_.size(); }
         [[nodiscard]] const nri::Device* device() const noexcept;
         [[nodiscard]] nri::Descriptor* sampler(std::uint32_t slot) const noexcept { return samplers_[slot]; }
-        [[nodiscard]] const CompiledRasterStream* rasterStream(std::uint32_t pass) const noexcept
-        {
-            return streams_[pass].get();
-        }
+        [[nodiscard]] std::span<const CompiledRasterStream> rasterStreams() const & noexcept;
+        std::span<const CompiledRasterStream> rasterStreams() const && = delete;
 
     private:
-        friend class GraphCompiler;
+        friend class RenderGraphCompiler;
         friend class CompiledPrograms;
         friend class compiled::RenderGraph;
         NativeProgramBindings() noexcept;
+        // A failed compiler candidate has no submitted users. Shared cache entries still carry their own GPU uses.
+        void discardUnsubmitted() noexcept;
 
         DeviceSession* owner_ = nullptr;
         std::vector<NativeProgramSlot> slots_;
         std::vector<nri::Descriptor*> samplers_; // Borrowed from this device's DescriptorTable.
-        std::vector<std::unique_ptr<CompiledRasterStream>> streams_;
+        std::vector<CompiledRasterStream> streams_;
     };
 
 } // namespace lux::render::detail
@@ -684,6 +646,9 @@ namespace lux::render::compiled
 
         [[nodiscard]] std::uint32_t conditionCount() const noexcept { return condition_count_; }
         [[nodiscard]] std::uint32_t bindingPredicateCount() const noexcept { return binding_predicate_count_; }
+        [[nodiscard]] const detail::RasterDrawLimits& rasterDrawLimits() const & noexcept { return raster_draw_limits_; }
+        const detail::RasterDrawLimits& rasterDrawLimits() const && = delete;
+
         [[nodiscard]] const detail::GraphBindingPlan& bindingPlan() const & noexcept { return *binding_plan_; }
         const detail::GraphBindingPlan& bindingPlan() const && = delete;
 
@@ -696,8 +661,10 @@ namespace lux::render::compiled
         [[nodiscard]] const detail::NativeProgramBindings& programs() const & noexcept { return programs_; }
         const detail::NativeProgramBindings& programs() const && = delete;
 
-        [[nodiscard]] const detail::CpuProgram& cpuProgram() const & noexcept { return cpu_program_; }
-        const detail::CpuProgram& cpuProgram() const && = delete;
+        [[nodiscard]] std::span<const detail::DynamicBuffer> dynamicBuffers() const & noexcept { return dynamic_buffers_; }
+        std::span<const detail::DynamicBuffer> dynamicBuffers() const && = delete;
+        // Upload and CPU-sized slots are followed by live slots sized from bound resources.
+        [[nodiscard]] std::size_t preparedBufferCount() const noexcept { return prepared_buffer_count_; }
 
         [[nodiscard]] std::span<const detail::TargetImageSlot> targetImports() const & noexcept
         {
@@ -705,20 +672,11 @@ namespace lux::render::compiled
         }
         std::span<const detail::TargetImageSlot> targetImports() const && = delete;
 
-        [[nodiscard]] std::span<const runtime_detail::EffectStorageImport> storageImports() const & noexcept
-        {
-            return storage_imports_;
-        }
-        std::span<const runtime_detail::EffectStorageImport> storageImports() const && = delete;
 
-        [[nodiscard]] std::span<const detail::FinalBufferUse> outputUses() const & noexcept { return output_uses_; }
-        std::span<const detail::FinalBufferUse> outputUses() const && = delete;
 
-        [[nodiscard]] std::span<const detail::FinalBufferExport> bufferExports() const & noexcept
-        {
-            return buffer_exports_;
-        }
-        std::span<const detail::FinalBufferExport> bufferExports() const && = delete;
+        [[nodiscard]] bool writesOutputUnconditionally() const noexcept { return writes_output_unconditionally_; }
+        [[nodiscard]] std::span<const std::uint32_t> conditionalOutputWrites() const & noexcept { return output_write_regions_; }
+        std::span<const std::uint32_t> conditionalOutputWrites() const && = delete;
 
         [[nodiscard]] std::span<const BindingComparison> bindingComparisons() const & noexcept
         {
@@ -727,7 +685,7 @@ namespace lux::render::compiled
         std::span<const BindingComparison> bindingComparisons() const && = delete;
 
     private:
-        friend class detail::GraphCompiler;
+        friend class detail::RenderGraphCompiler;
         friend class detail::FrameExecutor;
         friend class detail::SubmissionOperation;
         friend bool detail::dumpPlan(const detail::PreparedRenderGraph&, EGraphDumpFormat, DumpSink) noexcept;
@@ -736,21 +694,26 @@ namespace lux::render::compiled
         std::unique_ptr<detail::GraphBindingPlan> binding_plan_;
         detail::NativeProgramBindings programs_;
         std::vector<detail::TargetImageSlot> target_imports_;
-        std::vector<runtime_detail::EffectStorageImport> storage_imports_;
-        std::vector<detail::FinalBufferUse> output_uses_;
-        std::vector<detail::FinalBufferExport> buffer_exports_;
         std::vector<BindingComparison> binding_comparisons_;
-        detail::CpuProgram cpu_program_;
+        std::vector<detail::DynamicBuffer> dynamic_buffers_;
+        std::size_t prepared_buffer_count_ = 0;
 
+        detail::RasterDrawLimits raster_draw_limits_;
         bool device_addresses_ = false;
         GraphOutputRequirements output_description_;
         std::vector<detail::CompiledResource> resources_;
         std::vector<detail::HistoryPlan> histories_;
         std::uint32_t condition_count_ = 0, binding_predicate_count_ = 0;
         detail::RecordingProgram recording_;
+        std::vector<detail::ResourceUseStages> batch_resource_frontiers_;
+        std::vector<std::uint32_t> batch_raster_list_passes_;
+        std::vector<detail::BatchRecording> batch_recordings_;
+        std::vector<detail::SubmissionDependency> batch_dependencies_;
+        std::vector<detail::SubmissionSuccessor> batch_successors_;
         std::vector<detail::SubmissionBatch> submissions_;
-        detail::QueueBatchSlots first_batches_, last_batches_, last_output_batches_;
+        detail::QueueBatchSlots last_batches_;
         std::vector<std::uint32_t> output_write_regions_;
+        bool writes_output_unconditionally_ = false;
         detail::PhysicalResourcePlan physical_resources_;
 
         std::uint32_t output_ = kGraphInvalidIndex;
@@ -758,29 +721,3 @@ namespace lux::render::compiled
         nri::StageBits output_wait_stages_ = nri::StageBits::ALL;
     };
 } // namespace lux::render::compiled
-
-namespace lux::render::detail
-{
-    struct GraphDescriptorDiagnostics final
-    {
-        std::string name;
-        std::uint32_t set, binding, count, stages, record_bytes;
-        std::uint8_t kind;
-        bool runtime_records;
-    };
-
-    struct GraphCompileDiagnostics final
-    {
-        [[nodiscard]] LUX_RENDER_PUBLIC std::uint32_t passSlot(GraphPassId) const noexcept;
-        std::vector<GraphPassId> source_passes;
-        std::vector<std::string> resource_keys;
-        std::vector<EResourceReuse> resource_reuse;
-        std::vector<std::vector<GraphDescriptorDiagnostics>> descriptor_fields;
-    };
-
-    struct LUX_RENDER_PUBLIC PreparedRenderGraph final
-    {
-        compiled::RenderGraph graph;
-        GraphCompileDiagnostics diagnostics;
-    };
-} // namespace lux::render::detail

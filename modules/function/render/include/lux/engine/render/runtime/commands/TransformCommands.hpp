@@ -21,7 +21,7 @@ namespace lux::render
             struct Response final
             {
                 RenderError error{};
-                std::vector<TransformId> transforms;
+                std::vector<TransformRef> transforms;
             };
 
             [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
@@ -52,11 +52,11 @@ namespace lux::render
         struct Release final
         {
             static constexpr std::string_view name = "lux.render.transforms.release";
-            using Data = TransformId;
-            using Request = TransformId;
+            using Data = TransformRef;
+            using Request = TransformRef;
             using Response = AckResponse;
 
-            [[nodiscard]] static TransformId resourceId(const Request& request) noexcept { return request; }
+            [[nodiscard]] static TransformRef resourceId(const Request& request) noexcept { return request; }
         };
     } // namespace TransformCommands
 } // namespace lux::render

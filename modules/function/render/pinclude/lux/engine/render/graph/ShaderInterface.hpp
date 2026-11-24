@@ -42,6 +42,13 @@ namespace lux::render::detail
         std::uint32_t shader_space = 0, shader_register = 0;
         bool operator==(const ShaderBinding&) const noexcept = default;
 
+        [[nodiscard]] nri::TextureView imageViewType() const noexcept
+        {
+            if (kind == EDescriptorKind::STORAGE_IMAGE)
+                return image_arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY : nri::TextureView::STORAGE_TEXTURE;
+            return image_arrayed ? nri::TextureView::TEXTURE_ARRAY : nri::TextureView::TEXTURE;
+        }
+
         [[nodiscard]] nri::BufferViewDesc
         bufferView(const nri::Buffer* buffer, std::uint64_t offset, std::uint64_t size) const noexcept
         {

@@ -26,14 +26,30 @@ namespace lux::render::detail
         bool operator==(const DescriptorAccess&) const noexcept = default;
     };
 
+    [[nodiscard]] inline nri::TextureViewDesc
+    graphImageView(const nri::Texture* image, nri::TextureView type, nri::Format format, const GraphImageRange& range) noexcept
+    {
+        using Dim = nri::Dim_t;
+        nri::TextureViewDesc view{
+            image, type, format, Dim(range.first_mip), Dim(range.mip_count), Dim(range.first_layer), Dim(range.layer_count)
+        };
+        view.planes = static_cast<nri::PlaneBits>(range.aspects);
+        return view;
+    }
+
     struct FixedDescriptorBinding final
     {
         nri::BufferView buffer_type;
         nri::Format buffer_format;
         std::uint32_t buffer_stride;
-        bool image_arrayed;
+        nri::TextureView image_type;
         bool private_binding;
         bool operator==(const FixedDescriptorBinding&) const noexcept = default;
+
+        [[nodiscard]] bool acceptsMultipleLayers() const noexcept
+        {
+            return image_type == nri::TextureView::TEXTURE_ARRAY || image_type == nri::TextureView::STORAGE_TEXTURE_ARRAY;
+        }
 
         [[nodiscard]] nri::BufferViewDesc
         bufferView(const nri::Buffer* buffer, std::uint64_t offset, std::uint64_t size) const noexcept
@@ -67,12 +83,12 @@ namespace lux::render::detail
             std::uint32_t batch, list;
         };
 
-        struct ResourceIndex final
+        struct SlotIndex final
         {
-            [[nodiscard]] std::span<const std::uint32_t> operator[](std::uint32_t resource) const noexcept
+            [[nodiscard]] std::span<const std::uint32_t> operator[](std::uint32_t source) const noexcept
             {
-                const auto first = offsets[resource];
-                return std::span(slots).subspan(first, offsets[resource + 1] - first);
+                const auto first = offsets[source];
+                return std::span(slots).subspan(first, offsets[source + 1] - first);
             }
 
             std::vector<std::size_t> offsets;
@@ -81,7 +97,8 @@ namespace lux::render::detail
 
         enum class EOperandField : std::uint8_t
         {
-            BUFFER_SOURCE, BUFFER_DESTINATION, IMAGE_COPY, IMAGE_BUFFER, FILL, CLEAR, INDIRECT_DISPATCH, IMAGE_DISPATCH
+            BUFFER_SOURCE, BUFFER_DESTINATION, IMAGE_COPY, IMAGE_BUFFER, FILL, CLEAR, INDIRECT_DISPATCH, IMAGE_DISPATCH,
+            RASTER_VERTEX, RASTER_ADDRESS
         };
 
         struct OperandPatch final
@@ -90,10 +107,11 @@ namespace lux::render::detail
             std::uint32_t pass, operand;
         };
 
-        ResourceIndex resource_passes, resource_batches, resource_operand_fields;
+        SlotIndex resource_passes, resource_batches, resource_operand_fields;
+        SlotIndex input_regions, history_regions;
         std::vector<OperandPatch> operand_fields;
         std::vector<std::uint32_t> pass_field_offsets;
-        std::vector<std::uint32_t> viewport_passes, producer_passes;
+        std::vector<std::uint32_t> viewport_passes;
         std::uint32_t raster_list_count = 0;
         std::uint32_t required_buffers = 0, owned_image_capacity = 0;
         std::array<std::vector<std::uint32_t>, 3> shared_batches;

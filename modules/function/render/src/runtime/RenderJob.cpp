@@ -1,517 +1,121 @@
-#include <lux/engine/render/device/RasterProgramUpdate.hpp>
-#include <lux/engine/render/device/JobGpuResources.hpp>
-#include <algorithm>
-#include <lux/engine/render/resource/GraphInstallation.hpp>
-#include <exec/create.hpp>
-#include <lux/cxx/core/scope_exit.hpp>
-#include <lux/engine/render/runtime/RenderServerImpl.hpp>
+#include <exception>
+#include <lux/engine/render/runtime/RenderJob.hpp>
+#include <lux/engine/render/runtime/commands/detail/CommandDispatchContext.hpp>
+#include <utility>
 
-namespace lux::render
+namespace lux::render::runtime_detail
 {
-    void RenderServer::Impl::createJob(const CreateRenderJob::Request& request, JobCreated& reply) noexcept
+    RenderJob::RenderJob(RenderJobContent value, EJobCadence cadence) noexcept : content(value), cadence_(cadence)
     {
-        auto* scene = runtime_->scenes_.find(request.scene);
-        auto* view = scene ? scene->views.find(request.view) : nullptr;
-        if (!view || !runtime_->effects_.find(request.effect))
+        if (!isValidJobCadence(cadence))
         {
-            reply.error = {kJobIdentity};
-            return;
+            std::terminate();
         }
-        if (!isValidJobCadence(request.cadence))
-        {
-            reply.error = {kJobState};
-            return;
-        }
-        const auto id = runtime_->jobs_.emplace(RenderJobContent{request.scene, request.view, request.effect}, request.cadence);
-        runtime_->jobs_.find(id)->control.setId(id);
-        view->jobs.push_back(id);
-        ++job_structure_revision_;
-        reply = {{}, id};
     }
 
-    std::vector<detail::JobRelationEntry> RenderServer::Impl::jobRelations(const JobExecution* candidate) noexcept
+    void RenderJob::setId(RenderJobId id) noexcept
     {
-        std::vector<detail::JobRelationEntry> entries;
-        entries.reserve(runtime_->jobs_.size());
-        for (auto& job : runtime_->jobs_)
+        if (!id_.isNull() || id.isNull())
         {
-            const auto id = job.control.id();
-            const auto* execution = candidate && candidate->binding_identity.job == id ? candidate : job.execution.get();
-            const auto device = execution ? execution->device : DeviceSessionId{};
-            auto& entry = entries.emplace_back(detail::JobRelationEntry{id, device, &job.relations, {}});
-            if (!execution || (execution != candidate && !job.control.running())) continue;
-            const auto add_source = [&](RenderJobId writer)
-            {
-                if (runtime_->jobs_.find(writer) && std::ranges::find(entry.products, writer) == entry.products.end())
-                    entry.products.push_back(writer);
-            };
-            for (const auto& image : execution->target_images)
-            {
-                const auto* target = runtime_->targets_.find(image.target);
-                auto writer = target ? targetState(*target).writer : RenderJobId{};
-                if (candidate && candidate->target == image.target) writer = candidate->binding_identity.job;
-                else if (candidate && writer == candidate->binding_identity.job) writer = {};
-                add_source(writer);
-            }
-            for (const auto& link : execution->storage_bindings)
-                if (link.publication) add_source(link.publication->writer);
+            std::terminate();
         }
-        return entries;
+        id_ = id;
     }
 
-    void RenderServer::Impl::setJobDependencies(const SetRenderJobDependencies::Request& input, AckResponse& reply)
-        noexcept
+    RenderResult<void> RenderJob::setCadence(EJobCadence cadence) noexcept
     {
-        const auto entries = jobRelations();
-        const auto changed = detail::setJobDependencies(entries, input, running_jobs_);
-        if (changed) ++job_structure_revision_;
-        reply.error = changed ? RenderError{} : changed.error();
-    }
-
-    void RenderServer::Impl::setJobCadence(const SetRenderJobCadence::Request& input, AckResponse& reply) noexcept
-    {
-        auto* job = runtime_->jobs_.find(input.job);
-        if (!job) { reply.error = {kJobIdentity}; return; }
-        if (job->control.running())
+        if (!isValidJobCadence(cadence))
         {
-            if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
-            {
-                reply.error = failure;
-                return;
-            }
+            return cxx::unexpected(RenderError{kJobState});
         }
-        const auto result = job->control.setCadence(input.cadence);
-        if (result)
-        {
-            job->last_run_error = {};
-        }
-        reply.error = result ? RenderError{} : result.error();
-    }
-
-    RenderResult<void>
-    RenderServer::Impl::retainExecutionResource(JobExecution& execution, ResourceInstanceId resource) noexcept
-    {
-        auto& resources = execution.resource_ids;
-        if (std::ranges::find(resources, resource) != resources.end()) return {};
-        if (auto retained = runtime_->resources_.retainExecution(resource); !retained) return retained;
-        resources.push_back(resource);
+        cadence_ = cadence;
         return {};
     }
 
-    void RenderServer::Impl::releaseExecutionResources(
-        std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
-    ) noexcept
+    RenderJob::~RenderJob() noexcept
     {
-        if (!physical || physical->generation != execution->binding_identity.generation) std::terminate();
-        auto resources = std::move(execution->resource_ids);
-        execution.reset();
-        physical.reset();
-        for (const auto id : resources) runtime_->resources_.releaseExecution(id);
-    }
-
-    void RenderServer::Impl::destroyExecution(
-        std::unique_ptr<JobExecution> execution, std::unique_ptr<detail::JobGpuResources> physical
-    ) noexcept
-    {
-        if (!execution)
+        const bool has_live_operations = admitted_ || requested_;
+        if (has_live_operations)
         {
-            if (physical) std::terminate();
-            return;
-        }
-        auto& device = *runtime_->device(execution->device);
-        if (device.preparingProgramsFor(execution->binding_identity))
-            device.program_update->stop.request_stop();
-        for (const auto& link : execution->storage_bindings)
-            if (!link.publication) runtime_->resources_.unbindGraphProjection(link, execution->binding_identity);
-        releaseExecutionResources(std::move(execution), std::move(physical));
-    }
-
-    void RenderServer::Impl::retireStoppedExecution(RenderJob& job) noexcept
-    {
-        if (!job.control.running() && canChangeExecution(job))
-        {
-            if (job.execution)
-            {
-                auto* device = runtime_->device(job.execution->device);
-                auto native = device->takeJobResources(job.execution->binding_identity);
-                destroyExecution(std::move(job.execution), std::move(native));
-            }
-            job.binding = {};
+            std::terminate();
         }
     }
 
-    void RenderServer::Impl::stopJob(RenderJob& job) noexcept
+    RenderResult<std::uint64_t> RenderJob::reserveGeneration(bool rebind) noexcept
     {
-        const auto id = job.control.id();
-        if (job.execution)
-        {
-            auto& device = *runtime_->device(job.execution->device);
-            if (device.preparingProgramsFor(job.execution->binding_identity))
-                device.program_update->stop.request_stop();
-            targetState(*runtime_->targets_.find(job.execution->target)).releaseWriter(id);
-        }
-        if (std::erase(running_jobs_, id) != 0) ++job_structure_revision_;
-        job.control.stop();
-        if (auto* current = runtime_->jobs_.find(id)) retireStoppedExecution(*current);
+        if (admitted_ || requested_) return cxx::unexpected(RenderError{kJobBusy});
+        if (running_ != rebind) return cxx::unexpected(RenderError{kJobState});
+        if (last_generation_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        return ++last_generation_;
     }
 
-    void RenderServer::Impl::handleStopJob(const RenderJobId& id, AckResponse& reply) noexcept
+    void RenderJob::publishGeneration(std::uint64_t generation) noexcept
     {
-        auto* job = runtime_->jobs_.find(id);
-        if (!job) { reply.error = {kJobIdentity}; return; }
-        stopJob(*job);
-        reply = {};
+        if (generation != last_generation_ || generation <= execution_generation_) std::terminate();
+        execution_generation_ = generation;
+        running_ = true;
     }
 
-    void RenderServer::Impl::removeJob(const RenderJobId& id, AckResponse& reply) noexcept
+    void RenderJob::rejectUnadmitted(RenderError error) noexcept
     {
-        auto* job = runtime_->jobs_.find(id);
-        if (!job) { reply.error = {kJobIdentity}; return; }
-        if (!job->control.canRemove() || !canChangeExecution(*job))
-        {
-            reply.error = {kJobBusy};
-            return;
-        }
-        for (auto previous : job->relations.predecessors)
-        {
-            std::erase(runtime_->jobs_.find(previous)->relations.successors, id);
-        }
-        for (auto next : job->relations.successors)
-        {
-            std::erase(runtime_->jobs_.find(next)->relations.predecessors, id);
-        }
-        auto& view = *runtime_->scenes_.find(job->content.scene)->views.find(job->content.view);
-        std::erase(view.jobs, id);
-        retireStoppedExecution(*job);
-        runtime_->jobs_.erase(id);
-        ++job_structure_revision_;
-        reply = {};
+        if (requested_ && !hasAdmittedRequest()) reply(error);
     }
 
-    bool RenderServer::Impl::canChangeExecution(const RenderJob& job) const noexcept
+    void RenderJob::request(ResponseOutbox& outbox, ResponseRoute route, WindowUpdates updates, bool grouped) noexcept
     {
-        if (job.control.hasRun() || job.control.hasRequest()) return false;
-        if (!job.execution) return true;
-        const auto& execution = *job.execution;
-        return !executionTargetsResizing(execution);
+        if (!running_ || requested_) std::terminate();
+        const auto phase = grouped || !updates.empty() ? ERequestPhase::AWAITING_WINDOW : ERequestPhase::READY;
+        requested_.emplace(&outbox, route, std::move(updates), phase);
     }
 
-    bool RenderServer::Impl::executionTargetsResizing(const JobExecution& execution) const noexcept
+    void RenderJob::adoptRequest() noexcept
     {
-        if (targetState(*runtime_->targets_.find(execution.target)).resizing) return true;
-        return std::ranges::any_of(execution.target_images, [&](const auto& input)
-        {
-            return targetState(*runtime_->targets_.find(input.target)).resizing;
+        if (!waitsForAdoption()) std::terminate();
+        requested_->phase = ERequestPhase::READY;
+    }
+
+    void RenderJob::reply(RenderError error, std::uint64_t frame, std::uint32_t slot) noexcept
+    {
+        auto& request = *requested_;
+        prepareResponse(*request.outbox, request.route).emplace<JobSubmitted>(JobSubmitted{
+            error, id_, frame, slot, std::move(request.updates)
         });
+        requested_.reset();
     }
 
-    RenderResult<void> RenderServer::Impl::validateJobBinding(
-        const JobStartRequest& request, const RenderJob& job, const compiled::RenderGraph& graph
-    ) const noexcept
+    bool RenderJob::readyToRun() const noexcept
     {
-        const auto device = request.device;
-        const auto target_id = request.target;
-        const auto* target = runtime_->targets_.find(target_id);
-        if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        const bool wrong_device = targetState(*target).device != device ||
-            (job.execution && job.execution->device != device);
-        if (wrong_device) return cxx::unexpected(RenderError{kJobState});
-        const auto& state = targetState(*target);
-        if (!state.writer.isNull() && state.writer != job.control.id())
-            return cxx::unexpected(RenderError{kTargetInUse});
-        if (state.resizing || !canChangeExecution(job))
-            return cxx::unexpected(RenderError{kJobBusy});
-        if (frameUsesTarget(target_id)) return cxx::unexpected(RenderError{kJobBusy});
-        if (!targetAvailable(*target)) return cxx::unexpected(RenderError{kRuntimeState});
-        const bool writes_target = graph.output() != kGraphInvalidIndex;
-        if (std::holds_alternative<detail::SwapchainTarget>(*target) && !writes_target)
-            return cxx::unexpected(RenderError{kRuntimeUnsupported});
-        if (auto valid = request.binding.inputs.viewport.validate(); !valid) return valid;
-        return {};
+        const bool demanded = cadence_ == EJobCadence::CONTINUOUS || requested_;
+        return running_ && !admitted_ && demanded && (!last_run_error.type || requested_);
     }
 
-    AckResponse RenderServer::Impl::startJob(StartRenderJob::Request&& request) noexcept
+    bool RenderJob::tryAdmit(std::uint64_t frame_index, std::uint32_t slot_index) noexcept
     {
-        const auto* job = runtime_->jobs_.find(request.job);
-        if (!job) return AckResponse{RenderError{kJobIdentity}};
-        return buildJobExecution({
-            request.device, request.job, job->content.effect, request.target, std::move(request.binding),
-            EJobStartMode::START
-        });
+        if (!readyToRun() || waitsForAdoption()) return false;
+        admitted_.emplace(frame_index, slot_index);
+        if (requested_) requested_->phase = ERequestPhase::ADMITTED;
+        return true;
     }
 
-    AckResponse RenderServer::Impl::rebindJob(RebindRenderJobEffect::Request&& request) noexcept
+    bool RenderJob::canRemove() const noexcept
     {
-        auto* job = runtime_->jobs_.find(request.job);
-        if (!job || !runtime_->effects_.find(request.effect)) return AckResponse{RenderError{kJobIdentity}};
-        if (!job->control.running())
-        {
-            if (!job->control.canRemove() || !canChangeExecution(*job))
-                return AckResponse{RenderError{kJobBusy}};
-            if (!request.device.isNull() || !request.target.isNull() || request.binding)
-                return AckResponse{RenderError{kJobState}};
-            job->content.effect = request.effect;
-            return AckResponse{};
-        }
-        const auto target = request.target.isNull() ? job->execution->target : request.target;
-        auto binding = request.binding ? std::move(*request.binding) : job->binding;
-        return buildJobExecution({
-            request.device, request.job, request.effect, target, std::move(binding), EJobStartMode::REBIND
-        });
+        return !running_ && !admitted_ && !requested_;
     }
 
-    AckResponse RenderServer::Impl::buildJobExecution(JobStartRequest request) noexcept
+    void RenderJob::acceptSubmission() noexcept
     {
-        auto& [device, id, effect_id, target_id, binding, mode] = request;
-        const bool rebind = mode == EJobStartMode::REBIND;
-        auto& job = *runtime_->jobs_.find(id);
-        auto* effect = runtime_->effects_.find(effect_id);
-        if (!effect) return AckResponse{RenderError{kJobIdentity}};
-        auto* entry = runtime_->device(device);
-        if (!entry) return AckResponse{RenderError{kRuntimeIdentity}};
-        if (const auto failure = entry->admissionError(); failure.type) return AckResponse{failure};
-        if (stop_requested_.load()) return AckResponse{RenderError{kCommandCancelled}};
-        const auto* selected = effect->graphForDevice(device);
-        if (!selected) return AckResponse{RenderError{kJobState}};
-        if (auto valid = validateJobBinding(request, job, *selected); !valid)
-            return AckResponse{valid.error()};
-        auto relations = jobRelations();
-        std::ranges::find(relations, id, &detail::JobRelationEntry::id)->device = device;
-        if (auto valid = detail::validateJobDevices(relations); !valid) return AckResponse{valid.error()};
-        const auto generation = job.control.reserveGeneration(rebind);
-        if (!generation) return AckResponse{generation.error()};
-        std::ranges::sort(binding.target_images, {}, &TargetImageInput::binding);
-        std::ranges::sort(binding.resources, {}, &JobResourceInput::binding);
-        const auto self = std::ranges::find(binding.target_images, target_id, &TargetImageInput::target);
-        if (self != binding.target_images.end())
-            return AckResponse{RenderError{kCommandContract}};
-        auto& target = *runtime_->targets_.find(target_id);
-        const auto& description = targetDescription(target);
-        if (effect->output != description.outputContract() || !selected->compatible(description.graphRequirements()))
-            return AckResponse{RenderError{kDeviceArgument}};
-        auto resources = bindEffectResources(
-            *entry, {job.content.scene, job.content.view}, selected->storageImports(), binding.resources
-        );
-        if (!resources) return AckResponse{resources.error()};
-        const JobExecution::Installation installation{device, effect_id, target_id, {id, *generation}};
-        auto physical = entry->prepareJobResources(installation.identity);
-        auto candidate = std::make_unique<JobExecution>(*physical, *selected, installation, targetOutput(target));
-        ResourceRegistry::GraphInstallation subscriptions{runtime_->resources_, *candidate};
-        cxx::scope_exit rollback([&]() noexcept
-        {
-            releaseExecutionResources(std::move(candidate), std::move(physical));
-        });
-        if (auto assembled = assembleExecution(subscriptions, binding, *effect, *resources); !assembled)
-            return AckResponse{assembled.error()};
-
-        if (auto layout = buildJobInputLayout(job, *candidate); !layout) return AckResponse{layout.error()};
-
-        auto running = running_jobs_;
-        if (!rebind) running.push_back(id);
-        auto ordered = detail::orderRunningJobs(jobRelations(candidate.get()), running);
-        if (!ordered) return AckResponse{ordered.error()};
-        if (auto capacity = subscriptions.reservePublication(); !capacity) return AckResponse{capacity.error()};
-
-        auto retired_resources = entry->installJobResources(id, std::move(physical));
-        auto retired = std::exchange(job.execution, std::move(candidate));
-        rollback.release();
-        job.control.publishGeneration(*generation);
-        subscriptions.publish();
-        job.execution->programs.install(*entry, job.execution->binding_identity);
-        targetState(target).writer = id;
-        if (retired && retired->target != target_id)
-        {
-            targetState(*runtime_->targets_.find(retired->target)).releaseWriter(id);
-        }
-        job.content.effect = effect_id;
-        job.binding = std::move(binding);
-        job.last_run_error = {};
-        running_jobs_ = std::move(*ordered);
-        ++job_structure_revision_;
-        destroyExecution(std::move(retired), std::move(retired_resources));
-        return AckResponse{};
+        if (!admitted_) std::terminate();
+        last_run_error = {};
+        if (hasAdmittedRequest()) reply({}, admitted_->frame_index, admitted_->slot_index);
     }
 
-    RenderResult<void> RenderServer::Impl::buildJobInputLayout(const RenderJob& job, JobExecution& candidate) noexcept
+    void RenderJob::finishRun(std::uint64_t generation, RenderError error) noexcept
     {
-        std::vector<FrameChannel> channels;
-        auto& registry = runtime_->resources_;
-        const ViewScope scope{job.content.scene, job.content.view};
-        struct FrameResource final
-        {
-            ResourceInstanceId id;
-            const ResourceRegistration* factory;
-        };
-        std::vector<FrameResource> frame_resources;
-        for (const auto id : candidate.retainedResources())
-        {
-            const auto* factory = registry.factory(registry.declarationOf(id));
-            if (factory->frame_call.channels.empty()) continue;
-            ResourceResponse local;
-            queryResource({candidate.device, scope, factory->descriptor->type}, local);
-            // Named graph imports may read a foreign scope. FrameData addresses the Job's own scope.
-            if (local.resource_id == id) frame_resources.push_back({id, factory});
-        }
-        std::ranges::sort(frame_resources, {}, [](const FrameResource& resource) noexcept
-        {
-            return std::pair{resource.factory->descriptor->domain, resource.factory->descriptor->type.name()};
-        });
-        std::size_t extra_columns = 0;
-        for (const auto& resource : frame_resources)
-        {
-            const auto count = resource.factory->frame_call.channels.size();
-            if (count > UINT32_MAX - extra_columns)
-                return cxx::unexpected(RenderError{kRuntimeCapacity});
-            extra_columns += count;
-        }
-        channels.reserve(extra_columns);
-        for (const auto& resource : frame_resources)
-        {
-            const auto& call = resource.factory->frame_call;
-            const auto first = channels.size();
-            channels.insert(channels.end(), call.channels.begin(), call.channels.end());
-            candidate.inputs.emplace_back(
-                resource.id,
-                registry.resourceInstance(resource.id),
-                call.invoke,
-                JobExecution::Input::ColumnRange{
-                    static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(call.channels.size())
-                }
-            );
-        }
-        auto* previous = job.execution.get();
-        const auto same_input = [](const auto& a, const auto& b) noexcept
-        {
-            return a.identity == b.identity && a.columns == b.columns;
-        };
-        const bool can_reuse_layout = previous && previous->target == candidate.target &&
-            std::ranges::equal(previous->input_layout.channels(), channels) &&
-            std::ranges::equal(previous->inputs, candidate.inputs, same_input);
-        if (can_reuse_layout)
-        {
-            candidate.input_layout = previous->input_layout;
-        }
-        else
-        {
-            if (next_input_layout_revision_ == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
-            auto layout = FrameLayout::create(channels, next_input_layout_revision_++);
-            if (!layout) return cxx::unexpected(layout.error());
-            layout->key_.server = instance_id_;
-            candidate.input_layout = std::move(*layout);
-        }
-        return {};
+        if (!admitted_ || generation != execution_generation_) std::terminate();
+        const bool owes_reply = hasAdmittedRequest();
+        admitted_.reset();
+        if (!owes_reply) return;
+        if (!error.type) std::terminate();
+        reply(error);
     }
-
-
-    void RenderServer::Impl::updateJobInputs(const UpdateJobInputs::Request& input, AckResponse& reply) noexcept
-    {
-        auto* job = runtime_->jobs_.find(input.job);
-        if (!job) { reply.error = {kJobIdentity}; return; }
-        if (!job->control.running()) { reply.error = {kJobStopped}; return; }
-        if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
-        {
-            reply.error = failure;
-            return;
-        }
-        if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
-        if (auto valid = input.inputs.viewport.validate(); !valid) { reply.error = valid.error(); return; }
-        auto& execution = *job->execution;
-        if (auto applied = execution.setConditions(input.inputs.conditions); !applied)
-        {
-            reply.error = applied.error();
-            return;
-        }
-        job->binding.inputs = input.inputs;
-        execution.viewport = input.inputs.viewport;
-        job->last_run_error = {};
-        reply = {};
-    }
-
-    void RenderServer::Impl::invalidateHistory(const InvalidateHistory::Request& input, AckResponse& reply) noexcept
-    {
-        auto* job = runtime_->jobs_.find(input.job);
-        if (!job) { reply.error = {kJobIdentity}; return; }
-        if (!job->control.running()) { reply.error = {kJobStopped}; return; }
-        if (const auto failure = runtime_->device(job->execution->device)->admissionError(); failure.type)
-        {
-            reply.error = failure;
-            return;
-        }
-        if (!canChangeExecution(*job)) { reply.error = {kJobBusy}; return; }
-        const auto result = job->execution->invalidateHistory(input.previous);
-        reply.error = result ? RenderError{} : result.error();
-    }
-
-    bool RenderServer::Impl::jobTargetReady(const RenderJob& job) const noexcept
-    {
-        const auto& target = *runtime_->targets_.find(job.execution->target);
-        const auto& state = targetState(target);
-        return state.enabled && state.writer == job.control.id() && targetAvailable(target) &&
-            !executionTargetsResizing(*job.execution);
-    }
-
-    auto RenderServer::Impl::requestJob(RequestRenderJob::Request&& input) noexcept
-    {
-        return exec::create<stdexec::set_value_t(JobSubmitted)>(
-            [this, id = input.job, data = input.data, pending = detail::JobControl::Request{}]
-            (auto& context) mutable noexcept
-            {
-                auto* job = runtime_->jobs_.find(id);
-                if (!job || !job->control.running())
-                {
-                    const auto error = job ? kJobStopped : kJobIdentity;
-                    stdexec::set_value(std::move(context.receiver), JobSubmitted{RenderError{error}, id});
-                    return;
-                }
-                const auto failure = runtime_->device(job->execution->device)->admissionError();
-                if (failure.type)
-                {
-                    stdexec::set_value(std::move(context.receiver), JobSubmitted{failure, id});
-                    return;
-                }
-                if (!jobTargetReady(*job))
-                {
-                    stdexec::set_value(std::move(context.receiver), JobSubmitted{RenderError{kJobStopped}, id});
-                    return;
-                }
-                pending.receiver = &context;
-                pending.complete = [](void* state, RenderResult<detail::JobReceipt> result) noexcept
-                {
-                    auto& completed = *static_cast<std::remove_reference_t<decltype(context)>*>(state);
-                    const JobSubmitted reply = result
-                        ? JobSubmitted{{}, result->job_id, result->frame_index, result->slot_index}
-                        : JobSubmitted{result.error()};
-                    stdexec::set_value(std::move(completed.receiver), reply);
-                };
-                if (auto registered = job->control.request(pending); !registered)
-                {
-                    stdexec::set_value(std::move(context.receiver), JobSubmitted{registered.error(), id});
-                    return;
-                }
-                // The connected sender owns the request credit at a stable address. Its start runs
-                // during IPC dispatch, so no later mutation can overtake this adoption.
-                if (data)
-                {
-                    const auto adopted = adoptFrameData(*job->execution, *data);
-                    job->last_run_error = adopted ? RenderError{} : adopted.error();
-                    if (!adopted) job->control.rejectUnadmitted(adopted.error());
-                }
-            }
-        );
-    }
-
-    void RenderServer::Impl::bindJobCommands() noexcept
-    {
-        bindFrameworkCommand<CreateRenderJob, &Impl::createJob>();
-        bindFrameworkCommand<StartRenderJob, &Impl::startJob>();
-        bindFrameworkCommand<StopRenderJob, &Impl::handleStopJob>();
-        bindFrameworkCommand<RemoveRenderJob, &Impl::removeJob>();
-        bindFrameworkCommand<RebindRenderJobEffect, &Impl::rebindJob>();
-        bindFrameworkCommand<SetRenderJobCadence, &Impl::setJobCadence>();
-        bindFrameworkCommand<SetRenderJobDependencies, &Impl::setJobDependencies>();
-        bindFrameworkCommand<RequestRenderJob, &Impl::requestJob>();
-        bindFrameworkCommand<UpdateJobInputs, &Impl::updateJobInputs>();
-        bindFrameworkCommand<InvalidateHistory, &Impl::invalidateHistory>();
-    }
-
-} // namespace lux::render
+} // namespace lux::render::runtime_detail

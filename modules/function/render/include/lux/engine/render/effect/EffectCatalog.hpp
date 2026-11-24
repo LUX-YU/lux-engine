@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/effect/EffectNodeDefinition.hpp>
+#include <lux/engine/render/effect/EffectCapability.hpp>
 #include <memory>
 #include <ranges>
 #include <span>
@@ -9,7 +9,8 @@
 
 namespace lux::render
 {
-    struct EffectImplementation;
+    struct ImplementationEntry;
+    namespace detail { class CapabilityMetadata; }
 
     // Owner-thread assembly followed by sealing. Cold lookups borrow immutable definitions
     // from this Catalog while the Server protects their lifetime.
@@ -23,17 +24,21 @@ namespace lux::render
         EffectCatalog(EffectCatalog&&) noexcept;
         EffectCatalog& operator=(EffectCatalog&&) noexcept;
 
-        [[nodiscard]] RenderResult<void> addCapability(std::unique_ptr<EffectNodeDefinition> definition) noexcept;
         [[nodiscard]] RenderResult<void>
-        addImplementation(std::unique_ptr<EffectImplementation> implementation) noexcept;
+        addCapability(const EffectCapability& definition) noexcept;
+
+        [[nodiscard]] RenderResult<void>
+        addImplementation(std::unique_ptr<ImplementationEntry> implementation) noexcept;
+
         void seal() noexcept { sealed_ = true; }
+
         [[nodiscard]] bool sealed() const noexcept { return sealed_; }
 
         [[nodiscard]] auto listCapabilities() const & noexcept
         {
-            return std::views::transform(capabilities_, [](const auto& definition) noexcept -> const EffectNodeDefinition&
+            return std::views::transform(capabilities_, [](const auto& definition) noexcept -> const EffectCapability&
             {
-                return *definition;
+                return descriptor(*definition);
             });
         }
 
@@ -43,21 +48,25 @@ namespace lux::render
         listImplementations(graph::NodeTypeId capability, std::uint32_t version) const noexcept;
 
         // Cold compilation lookup. Ordinary graph/editor users only need list APIs.
-        [[nodiscard]] const EffectNodeDefinition*
+        [[nodiscard]] const EffectCapability*
         findCapability(graph::NodeTypeId capability, std::uint32_t version) const & noexcept;
-        const EffectNodeDefinition* findCapability(graph::NodeTypeId, std::uint32_t) const && = delete;
 
-        [[nodiscard]] const EffectImplementation* findImplementation(
+        const EffectCapability*
+        findCapability(graph::NodeTypeId, std::uint32_t) const && = delete;
+
+        [[nodiscard]] const ImplementationEntry* findImplementation(
             graph::NodeTypeId capability,
             std::uint32_t capability_version,
             const ImplementationSelection& selection
         ) const & noexcept;
-        const EffectImplementation*
+
+        const ImplementationEntry*
         findImplementation(graph::NodeTypeId, std::uint32_t, const ImplementationSelection&) const && = delete;
 
     private:
-        std::vector<std::unique_ptr<const EffectNodeDefinition>> capabilities_;
-        std::vector<std::unique_ptr<const EffectImplementation>> implementations_;
+        static const EffectCapability& descriptor(const detail::CapabilityMetadata&) noexcept;
+        std::vector<std::unique_ptr<const detail::CapabilityMetadata>> capabilities_;
+        std::vector<std::unique_ptr<const ImplementationEntry>> implementations_;
         bool sealed_ = false;
     };
 }

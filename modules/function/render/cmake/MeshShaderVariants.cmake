@@ -27,6 +27,7 @@ function(lux_render_mesh_shaders outputs)
         string(APPEND layout_enum "    ${key},\n")
         foreach(paged 0 1)
             foreach(shadow 0 1)
+                set(windings)
                 foreach(reflected 0 1)
                     set(variant "${stem}")
                     if(paged)
@@ -41,8 +42,10 @@ function(lux_render_mesh_shaders outputs)
                     lux_render_shader("${header}" "${source}" vertex k${variant}Vertex ${defines} --spirv-only)
                     list(APPEND headers "${header}")
                     string(APPEND spirv_includes "#include \"${variant}Vertex.hpp\"\n")
-                    string(APPEND spirv_entries "    k${variant}Vertex,\n")
+                    list(APPEND windings "k${variant}Vertex")
                 endforeach()
+                list(JOIN windings ", " pair)
+                string(APPEND spirv_entries "    std::array{${pair}},\n")
             endforeach()
         endforeach()
     endforeach()
@@ -56,22 +59,13 @@ enum class EMeshVertexLayout
 ${layout_enum}    COUNT
 };
 
-struct MeshVertexKey final
-{
-    EMeshVertexLayout layout;
-    bool paged;
-    bool shadow;
-    bool reflected;
-};
-
 inline constexpr std::array kMeshVertexSpirv{
 ${spirv_entries}};
-static_assert(kMeshVertexSpirv.size() == static_cast<std::size_t>(EMeshVertexLayout::COUNT) * 8);
+static_assert(kMeshVertexSpirv.size() == static_cast<std::size_t>(EMeshVertexLayout::COUNT) * 4);
 
-[[nodiscard]] inline constexpr const auto& meshVertexSpirv(MeshVertexKey key) noexcept
+[[nodiscard]] inline constexpr const auto& meshVertexSpirv(EMeshVertexLayout layout, bool paged, bool shadow) noexcept
 {
-    const auto index = static_cast<std::size_t>(key.layout) * 8 + std::size_t(key.paged) * 4 +
-        std::size_t(key.shadow) * 2 + std::size_t(key.reflected);
+    const auto index = static_cast<std::size_t>(layout) * 4 + std::size_t(paged) * 2 + std::size_t(shadow);
     return kMeshVertexSpirv[index];
 }
 }
@@ -118,6 +112,7 @@ static_assert(kMeshVertexSpirv.size() == static_cast<std::size_t>(EMeshVertexLay
             list(APPEND attributes -DVERTEX_NO_UV=1)
         endif()
         foreach(shadow 0 1)
+            set(windings)
             foreach(reflected 0 1)
                 math(EXPR index "4 * ${varyings} + 2 * ${shadow} + ${reflected}")
                 set(stem "MeshVertexDxil${index}")
@@ -126,8 +121,10 @@ static_assert(kMeshVertexSpirv.size() == static_cast<std::size_t>(EMeshVertexLay
                 lux_render_shader("${header}" "${source}" vertex k${stem} ${attributes} ${mode_defines} --dxil-only)
                 list(APPEND headers "${header}")
                 string(APPEND dxil_includes "#include \"${stem}.hpp\"\n")
-                string(APPEND dxil_entries "    k${stem},\n")
+                list(APPEND windings "k${stem}")
             endforeach()
+            list(JOIN windings ", " pair)
+            string(APPEND dxil_entries "    std::array{${pair}},\n")
         endforeach()
     endforeach()
     list(JOIN dxil_locations "u, " dxil_location_values)
@@ -139,7 +136,7 @@ namespace lux::render::detail
 inline constexpr std::array<std::uint32_t, ${dxil_location_count}> kMeshDxilVaryingLocations{${dxil_location_values}u};
 inline constexpr std::array kMeshVertexDxil{
 ${dxil_entries}};
-static_assert(kMeshVertexDxil.size() == (std::size_t{1} << kMeshDxilVaryingLocations.size()) * 4);
+static_assert(kMeshVertexDxil.size() == (std::size_t{1} << kMeshDxilVaryingLocations.size()) * 2);
 }
 "
     )

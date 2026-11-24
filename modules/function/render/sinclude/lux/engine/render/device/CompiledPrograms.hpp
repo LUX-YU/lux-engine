@@ -15,7 +15,6 @@
 #include <vector>
 
 namespace lux::rdesc { struct ShaderProgramArtifact; }
-namespace lux::render { class ResourceProgramUses; }
 
 namespace lux::render::detail
 {
@@ -51,6 +50,8 @@ namespace lux::render::detail
 
         [[nodiscard]] static LayoutId identity(const Layout&) noexcept;
 
+        void retainLive(NativeProgramId) noexcept;
+
         // Caller has stopped recording. The cache retains actual accepted GPU queue frontiers.
         void release(
             std::size_t count,
@@ -81,10 +82,8 @@ namespace lux::render::detail
         void releaseShader(Shader&) noexcept;
         [[nodiscard]] Lookup lookup(Shader&, Layout&, const RasterProgramKey*) noexcept;
 
-        friend class lux::render::ResourceProgramUses;
-        void retainLive(NativeProgramId) noexcept;
         friend class NativeProgramBindings;
-        void releaseBindings(const NativeProgramBindings&) noexcept;
+        void releaseBindings(const NativeProgramBindings&, const SubmissionFrontiers&) noexcept;
 
         [[nodiscard]] Program* find(const RasterProgramKey*, const Lookup&, std::uint64_t after) noexcept;
         [[nodiscard]] Program* publish(RasterProgramKey*, const Lookup&, nri::Pipeline*) noexcept;

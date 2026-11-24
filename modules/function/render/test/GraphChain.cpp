@@ -1,4 +1,3 @@
-#include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include "FixtureCommands.hpp"
 #include <lux/engine/render/frame/FrameError.hpp>
@@ -25,9 +24,10 @@
 #include <lux/engine/render/graph/execute/RasterDraws.hpp>
 #include "FrameHarness.hpp"
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
-#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
+#include <lux/engine/render/graph/compile/RenderGraphCompiler.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 #include <lux/engine/render/graph/PlanDiagnostics.hpp>
+#include <charconv>
 #include <string>
 #include <thread>
 
@@ -36,6 +36,7 @@
 #include "GraphDepthField.hpp"
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include "GraphFill.hpp"
+#include "GraphVolume.hpp"
 #include "GraphHistory.hpp"
 #include "GraphTableSize.hpp"
 #include "GraphMrt.hpp"
@@ -134,11 +135,13 @@ static PreparedRenderGraph compile(
     GraphCompileOptions options = GraphCompileOptions{std::nullopt, ETransientAllocation::ALIAS_MEMORY, true}
 )
 {
-    auto ready = stdexec::sync_wait(GraphCompiler::compile(
+    GraphCompileDiagnostics report;
+    options.diagnostics = &report;
+    auto ready = stdexec::sync_wait(RenderGraphCompiler::compileNative(
         session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), source, options
     ));
     CHECK(ready);
-    return take(std::move(std::get<0>(*ready)));
+    return {take(std::move(std::get<0>(*ready))), std::move(report)};
 }
 
 static ResourceVersion written(const PassResult& pass, GraphResourceId resource)
@@ -420,6 +423,7 @@ static void imageChain(Validation& validation, EGraphicsBackend backend, std::ui
 
 static void indirectCounts(Validation& validation, EGraphicsBackend backend)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
@@ -487,13 +491,13 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     auto truncated_pixels = pixel_binding;
     CHECK(truncated_pixels.size == 8192);
     --truncated_pixels.size;
-    instance_job->bindResource(pixels, 0, truncated_pixels);
-    const auto rejected_extent = instance_job->freezeFrame(0);
+    instance_job->frame_bindings.bind(pixels, 0, truncated_pixels);
+    const auto rejected_extent = instance_job->freezeFrame(0, freeze_draws);
     CHECK(!rejected_extent && rejected_extent.error().type == kDeviceArgument);
     CHECK(!recordFrame(*instance_job, *session, 0, 0) && session->queue().submitted() == 0);
-    instance_job->bindResource(pixels, 0, pixel_binding);
+    instance_job->frame_bindings.bind(pixels, 0, pixel_binding);
     instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 1);
-    CHECK(take(instance_job->freezeFrame(0)));
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
     CHECK(instance_job->frame(0).last_operands.compute == 1);
     count_input.requested = 0;
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
@@ -510,7 +514,7 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     count_input.requested = 1;
     instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 2);
     instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 2);
-    CHECK(take(instance_job->freezeFrame(0)));
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
     CHECK(instance_job->frame(0).last_operands.compute == 0);
     std::puts("DISPATCH FIELDS PASS: first freeze patched one indirect dispatch; stable freeze patched none");
     CHECK(RecordTextureQueries::count == 0); // An unchanged fixed slice reuses its frozen native bindings.
@@ -518,10 +522,10 @@ static void indirectCounts(Validation& validation, EGraphicsBackend backend)
     checkPixels(*session, *instance_job->resourceInput(pixels, 0).buffer, 32, 0, {255, 0, 0, 255}, 256);
     count_input.requested = 2;
     instance_job->frame(0).applyInlineConstant(instance_job->graph(), {count_pass}, bytes, 3);
-    CHECK(take(instance_job->freezeFrame(0)));
-    CHECK(instance_job->frame(0).last_patches.passes == 1 && instance_job->frame(0).last_operands.compute == 0);
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
+    CHECK(instance_job->frame(0).last_patched_passes == 1 && instance_job->frame(0).last_operands.compute == 0);
     std::puts("INLINE UPDATE PASS: one dirty Compute pass, zero indirect dispatch fields rewritten");
-    CHECK(!instance_job->freezeFrame(UINT32_MAX));
+    CHECK(!instance_job->freezeFrame(UINT32_MAX, freeze_draws));
     std::puts("FROZEN INPUT PASS author changed after Prepare, GPU uses prepared bytes, Record texture queries=0");
     for (std::uint32_t requested : {0u, 1u, 3u, 0u, 1u, 3u, 0u, 1u, 3u})
     {
@@ -657,9 +661,83 @@ static void compressedCopies(Validation& validation, EGraphicsBackend backend)
     std::puts("BC1 COPY PASS: misaligned block rejected; automatic pitch selected the last block of the second row");
 }
 
+static void volumeCopies(Validation& validation, bool d3d12)
+{
+    DeviceOptions options;
+    if (d3d12) options.backend = EGraphicsBackend::D3D12;
+    TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
+    GraphDraftBuilder builder;
+    GraphImageDesc volume{4, 2, 4, 1, rdesc::ETextureFormat::RGBA8_UNORM};
+    volume.volume_depth = 8;
+    const auto source = take(builder.declareResource({"volume source", volume}));
+    volume.width = 2;
+    volume.height = 1;
+    volume.mips = 1;
+    volume.volume_depth = 4;
+    const auto destination = take(builder.declareResource({"volume destination", volume}));
+    const auto upload = take(builder.declareResource({"volume upload", GraphBufferDesc{4096}}));
+    const auto pixels = take(builder.declareResource({"volume readback", GraphBufferDesc{1024}}));
+    ResourceVersion seed{upload, 0};
+    for (std::uint32_t z = 0; z < 4; ++z)
+    {
+        const auto filled = take(builder.addTransferPass("slice " + std::to_string(z), TransferWork{{
+            FillBuffer{{seed, GraphBufferRange{1024ull * z, 8}}, z + 1}
+        }}));
+        seed = filled.written.front();
+    }
+    constexpr GraphImageRange mip{1, 1, 1, 0, 1};
+    const auto uploaded = take(builder.addTransferPass("upload four planes", TransferWork{{
+        CopyImageBuffer{{seed}, {{source, 0}, mip}, 256, 1024}
+    }}));
+    const auto moved = take(builder.addTransferPass("copy complete volume mip", TransferWork{{
+        CopyImage{{uploaded.written.front(), mip}, {{destination, 0}}}
+    }}));
+    const auto cleared = take(builder.addTransferPass("initialize padding", TransferWork{{FillBuffer{{{pixels, 0}}, 0}}}));
+    ResourceAccess preserved{cleared.written.front()};
+    preserved.access = EGraphAccess::READ_WRITE;
+    const auto copied = take(builder.addTransferPass("read final two Z planes", TransferWork{{
+        CopyImageBuffer{{moved.written.front()}, preserved, 256, 512, ImageCopyRegion{0, 0, 2, 1, 2, 2}}
+    }}));
+    const auto result = take(builder.declareResource({"per-plane values", GraphBufferDesc{16}}));
+    ComputeWork work;
+    work.interface.program = take(builder.addProgram(GraphProgram{kGraphVolume}));
+    work.interface.resources = {{"planes", {copied.written.front()}}, {"result", {{result, 0}, {}, EGraphAccess::WRITE}}};
+    work.dispatch = ImageDispatchArguments{source, 1, {2, 1}, 2};
+    const auto dispatched = take(builder.addComputePass("dispatch over volume mip", std::move(work)));
+    const auto output = take(builder.declareResource({"compute readback", GraphBufferDesc{16}}));
+    const auto saved = take(builder.addTransferPass("copy plane results", TransferWork{{
+        CopyBuffer{{dispatched.written.front()}, {{output, 0}}}
+    }}));
+    CHECK(builder.exportOutput({saved.written.front()}));
+    CHECK(builder.exportOutput({copied.written.front(), {}, {}, EGraphUse::TRANSFER_DESTINATION}));
+    const auto graph = take(std::move(builder).finish());
+    auto compiled = compile(*session, {graph, take(analyzeRenderGraph(graph))});
+    const auto& commands = compiled.graph.recordingProgram().compute;
+    CHECK(commands.size() == 1);
+    const auto* groups = std::get_if<nri::DispatchDesc>(&commands.front().dispatch);
+    CHECK(groups && groups->workGroupNumX == 1 && groups->workGroupNumY == 1 && groups->workGroupNumZ == 2);
+    JobGpuResources gpu(*session, 1);
+    JobExecution job{gpu, compiled.graph, testInstallation(), TargetOutput{}};
+    CHECK(job.initialize());
+    FrameHarness frames(*session, 1);
+    const std::array jobs{&job};
+    CHECK(take(runTask(frames.render(jobs, {}))) > 0);
+    CHECK(session->drain());
+    const auto words = readBufferWords<256>(*session, *job.resourceInput(pixels, 0).buffer);
+    for (std::size_t i = 0; i < words.size(); ++i)
+    {
+        const auto expected = i < 2 ? 3u : (i == 128 || i == 129 ? 4u : 0u);
+        CHECK(words[i] == expected);
+    }
+    const auto values = readBufferWords<4>(*session, *job.resourceInput(output, 0).buffer);
+    CHECK((values == std::array{3u, 20u, 35u, 52u}));
+    std::puts("VOLUME PASS: padded plane copy and mip-based dispatch returned 3/20/35/52");
+}
+
 // This pass has three copies. Changing one source view must patch only that source address.
 static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     GraphDraftBuilder builder;
     const auto source = take(builder.declareResource({
         "changing source", GraphBufferDesc{4}, EGraphOrigin::IMPORTED, {GraphBufferRange{0, 4}}, EGraphUse::TRANSFER_SOURCE
@@ -680,7 +758,7 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
     auto compiled = compile(device, {graph, take(analyzeRenderGraph(graph))});
     JobGpuResources gpu(device, 1);
     JobExecution instance_job{gpu, compiled.graph, testInstallation(), TargetOutput{}};
-    instance_job.bindResource(source, 0, {&input, 0, 4});
+    instance_job.frame_bindings.bind(source, 0, {&input, 0, 4});
     CHECK(instance_job.initialize());
     FrameHarness frames(device, 1);
     const std::array jobs{&instance_job};
@@ -690,14 +768,14 @@ static void transferFieldPatches(DeviceSession& device, nri::Buffer& input)
         finishSubmissions(device, frames);
         CHECK(device.drain());
     };
-    CHECK(take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_operands.transfer == 7);
+    CHECK(take(instance_job.freezeFrame(0, freeze_draws)) && instance_job.frame(0).last_operands.transfer == 7);
     submit();
     CHECK(instance_job.frame(0).last_operands.transfer == 0);
     CHECK(readBufferWords<1>(device, *instance_job.resourceInput(outputs[1], 0).buffer)[0] == 11);
-    instance_job.bindResource(source, 0, {&input, 4, 2});
-    CHECK(!instance_job.freezeFrame(0) && !recordFrame(instance_job, device, 0, 0));
-    instance_job.bindResource(source, 0, {&input, 4, 4});
-    CHECK(take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_operands.transfer == 1);
+    instance_job.frame_bindings.bind(source, 0, {&input, 4, 2});
+    CHECK(!instance_job.freezeFrame(0, freeze_draws) && !recordFrame(instance_job, device, 0, 0));
+    instance_job.frame_bindings.bind(source, 0, {&input, 4, 4});
+    CHECK(take(instance_job.freezeFrame(0, freeze_draws)) && instance_job.frame(0).last_operands.transfer == 1);
     submit();
     CHECK(instance_job.frame(0).last_operands.transfer == 0);
     for (std::size_t i = 0; i < outputs.size(); ++i)
@@ -718,7 +796,10 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
         *session, TransferOptions{4096, 2}, lux::execution::ExecutionRuntime::instance().cpuScheduler()
     ));
     const auto before = session->queue().submitted();
-    CHECK(!take(runTask(FrameOperation::submitPreparationCopies(*uploads))));
+    FrameHarness upload_frame(*session, 1, uploads.get());
+    std::uint32_t slot;
+    CHECK(upload_frame.beginFrame(slot));
+    CHECK(take(runTask(upload_frame.render({}, {}))) == 0);
     CHECK(session->queue().submitted() == before);
     std::array<std::uint32_t, 4> source{11, 12, 13, 14};
     const auto bytes = std::as_bytes(std::span(source));
@@ -728,10 +809,9 @@ static void frameUploadSnapshot(Validation& validation, EGraphicsBackend backend
     CHECK(core.CreatePlacedBuffer(session->device(), NriDeviceHeap, description, target) == nri::Result::SUCCESS);
     CHECK(take(uploads->stageBuffer({target, 0, bytes})) == bytes.size());
     source.fill(99);
-    CHECK(FrameOperation::flushFrameCopies(*uploads));
-    const auto receipt = take(runTask(FrameOperation::submitPreparationCopies(*uploads)));
-    CHECK(receipt && receipt->ranges == 1 && receipt->point.serial == session->queue().submitted());
-    FrameOperation::acceptFrameCopies(*uploads, *receipt);
+    CHECK(upload_frame.beginFrame(slot));
+    CHECK(take(runTask(upload_frame.render({}, {}))) == 1);
+    CHECK(uploads->statistics().copy_regions == 1 && session->queue().submitted() > before);
     CHECK(session->drain());
     const auto result = readBufferWords<4>(
         *session, *target, {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::ALL}
@@ -867,7 +947,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
     {
         const auto candidate = build(offset, contract).first;
         const auto analysis = take(analyzeRenderGraph(candidate));
-        auto rejected = runTask(GraphCompiler::compile(
+        auto rejected = runTask(RenderGraphCompiler::compileNative(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
             {candidate, analysis}, {.exercise_async = true}
         ));
@@ -895,7 +975,7 @@ static void constantLayoutEvidence(Validation& validation, EGraphicsBackend back
         auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
         const auto get_device_desc = core.GetDeviceDesc;
         core.GetDeviceDesc = [](const nri::Device&) -> const nri::DeviceDesc& { return limited; };
-        auto rejected = runTask(GraphCompiler::compile(
+        auto rejected = runTask(RenderGraphCompiler::compileNative(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(),
             {graph, analysis}, {.exercise_async = true}
         ));
@@ -984,7 +1064,7 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
         CHECK(instance_job.initialize());
         const auto publish = [&](SubmissionFrontiers& destination)
         {
-            instance_job.bindResource(buffer, 0, {.buffer = native, .size = 16, .queue_uses = {nullptr, &destination}});
+            instance_job.frame_bindings.bind(buffer, 0, {.buffer = native, .size = 16, .queue_uses = {nullptr, &destination}});
         };
         publish(old);
         FrameHarness frames(*device, 1);
@@ -1000,7 +1080,7 @@ static void frozenProjectionReceipts(Validation& validation, bool d3d12)
             CHECK(std::chrono::steady_clock::now() < deadline);
             std::this_thread::yield();
         }
-        CHECK(instance_job.frozenForSubmission(0));
+        CHECK(instance_job.frame(0).frozen_for_submission);
         publish(interim);
         publish(next);
         RecordingGate::released = true;
@@ -1047,6 +1127,7 @@ static void failedRecordingAllocation(DeviceSession& session, const compiled::Re
 
 static void recordingOwnership(Validation& validation, bool d3d12)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     options.multiple_queues = true;
     if (d3d12)
@@ -1083,8 +1164,8 @@ static void recordingOwnership(Validation& validation, bool d3d12)
         CHECK(other->queue().submitted() == 0);
     }
     std::puts("DEVICE GRAPH PASS: foreign device rejected before submission; owning device retained its graph");
-    CHECK(take(instance_job->freezeFrame(0)));
-    CHECK(take(instance_job->freezeFrame(1)));
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
+    CHECK(take(instance_job->freezeFrame(1, freeze_draws)));
     RenderResult<std::span<nri::CommandBuffer* const>> first, second;
     const auto waitEntered = [&](unsigned count)
     {
@@ -1158,7 +1239,7 @@ static void recordingOwnership(Validation& validation, bool d3d12)
     CHECK(!frames->beginFrame(slot));
     const auto rejected = runTask(frames->render(instances, {}));
     CHECK(!rejected && rejected.error() == lost.error());
-    CHECK(!instance_job->freezeFrame(0));
+    CHECK(!instance_job->freezeFrame(0, freeze_draws));
     CHECK(!recordFrame(*instance_job, *session, 0, 0));
     CHECK(RecordingGate::entered == after_loss);
     core.CmdZeroBuffer = RecordingGate::original;
@@ -1188,10 +1269,8 @@ static GraphProgram dualTargetRasterProgram()
     return result;
 }
 
-static void typedRasterScopes(Validation& validation, bool d3d12)
+static void typedRasterScopes(Validation& validation, const DeviceOptions& options)
 {
-    DeviceOptions options;
-    if (d3d12) options.backend = EGraphicsBackend::D3D12;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     {
         GraphDraftBuilder builder;
@@ -1288,6 +1367,7 @@ static void typedRasterScopes(Validation& validation, bool d3d12)
 
 static void typedRecording(Validation& validation, bool d3d12)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     if (d3d12) options.backend = EGraphicsBackend::D3D12;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
@@ -1304,7 +1384,7 @@ static void typedRecording(Validation& validation, bool d3d12)
         CHECK(builder.exportOutput({pass.written.front()}));
         const auto graph = take(std::move(builder).finish());
         const auto analysis = take(analyzeRenderGraph(graph));
-        auto rejected = stdexec::sync_wait(GraphCompiler::compile(
+        auto rejected = stdexec::sync_wait(RenderGraphCompiler::compileNative(
             *session, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {graph, analysis}
         ));
         CHECK(rejected && !std::get<0>(*rejected) && std::get<0>(*rejected).error().type == kDeviceArgument);
@@ -1343,7 +1423,7 @@ static void typedRecording(Validation& validation, bool d3d12)
             *instance_gpu, plan.graph, testInstallation(), TargetOutput{}
         );
         CHECK(instance_job->initialize());
-        CHECK(take(instance_job->freezeFrame(0)));
+        CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
         auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
         EndFailure::original = core.EndCommandBuffer;
         EndFailure::fail = true;
@@ -1426,7 +1506,7 @@ static void checkComputeSequence(const compiled::RenderGraph& executable, GraphR
     const auto passes = executable.passes();
     CHECK(passes.size() == 4);
     CHECK(passes[1].submission == passes[2].submission);
-    CHECK(std::ranges::any_of(passes[2].before.buffers, [&](const auto& barrier)
+    CHECK(std::ranges::any_of(executable.recordingProgram().bufferBarriers(passes[2]), [&](const auto& barrier)
     {
         return barrier.resource == intermediate.index;
     }));
@@ -1526,7 +1606,11 @@ static void conditionalBindingJoin(DeviceSession& device)
         "second overwrite", TransferWork{{FillBuffer{{middle, {}, EGraphAccess::WRITE, 0, middle}, 25}}},
         {false, PassCondition{EConditionSource::INPUT, overwrite_again}}
     ));
-    const auto joined = take(builder.addComputePass("join", incrementWork(program, again.written.front(), after)));
+    const auto snapshot = take(builder.declareResource({"selected bytes", GraphBufferDesc{16}}));
+    const auto selected = take(builder.addTransferPass("copy selected bytes", TransferWork{{
+        CopyBuffer{{again.written.front()}, {{snapshot, 0}}}
+    }}));
+    const auto joined = take(builder.addComputePass("join", incrementWork(program, selected.written.front(), after)));
     RasterWork stream;
     stream.program = RasterPassTemplate{"dynamic stage"};
     stream.colors = {{{{color, 0}}}};
@@ -1547,6 +1631,8 @@ static void conditionalBindingJoin(DeviceSession& device)
     const auto& passes = plan.graph.passes();
     const auto& entry = passes[plan.diagnostics.passSlot(first.pass)];
     const auto& join = passes[plan.diagnostics.passSlot(joined.pass)];
+    const auto& copy_pass = passes[plan.diagnostics.passSlot(selected.pass)];
+    CHECK(copy_pass.binding_join == kGraphInvalidIndex && !copy_pass.fixed_bindings.pool);
     const auto& resume = passes[plan.diagnostics.passSlot(last.pass)];
     CHECK(entry.submission == join.submission && join.submission == resume.submission);
     CHECK(join.binding_join != kGraphInvalidIndex && join.fixed_bindings.layout && join.fixed_bindings.pipeline);
@@ -1583,7 +1669,7 @@ static void conditionalBindingJoin(DeviceSession& device)
         const auto expected = values[1] ? 27u : (values[0] ? 22u : 14u);
         CHECK(std::ranges::all_of(words, [&](auto word) { return word == expected; }));
     }
-    std::puts("FIXED BIND JOIN PASS: skipped regions 0 redundant binds, red stream pixels, GPU words 14/22/27/27/14");
+    std::puts("FIXED BIND JOIN PASS: copy preserved skipped-path bindings, red stream pixels, GPU words 14/22/27/27/14");
 }
 
 static void surfaceBindingBoundary(DeviceSession& device)
@@ -1612,7 +1698,7 @@ static void surfaceBindingBoundary(DeviceSession& device)
     const auto h = plan.diagnostics.passSlot(head.pass), t = plan.diagnostics.passSlot(tail.pass);
     const auto& passes = plan.graph.passes();
     CHECK(passes[h].submission == passes[t].submission);
-    CHECK(plan.graph.submissions()[passes[t].submission].output_begin == t);
+    CHECK(plan.graph.submissions()[passes[t].submission].outputBegin() == t);
     CHECK(plan.graph.programs()[h].pipeline == plan.graph.programs()[t].pipeline);
     CHECK(passes[h].fixed_bindings.layout && passes[h].fixed_bindings.pipeline);
     CHECK(passes[t].fixed_bindings.layout && passes[t].fixed_bindings.pipeline);
@@ -1792,7 +1878,7 @@ compileCpuGraph(const GraphDefinition& graph, GraphQueuePolicy policy = GraphQue
     const QueueProperties compute{nri::QueueType::COMPUTE, 1};
     const QueueProperties copy{nri::QueueType::COPY, 2};
     const std::array queues{&graphics, alias_queues ? &graphics : &compute, &copy};
-    return take(GraphCompiler::compileForRecordingTest(
+    return take(RenderGraphCompiler::compileForRecordingTest(
         {capabilities, queues}, {graph, take(analyzeRenderGraph(graph))}, ETransientAllocation::INDEPENDENT, policy
     ));
 }
@@ -1802,48 +1888,49 @@ static void cpuRasterBindingReplacement()
     JobFrameResources native;
     FrameResources frame(native);
     frame.stream_descriptor_rows.resize(3);
-    for (auto& stream : frame.stream_descriptor_rows) stream.programs.resize(2);
+    for (auto& stream : frame.stream_descriptor_rows) stream.resize(2);
     std::array<std::uint32_t, 9> tokens{};
     const auto view = [&](std::size_t i) { return reinterpret_cast<nri::Descriptor*>(&tokens[i]); };
-    const auto append = [&](RasterBindingKey key, std::size_t token)
+    const auto append = [&](std::uint32_t pass, std::uint32_t program, std::size_t token)
     {
-        auto& ids = frame.stream_descriptor_rows[key.pass - 7].programs[key.program].records;
+        auto& ids = frame.stream_descriptor_rows[pass - 7][program].records;
         const auto index = static_cast<std::uint32_t>(native.raster_bindings.size());
         auto& record = native.raster_bindings.emplace_back();
-        record.program = key;
-        record.list = key.pass - 7;
+        record.pass = pass;
+        record.program = program;
+        record.list = pass - 7;
         record.ordinal = static_cast<std::uint32_t>(ids.size());
         record.views.push_back(view(token));
         ids.push_back(index);
     };
-    append({7, 0, 1}, 0);
-    append({8, 1, 3}, 1);
-    append({7, 1, 1}, 2);
-    append({9, 0, 0}, 3);
-    append({8, 1, 3}, 4);
-    append({7, 0, 1}, 5);
-    append({8, 0, 3}, 6);
-    append({7, 1, 1}, 7);
+    append(7, 0, 0);
+    append(8, 1, 1);
+    append(7, 1, 2);
+    append(9, 0, 3);
+    append(8, 1, 4);
+    append(7, 0, 5);
+    append(8, 0, 6);
+    append(7, 1, 7);
     std::vector<nri::Descriptor*> retired;
     frame.releaseRasterBindings(0, retired);
     CHECK(retired.size() == 4 && native.raster_bindings.size() == 4);
     for (const auto token : {0, 2, 5, 7}) CHECK(std::ranges::count(retired, view(token)) == 1);
     const auto verify = [&](std::uint32_t pass, std::uint32_t program, std::span<const unsigned> expected)
     {
-        const auto& ids = frame.stream_descriptor_rows[pass].programs[program].records;
+        const auto& ids = frame.stream_descriptor_rows[pass][program].records;
         CHECK(ids.size() == expected.size());
         for (std::size_t i = 0; i < ids.size(); ++i)
         {
             const auto& row = native.raster_bindings[ids[i]];
-            CHECK(row.ordinal == i && row.program.pass == 7 + pass && row.program.program == program);
+            CHECK(row.ordinal == i && row.pass == 7 + pass && row.program == program);
             CHECK(row.views.size() == 1 && row.views.front() == view(expected[i]));
         }
     };
     verify(1, 1, std::array{1u, 4u});
     verify(1, 0, std::array{6u});
     verify(2, 0, std::array{3u});
-    frame.stream_descriptor_rows[0].programs.resize(1);
-    append({7, 0, 2}, 8);
+    frame.stream_descriptor_rows[0].resize(1);
+    append(7, 0, 8);
     frame.releaseRasterBindings(1, retired);
     CHECK(retired.size() == 7 && native.raster_bindings.size() == 2);
     verify(0, 0, std::array{8u});
@@ -1917,7 +2004,7 @@ static void cpuAliasBufferRanges()
     const QueueProperties queue;
     nri::DeviceDesc caps{};
     caps.graphicsAPI = nri::GraphicsAPI::VK;
-    const auto plan = take(GraphCompiler::compileForRecordingTest(
+    const auto plan = take(RenderGraphCompiler::compileForRecordingTest(
         {caps, {&queue, &queue, &queue}}, {graph, take(analyzeRenderGraph(graph))}, ETransientAllocation::ALIAS_MEMORY
     ));
     const auto& physical = plan.physicalResources();
@@ -2421,9 +2508,7 @@ struct QueueScheduleFixture final
     GraphResourceId compute_result, graphics_result;
 };
 
-static QueueScheduleFixture queueScheduleFixture(
-    EGraphicsBackend backend, std::uint64_t branch_ns, bool serialize
-)
+static QueueScheduleFixture queueScheduleFixture(EGraphicsBackend backend)
 {
     GraphDraftBuilder builder;
     const auto seed = take(builder.declareResource({"seed", GraphBufferDesc{16}}));
@@ -2439,150 +2524,22 @@ static QueueScheduleFixture queueScheduleFixture(
         {"previous_sample", {initialized.written.front()}},
         {"current_sample", {{compute_result, 0}, {}, EGraphAccess::WRITE}}
     };
-    const auto compute = take(builder.addComputePass("compute", std::move(work), {.estimated_gpu_ns = branch_ns}));
+    const auto compute = take(builder.addComputePass("compute", std::move(work), {.estimated_gpu_ns = 80'000}));
     const auto graphics = take(builder.addTransferPass(
         "independent graphics work", TransferWork{{
             FillBuffer{{{graphics_result, 0}, GraphBufferRange{0, 8}}, 7},
             FillBuffer{{{graphics_result, 0}, GraphBufferRange{8, 8}}, 11}
         }},
-        {.estimated_gpu_ns = branch_ns}
+        {.estimated_gpu_ns = 80'000}
     ));
-    if (serialize)
-    {
-        CHECK(builder.dependsOn(compute.pass, graphics.pass));
-    }
     CHECK(builder.exportOutput({compute.written.front()}));
     CHECK(builder.exportOutput({graphics.written.front()}));
     return {take(std::move(builder).finish()), compute_result, graphics_result};
 }
 
-static void cpuQueueCandidates()
-{
-    constexpr auto backend = EGraphicsBackend::VULKAN;
-    constexpr GraphQueuePolicy calibrated{{1'000, 1'000, 1'000}};
-    const auto submissionCount = [](const compiled::RenderGraph& graph) { return graph.submissions().size(); };
-    const auto heavy = queueScheduleFixture(backend, 80'000, false);
-    const auto serial = queueScheduleFixture(backend, 80'000, true);
-    const auto light = queueScheduleFixture(backend, 500, false);
-    const auto unknown = queueScheduleFixture(backend, 0, false);
-    CHECK(submissionCount(compileCpuGraph(heavy.graph)) == 1);
-    CHECK(submissionCount(compileCpuGraph(serial.graph, calibrated)) == 1);
-    CHECK(submissionCount(compileCpuGraph(light.graph, calibrated)) == 1);
-    CHECK(submissionCount(compileCpuGraph(unknown.graph, calibrated)) == 1);
-    CHECK(submissionCount(compileCpuGraph(heavy.graph, calibrated, true)) == 1);
-    CHECK(submissionCount(compileCpuGraph(heavy.graph, {{1'000, 1'000, 100'000}})) == 1);
-
-    const auto scheduled = compileCpuGraph(heavy.graph, calibrated);
-    const auto batches = scheduled.submissions();
-    CHECK(batches.size() == 3);
-    CHECK(batches[0].queue == EQueueRole::GRAPHICS && batches[1].queue == EQueueRole::COMPUTE);
-    CHECK(batches[2].queue == EQueueRole::GRAPHICS);
-    CHECK(batches[1].dependencies.size() == 1 && batches[1].dependencies.front().producer == 0);
-    CHECK(batches[2].dependencies.size() == 1 && batches[2].dependencies.front().producer == 0);
-}
-
-static void localFrozenInputs(DeviceSession& session, EGraphicsBackend backend, std::uint32_t static_count)
-{
-    GraphDraftBuilder builder;
-    for (std::uint32_t i = 0; i < static_count; ++i)
-    {
-        const auto key = "static image " + std::to_string(i);
-        const auto image = take(builder.declareResource({key, GraphImageDesc{4, 4}}));
-        const auto clear = take(builder.addTransferPass(key, TransferWork{{ClearImage{{{image, 0}}}}}));
-        CHECK(builder.exportOutput({clear.written.front()}));
-    }
-    const auto history = take(builder.declareHistory("counter", {GraphBufferDesc{16}}));
-    ComputeWork increment;
-    increment.interface.program = take(builder.addProgram(program(kGraphHistory, backend)));
-    increment.interface.resources = {
-        {"previous_sample", {{history.previous, 0}}}, {"current_sample", {{history.current, 0}, {}, EGraphAccess::WRITE}}
-    };
-    const auto updated = take(builder.addComputePass("increment", std::move(increment)));
-    CHECK(builder.publishHistory(updated.written.front()));
-    const auto output = take(builder.declareResource({"read counter", GraphBufferDesc{16}}));
-    const auto copied = take(builder.addTransferPass("copy counter", TransferWork{{
-        CopyBuffer{{updated.written.front()}, {{output, 0}}}
-    }}));
-    CHECK(builder.exportOutput({copied.written.front()}));
-    const auto color = take(builder.declareResource({"stream color", GraphImageDesc{4, 4}}));
-    RasterWork stream;
-    stream.program = RasterPassTemplate{"local freeze probe"};
-    stream.colors = {{{{color, 0}}}};
-    const auto drawn = take(builder.addRasterPass("stream", std::move(stream)));
-    CHECK(builder.exportOutput({drawn.written.front()}));
-    const auto graph = take(std::move(builder).finish());
-    const auto plan = compile(session, {graph, take(analyzeRenderGraph(graph))});
-    JobGpuResources instance_gpu(session, 1);
-    JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), TargetOutput{}};
-    CHECK(instance_job.initialize());
-    FrameHarness frames(session, 1);
-    const std::array instances{&instance_job};
-    const auto submit = [&]
-    {
-        CHECK(take(runTask(frames.render(instances, {}))) > 0);
-        finishSubmissions(session, frames);
-        CHECK(session.drain());
-    };
-    using Counts = FrozenPatchCounts;
-    CHECK(take(instance_job.freezeFrame(0)));
-    CHECK((instance_job.frame(0).last_patches == Counts{plan.graph.resources().size(), plan.graph.passes().size()}));
-    auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
-    RecordTextureQueries::original = core.GetTextureDesc;
-    RecordTextureQueries::count = 0;
-    core.GetTextureDesc = RecordTextureQueries::get;
-    CHECK(take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_patches == Counts{});
-    instance_job.viewport = {0, 0, 0.5f, 1};
-    CHECK((take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_patches == Counts{0, 1}));
-    const auto stream_slot = plan.diagnostics.passSlot(drawn.pass);
-    rasterDraws(instance_job, plan.graph.passes()[stream_slot], 0).parameters.resize(4);
-    CHECK((take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_patches == Counts{0, 1}));
-    core.GetTextureDesc = RecordTextureQueries::original;
-    CHECK(RecordTextureQueries::count == 0);
-    submit();
-    CHECK(readBufferWords<4>(session, *instance_job.resourceInput(output, 0).buffer)[0] == 1);
-    CHECK(take(instance_job.freezeFrame(0)));
-    const auto rotation = instance_job.frame(0).last_patches;
-    CHECK((rotation == Counts{2, 2}));
-    const auto original = instance_job.resourceInput(output, 0);
-    auto short_view = original;
-    short_view.size = 4;
-    instance_job.bindResource(output, 0, short_view);
-    CHECK(!instance_job.freezeFrame(0) && !recordFrame(instance_job, session, 0, 0));
-    instance_job.bindResource(output, 0, original);
-    CHECK((take(instance_job.freezeFrame(0)) && instance_job.frame(0).last_patches == Counts{1, 1}));
-    submit();
-    CHECK(readBufferWords<4>(session, *instance_job.resourceInput(output, 0).buffer)[0] == 2);
-    if (static_count == 4)
-    {
-        JobGpuResources isolated_gpu(session, 2);
-        JobExecution isolated_job{isolated_gpu, plan.graph, testInstallation(), TargetOutput{}};
-        CHECK(isolated_job.initialize());
-        CHECK(take(isolated_job.freezeFrame(1)));
-        isolated_job.viewport = {0, 0, 0.5f, 1};
-        CHECK(take(isolated_job.freezeFrame(0)));
-        static decltype(core.CmdSetViewports) set_viewports = nullptr;
-        static float width = 0;
-        set_viewports = core.CmdSetViewports;
-        core.CmdSetViewports = [](nri::CommandBuffer& cb, const nri::Viewport* values, std::uint32_t count) noexcept
-        {
-            if (count == 1) width = values[0].width;
-            set_viewports(cb, values, count);
-        };
-        const auto batch = plan.graph.passes()[stream_slot].submission;
-        width = 0;
-        CHECK(recordFrame(isolated_job, session, 0, batch) && width == 2);
-        width = 0;
-        CHECK(recordFrame(isolated_job, session, 1, batch) && width == 4);
-        core.CmdSetViewports = set_viewports;
-    }
-    std::printf(
-        "LOCAL FREEZE PASS: static=%u stable=0/0 viewport=0/1 stream=0/1 history=%zu/%zu retry=1/1 "
-        "stable texture queries=0 GPU counter=2\n", static_count, rotation.resources, rotation.passes
-    );
-}
-
 static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend backend)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     TargetDesc target;
     target.width = 7;
     target.height = 5;
@@ -2668,9 +2625,9 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     }
     // The imported graph ID declares table access. The actual recorded operand is the shared Set.
     const auto image_input = instance_job.resourceInput(images, 0);
-    instance_job.bindResource(images, 0, {});
-    instance_job.bindResource(images, 0, image_input);
-    CHECK(take(instance_job.freezeFrame(0)));
+    instance_job.frame_bindings.bind(images, 0, {});
+    instance_job.frame_bindings.bind(images, 0, image_input);
+    CHECK(take(instance_job.freezeFrame(0, freeze_draws)));
     auto& core = const_cast<nri::CoreInterface&>(session.nriCore());
     EndFailure::original = core.EndCommandBuffer;
     EndFailure::calls = 0;
@@ -2682,7 +2639,7 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     const auto old_generation = shared.nativeSetGeneration(type);
     std::vector<DescriptorTable::Slot> extra;
     while (old_generation == shared.nativeSetGeneration(type)) extra.push_back(take(shared.allocate(type)));
-    CHECK(take(instance_job.freezeFrame(0)));
+    CHECK(take(instance_job.freezeFrame(0, freeze_draws)));
     EndFailure::calls = 0;
     core.EndCommandBuffer = &EndFailure::end;
     CHECK(recordFrame(instance_job, session, 0, 0) && EndFailure::calls == 1);
@@ -2693,18 +2650,19 @@ static void sharedTextureRecording(DeviceSession& session, EGraphicsBackend back
     std::puts("SHARED CONSUMER PASS: one shared set, two root writes, one End on table replacement; GPU read 7x5 and 3x2");
 }
 
-static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend, bool grow_tables = false)
+static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backend)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     options.backend = backend;
     options.multiple_queues = true;
-    options.texture_descriptors = grow_tables;
+    options.texture_descriptors = true;
     options.descriptor_initial_counts = {1, 1, 1};
     options.descriptor_layout_limits = {32, 16, 16};
     options.graph_queue_costs = {1'000, 1'000, 1'000}; // Deterministic scheduling input for the fixture.
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     FrameHarness frames(*session, 1);
-    const auto fixture = queueScheduleFixture(backend, 80'000, false);
+    const auto fixture = queueScheduleFixture(backend);
     const auto analysis = take(analyzeRenderGraph(fixture.graph));
     const auto plan = compile(*session, {fixture.graph, analysis}, GraphCompileOptions{});
     const auto bounds = plan.graph.submissions();
@@ -2731,8 +2689,8 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
     const auto original = instance_job.resourceInput(fixture.graphics_result, 0);
     const auto other = replacement_job.resourceInput(fixture.graphics_result, 0);
     CHECK(original.buffer != other.buffer);
-    instance_job.bindResource(fixture.graphics_result, 0, other);
-    CHECK(take(instance_job.freezeFrame(0)));
+    instance_job.frame_bindings.bind(fixture.graphics_result, 0, other);
+    CHECK(take(instance_job.freezeFrame(0, freeze_draws)));
     auto& core = const_cast<nri::CoreInterface&>(session->nriCore());
     EndFailure::original = core.EndCommandBuffer;
     EndFailure::calls = 0;
@@ -2756,14 +2714,14 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
         "LOCAL REBIND PASS: %zu batches, two changed views, %u native End, new buffer [7,7,11,11]\n",
         bounds.size(), EndFailure::calls
     );
-    if (grow_tables && session->enabledFeatures().variable_descriptor_count)
+    if (session->enabledFeatures().variable_descriptor_count)
     {
         auto& shared = session->descriptors();
         constexpr auto kind = nri::DescriptorType::TEXTURE;
         const auto generation = shared.nativeSetGeneration(kind);
         std::vector<DescriptorTable::Slot> slots;
         while (shared.nativeSetGeneration(kind) == generation) slots.push_back(take(shared.allocate(kind)));
-        CHECK(take(instance_job.freezeFrame(0)));
+        CHECK(take(instance_job.freezeFrame(0, freeze_draws)));
         EndFailure::calls = 0;
         core.EndCommandBuffer = &EndFailure::end;
         for (std::uint32_t batch = 0; batch < bounds.size(); ++batch) CHECK(recordFrame(instance_job, *session, 0, batch));
@@ -2775,7 +2733,7 @@ static void nativeQueueCandidates(Validation& validation, EGraphicsBackend backe
         for (auto slot : slots) shared.release(kind, slot);
         sharedTextureRecording(*session, backend);
     }
-    instance_job.bindResource(fixture.graphics_result, 0, original);
+    instance_job.frame_bindings.bind(fixture.graphics_result, 0, original);
 }
 
 static void cpuRasterPackets()
@@ -2822,6 +2780,7 @@ static void historySequence(
     Validation& validation, EGraphicsBackend backend, std::uint32_t fif, bool use_fallback, std::uint32_t distance = 1
 )
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     DeviceOptions options;
     options.backend = backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
@@ -2907,7 +2866,7 @@ static void historySequence(
     CHECK(!plan.graph.physicalResources().resource_slots[history.current.index].valid());
     const std::uint8_t enabled_initial = 1;
     CHECK(instance_job->setConditions({&enabled_initial, 1}));
-    CHECK(take(instance_job->freezeFrame(0)));
+    CHECK(take(instance_job->freezeFrame(0, freeze_draws)));
     const auto rejected = submitFixtureCommands(*session, session->queue(),
         [](nri::CommandBuffer&, std::uint32_t) noexcept -> RenderResult<void>
         { return lux::cxx::unexpected(RenderError{kDeviceArgument}); }
@@ -3177,7 +3136,7 @@ static void conditionalRegion(Validation& validation, EGraphicsBackend backend, 
     CHECK(session->drain());
 }
 
-static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backend, bool ordered, bool separate_ranges = false)
+static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backend, bool separate_ranges)
 {
     DeviceOptions options;
     options.backend = backend;
@@ -3239,19 +3198,17 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     for (auto* job : {first_job.get(), second_job.get()})
     {
         const std::uint64_t offset = separate_ranges && job == second_job.get() ? 16 : 0;
-        job->bindResource(input, UINT32_MAX, {shared, offset, 16});
+        job->frame_bindings.bind(input, UINT32_MAX, {shared, offset, 16});
         CHECK(job->initialize());
     }
     const std::array instances{first_job.get(), second_job.get()};
     const auto before = session->queue(EQueueRole::COMPUTE).submitted();
-    const std::array explicit_order{SubmissionOrder{1, 0}};
-    const auto selected_order = std::span(explicit_order).first(ordered ? 1 : 0);
-    CHECK(take(runTask(frames->render(instances, {}, selected_order))) > 0);
+    CHECK(take(runTask(frames->render(instances, {}))) > 0);
     finishSubmissions(*session, *frames);
     const auto submitted = session->queue(EQueueRole::COMPUTE).submitted() - before;
     if (&session->queue() != &session->queue(EQueueRole::COMPUTE))
     {
-        CHECK(submitted == (ordered ? 2 : 1));
+        CHECK(submitted == 1);
     }
     CHECK(session->drain());
     const auto a =
@@ -3259,8 +3216,8 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
     const auto b =
         readBufferWords<4>(*session, *second_job->resourceInput(output, second_job->progress.last_submitted_slot).buffer);
     CHECK(a[0] == 1 && b[0] == 1);
-    std::printf("SHARED READ ORDER backend=%s explicit=%u separate_ranges=%u compute_submits=%llu results=1,1\n",
-        backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", unsigned(ordered), unsigned(separate_ranges),
+    std::printf("SHARED READS backend=%s separate_ranges=%u compute_submits=%llu results=1,1\n",
+        backend == EGraphicsBackend::D3D12 ? "D3D12" : "Vulkan", unsigned(separate_ranges),
         static_cast<unsigned long long>(submitted));
     first_job.reset();
     first_gpu.reset();
@@ -3272,6 +3229,7 @@ static void sharedImportedBuffer(Validation& validation, EGraphicsBackend backen
 
 static void multiQueueHistory(Validation& validation, DeviceOptions options, std::uint32_t fif)
 {
+    std::vector<lux::render::detail::RasterDrawInput> freeze_draws;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     auto frames = std::make_unique<FrameHarness>(*session, fif);
     GraphDraftBuilder builder;
@@ -3394,7 +3352,7 @@ static void multiQueueHistory(Validation& validation, DeviceOptions options, std
         CHECK(rejected.error().args[0] == static_cast<std::uint64_t>(nri::Result::INVALID_ARGUMENT));
         CHECK(session->queue().submitted() > before);
         CHECK(first_job->progress.count(EExecutionOutcome::EXECUTED) == 2);
-        CHECK(!frames->submitting() && !first_job->freezeFrame(0));
+        CHECK(!frames->submitting() && !first_job->freezeFrame(0, freeze_draws));
     }
     first_job.reset();
     first_gpu.reset();
@@ -3505,10 +3463,9 @@ struct DedicatedResizeRequirement final
     }
 };
 
-static void layeredAliasHandoff(Validation& validation, EGraphicsBackend backend)
+static void layeredAliasHandoff(Validation& validation, const DeviceOptions& options)
 {
-    DeviceOptions options;
-    options.backend = backend;
+    const auto backend = options.backend;
     TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
     GraphDraftBuilder builder;
     constexpr std::array widths{16u, 32u};
@@ -4027,7 +3984,7 @@ static void coalescedImageRanges(Validation& validation, EGraphicsBackend backen
     auto graph = take(std::move(builder).finish());
     auto analysis = take(analyzeRenderGraph(graph));
     auto plan = compile(*session, {graph, analysis});
-    const auto& transitions = plan.graph.passes().front().before.images;
+    const auto transitions = plan.graph.recordingProgram().imageBarriers(plan.graph.passes().front());
     CHECK(transitions.size() == 1);
     const auto& transition = transitions.front();
     CHECK(transition.resource == image.index && transition.previous_slot == kGraphInvalidIndex);
@@ -4102,7 +4059,6 @@ int main(int argc, char** argv)
         cpuImportedBoundaries();
         cpuRasterPackets();
         cpuQueueBoundaries();
-        cpuQueueCandidates();
         cpuAliasBufferRanges();
         cpuAliasWaitScopes();
         cpuRasterBindingReplacement();
@@ -4137,7 +4093,9 @@ int main(int argc, char** argv)
     }
     if (argc > 1 && std::string_view(argv[1]) == "raster")
     {
-        typedRasterScopes(validation, argc > 2 && std::string_view(argv[2]) == "d3d12");
+        DeviceOptions options;
+        if (argc > 2 && std::string_view(argv[2]) == "d3d12") options.backend = EGraphicsBackend::D3D12;
+        typedRasterScopes(validation, options);
         CHECK(validation.errors == 0);
         return 0;
     }
@@ -4146,17 +4104,36 @@ int main(int argc, char** argv)
         const bool d3d12 = argc > 2 && std::string_view(argv[2]) == "d3d12";
         typedRecording(validation, d3d12);
         multiCommandCompute(validation, d3d12);
+        volumeCopies(validation, d3d12);
         constantLayoutEvidence(validation, d3d12 ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN);
         CHECK(validation.errors == 0);
         return 0;
     }
     const auto backend = argc > 2 && std::string_view(argv[2]) == "d3d12"
         ? EGraphicsBackend::D3D12 : EGraphicsBackend::VULKAN;
+    if (argc == 3 && std::string_view(argv[1]) == "legacy-texture-reuse")
+    {
+        DeviceOptions options;
+        options.backend = EGraphicsBackend::D3D12;
+        const std::string_view adapter{argv[2]};
+        const auto end = adapter.data() + adapter.size();
+        const auto parsed = std::from_chars(adapter.data(), end, options.physical_device_index);
+        if (parsed.ec != std::errc{} || parsed.ptr != end) return 2;
+        {
+            TestDevice device(options, diagnostics(validation), nativeValidationEnabled());
+            if (device->description().features.enhancedBarriers) return 77;
+        }
+        typedRasterScopes(validation, options);
+        layeredAliasHandoff(validation, options);
+        CHECK(validation.errors == 0);
+        std::puts("LEGACY TEXTURE REUSE PASS: raster scopes, layered alias readback and split/join Resize");
+        return 0;
+    }
     if (argc > 1 && std::string_view(argv[1]) == "alias-frontiers")
     {
-        layeredAliasHandoff(validation, backend);
         DeviceOptions options;
         options.backend = backend;
+        layeredAliasHandoff(validation, options);
         options.multiple_queues = true;
         options.prefer_dedicated_queues = true;
         {
@@ -4173,73 +4150,42 @@ int main(int argc, char** argv)
         CHECK(validation.errors == 0);
         return 0;
     }
-    if (argc > 1 && std::string_view(argv[1]) == "choices")
-    {
-        for (auto fif : {1u, 2u, 3u}) nativeChoices(validation, backend, fif);
-        CHECK(validation.errors == 0);
-        return 0;
-    }
-    if (argc > 1 && std::string_view(argv[1]) == "local-freeze")
-    {
-        DeviceOptions options;
-        options.backend = backend;
-        TestDevice session(options, diagnostics(validation), nativeValidationEnabled());
-        localFrozenInputs(*session, backend, 4);
-        localFrozenInputs(*session, backend, 32);
-        CHECK(validation.errors == 0);
-        return 0;
-    }
     if (argc > 1 && std::string_view(argv[1]) == "batch-reuse")
     {
-        nativeQueueCandidates(validation, backend, true);
+        nativeQueueCandidates(validation, backend);
         CHECK(validation.errors == 0);
         return 0;
     }
-    if (argc > 1 && std::string_view(argv[1]) == "copies")
-    {
-        frameUploadSnapshot(validation, backend);
-        resolveAndCopy(validation, backend);
-        compressedCopies(validation, backend);
-        indirectCounts(validation, backend);
-        coalescedImageRanges(validation, backend, 2);
-        CHECK(validation.errors == 0);
-        std::puts("Graph copy focus: image/buffer/offset roundtrip and layered ranges passed");
-        return 0;
-    }
+    if (argc > 1 && std::string_view{argv[1]} != "chain") return 2;
     for (std::uint32_t fif : {1u, 2u, 3u})
     {
-        coalescedImageRanges(validation, backend, fif);
-        imageChain(validation, backend, fif);
-        imageChain(validation, backend, fif, true);
-        historySequence(validation, backend, fif, false);
-        historySequence(validation, backend, fif, true);
         historySequence(validation, backend, fif, true, 2);
         nativeChoices(validation, backend, fif);
-        conditionalRegion(validation, backend, fif);
-        hzbHistory(validation, backend, fif);
-        physicalImageReuse(validation, backend, fif);
-        physicalImageReuse(validation, backend, fif, true);
-        for (unsigned topology = 0; topology < 3; ++topology)
-        {
-            DeviceOptions options;
-            options.backend = backend;
-            options.multiple_queues = topology != 0;
-            options.prefer_dedicated_queues = topology == 2;
-            multiQueueHistory(validation, options, fif);
-            physicalReuse(validation, options, fif, {EReuseOrder::EXPLICIT});
-            physicalReuse(validation, options, fif, {EReuseOrder::UNORDERED});
-            physicalReuse(validation, options, fif, {EReuseOrder::EXPLICIT, true});
-            physicalReuse(validation, options, fif, {EReuseOrder::UNORDERED, true});
-        }
     }
-    nativeQueueCandidates(validation, backend);
+    imageChain(validation, backend, 1);
+    imageChain(validation, backend, 3, true);
+    coalescedImageRanges(validation, backend, 2);
+    historySequence(validation, backend, 2, false);
+    historySequence(validation, backend, 2, true);
+    conditionalRegion(validation, backend, 2);
+    hzbHistory(validation, backend, 2);
+    physicalImageReuse(validation, backend, 2);
+    physicalImageReuse(validation, backend, 2, true);
+
+    DeviceOptions options;
+    options.backend = backend;
+    multiQueueHistory(validation, options, 1);
+    options.multiple_queues = true;
+    options.prefer_dedicated_queues = true;
+    multiQueueHistory(validation, options, 3);
+    physicalReuse(validation, options, 2, {EReuseOrder::EXPLICIT});
+    physicalReuse(validation, options, 2, {EReuseOrder::UNORDERED});
     frameUploadSnapshot(validation, backend);
     indirectCounts(validation, backend);
     resolveAndCopy(validation, backend);
     compressedCopies(validation, backend);
     sharedImportedBuffer(validation, backend, false);
     sharedImportedBuffer(validation, backend, true);
-    sharedImportedBuffer(validation, backend, false, true);
     CHECK(validation.errors == 0);
     std::printf(
         "Graph %s: Compute -> mip -> MRT/Depth -> sampled postprocess; FIF=1/2/3; GPU IndirectCount=0/1/3; errors=%u "

@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/render/runtime/Execution.hpp>
@@ -6,6 +7,8 @@
 #include <lux/engine/render/device/DeviceId.hpp>
 #include <lux/engine/render/effect/EffectId.hpp>
 #include <lux/engine/render/graph/Ids.hpp>
+#include <lux/engine/render/frame/FrameData.hpp>
+#include <lux/engine/render/frame/WindowUpdates.hpp>
 #include <lux/engine/render/runtime/JobId.hpp>
 #include <lux/engine/render/runtime/SceneId.hpp>
 #include <lux/engine/render/runtime/TargetId.hpp>
@@ -17,7 +20,6 @@
 
 namespace lux::render
 {
-    class FrameData;
     // SDK values. Never expose Storage/operation-state/native pointers to callers.
     enum class EJobCadence : std::uint8_t
     {
@@ -42,6 +44,7 @@ namespace lux::render
         RenderJobId job{};
         std::uint64_t frame_index = 0;
         std::uint32_t slot_index = 0;
+        WindowUpdates updates;
 
         [[nodiscard]] FinalBufferVersion bufferVersion(GraphBufferRange range) const noexcept
         {
@@ -96,21 +99,6 @@ namespace lux::render
         using Response = AckResponse; // Busy while any lifecycle/CPU borrow exists
     };
 
-    struct SetRenderJobDependencies final
-    {
-        static constexpr std::string_view name = "render.job.dependencies.set";
-
-        struct Request final
-        {
-            RenderJobId job;
-            // Owning input: async IPC does not borrow a caller's temporary span.
-            std::vector<RenderJobId> predecessors;
-            std::vector<RenderJobId> successors;
-        };
-
-        using Response = AckResponse;
-    };
-
     struct SetRenderJobCadence final
     {
         static constexpr std::string_view name = "render.job.cadence.set";
@@ -127,16 +115,38 @@ namespace lux::render
     struct RequestRenderJob final
     {
         static constexpr std::string_view name = "render.job.request";
+        struct Run final
+        {
+            RenderJobId job;
+            RequestId reply;
+        };
+
         struct Request final
         {
             RenderJobId job;
-            FrameData* data = nullptr;
+            WindowUpdates updates;
+            // Additional jobs share this input window. Each reply uses its own correlation on the same IPC link.
+            std::vector<Run> additional_runs;
+
+            template <class Visitor> void forEachRun(RequestId first, Visitor&& visit) const noexcept
+            {
+                visit(Run{job, first});
+                for (const auto& run : additional_runs) visit(run);
+            }
+
+            [[nodiscard]] bool demandOnly() const noexcept { return updates.empty(); }
+
+            [[nodiscard]] bool contains(RenderJobId id) const noexcept
+            {
+                return job == id || std::ranges::find(additional_runs, id, &Run::job) != additional_runs.end();
+            }
         };
-        // Exactly one pending exact request per Job. Completion releases the optional
-        // input borrow. Success identifies native submission acceptance.
+        // The terminal reply returns the supplied packet. Success identifies native submission acceptance.
         using Response = JobSubmitted;
-        static FrameData* frameData(const Request& request) noexcept { return request.data; }
     };
+
+    static_assert(platform::ipc::IpcMessage::stores_inline<JobSubmitted>);
+    static_assert(platform::ipc::IpcMessage::stores_inline<RequestRenderJob::Request>);
 
     struct RebindRenderJobEffect final
     {

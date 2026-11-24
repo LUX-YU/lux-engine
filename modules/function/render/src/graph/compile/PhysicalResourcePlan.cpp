@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <lux/engine/render/graph/compile/GraphCompileWorkspace.hpp>
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
 #include <algorithm>
@@ -41,7 +42,7 @@ namespace lux::render::detail
 
     } // namespace
 
-    PhysicalResourcePlan GraphCompiler::Workspace::planPhysicalResources(const compiled::RenderGraph& plan) noexcept
+    PhysicalResourcePlan RenderGraphCompiler::Workspace::planPhysicalResources(const compiled::RenderGraph& plan) noexcept
     {
         const auto& graph = source.graph;
         const auto source_order = std::span(source.analysis.execution_order);
@@ -49,11 +50,10 @@ namespace lux::render::detail
         const auto& recording = plan.recording_;
         const auto& submissions = plan.submissions_;
         const auto& queues = device.queues;
-        auto& reasons = diagnostics.resource_reuse;
         PhysicalResourcePlan result;
         result.allocation = allocation;
         result.resource_slots.resize(resources.size());
-        reasons.assign(resources.size(), EResourceReuse::UNUSED);
+        if (diagnostics) diagnostics->resource_reuse.assign(resources.size(), EResourceReuse::UNUSED);
         std::vector<ResourceInterval> intervals(resources.size());
         std::vector<Frontier> completed(submissions.size());
         std::array<Frontier, 3> queue_frontiers{};
@@ -110,7 +110,8 @@ namespace lux::render::detail
         for (auto i : order)
         {
             const auto& resource = resources[i];
-            auto& reason = reasons[i];
+            EResourceReuse local_reason = EResourceReuse::UNUSED;
+            auto& reason = diagnostics ? diagnostics->resource_reuse[i] : local_reason;
             if (!resource.memory_used)
             {
                 continue;
@@ -129,7 +130,7 @@ namespace lux::render::detail
             }
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description); image && image->runtime_layers)
             {
-                reasons[i] = EResourceReuse::DYNAMIC_EXTENT;
+                reason = EResourceReuse::DYNAMIC_EXTENT;
                 continue;
             }
             if (target[i])

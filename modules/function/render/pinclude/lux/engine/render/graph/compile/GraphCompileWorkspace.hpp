@@ -1,16 +1,10 @@
 #pragma once
 
-#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
+#include <lux/engine/render/graph/compile/RenderGraphCompiler.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
 
 namespace lux::render::detail
 {
-    struct ResourceUseStages final
-    {
-        std::uint32_t resource_index;
-        nri::StageBits stages;
-    };
-
     struct AliasResourceUse final
     {
         GraphResourceId resource;
@@ -18,14 +12,14 @@ namespace lux::render::detail
     };
 
     // One invocation owns these intermediate tables, including across native preparation and queue-policy retries.
-    struct GraphCompiler::Workspace final
+    struct RenderGraphCompiler::Workspace final
     {
         AnalyzedGraph source;
         GraphDeviceFacts device;
         ETransientAllocation allocation;
         GraphQueuePolicy policy;
+        GraphCompileDiagnostics* diagnostics = nullptr;
         ShaderBindingPlan bindings{};
-        GraphCompileDiagnostics diagnostics{};
         std::vector<std::vector<ResourceUseStages>> use_stages{};
         std::vector<std::uint32_t> pass_batches{};
         std::vector<AliasResourceUse> alias_uses{};
@@ -33,9 +27,9 @@ namespace lux::render::detail
         [[nodiscard]] bool presentsOutput() const noexcept;
         [[nodiscard]] RenderResult<compiled::RenderGraph> planStructure(const GraphOutputRequirements*) noexcept;
         [[nodiscard]] exec::task<RenderResult<void>>
-        prepareOperations(DeviceSession&, PreparedRenderGraph&, execution::CpuScheduler) noexcept;
+        prepareOperations(DeviceSession&, compiled::RenderGraph&, execution::CpuScheduler) noexcept;
         static void compileFixedBindings(compiled::RenderGraph&) noexcept;
-        [[nodiscard]] RenderResult<void> finishDevicePlan(PreparedRenderGraph&) noexcept;
+        [[nodiscard]] RenderResult<void> finishDevicePlan(compiled::RenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void> finishPlan(compiled::RenderGraph&) noexcept;
         [[nodiscard]] RenderResult<void>
         planBarriers(compiled::RenderGraph&, const PhysicalResourcePlan* = nullptr) const noexcept;
@@ -45,6 +39,7 @@ namespace lux::render::detail
         [[nodiscard]] RecordingDependencies recordingDependencies(const compiled::RenderGraph&) const noexcept;
         void publishAliasFrontiers(compiled::RenderGraph&) const noexcept;
         void collectUseStages() noexcept;
+        void linkBatchResourceFrontiers(compiled::RenderGraph&) const noexcept;
         void planSubmissions(compiled::RenderGraph&) noexcept;
     };
 }

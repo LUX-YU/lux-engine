@@ -99,10 +99,10 @@ namespace sdk_buffers
         {
             static const StorageBindingOps ops{
                 .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
-                    -> RenderResult<StorageGraphImport>
+                    -> RenderResult<ResourceProjection>
                 {
                     if (projection) return lux::cxx::unexpected(RenderError{kStorageContract});
-                    return StorageGraphImport::bufferOutput(bytes, EGraphUse::TRANSFER_SOURCE);
+                    return ResourceProjection::bufferOutput(bytes, EGraphUse::TRANSFER_SOURCE);
                 },
                 .resolveGraphImport = [](
                     void* value, std::uint32_t, const VGraphResourceDesc&, std::span<ResourceInput> out

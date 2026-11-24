@@ -27,7 +27,9 @@ namespace lux::render::detail
             return cxx::unexpected(RenderError{kInvalidTargetExtent});
         }
         OffscreenTarget result(session, description);
-        const auto count = frame_count;
+        // A sampled Target keeps its last complete publication while another image is being written.
+        if (!frame_count || frame_count == UINT32_MAX) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto count = frame_count + std::uint32_t(description.sampled);
         result.uses_.assign(count, ImageProgress{session.makeFrontiers(), session.makeFrontiers()});
         result.images_.reserve(count);
         result.views_.reserve(count);
@@ -70,7 +72,8 @@ namespace lux::render::detail
                 return cxx::unexpected(nativeError(created));
             }
             result.views_.push_back(handle);
-            result.frames_.push_back({image, handle, nullptr, UINT32_MAX, &result.uses_[slot].all});
+            auto& progress = result.uses_[slot];
+            result.frames_.push_back({image, handle, nullptr, UINT32_MAX, &progress.all, &progress.writes});
             if (description.sampled)
             {
                 auto allocated = session.descriptors().allocate(nri::DescriptorType::TEXTURE);
@@ -91,20 +94,26 @@ namespace lux::render::detail
                 result.frames_.back().sampled_index = allocated->index;
             }
         }
+        result.frame_outputs_.assign(result.frames_.begin(), result.frames_.begin() + frame_count);
         return result;
     }
 
     OffscreenTarget::OffscreenTarget(OffscreenTarget&& other) noexcept
         : state(other.state), session_(other.session_), description_(other.description_),
           images_(std::move(other.images_)), views_(std::move(other.views_)), frames_(std::move(other.frames_)),
-          sampled_slots_(std::move(other.sampled_slots_)), uses_(std::move(other.uses_)),
-          content_revision_(other.content_revision_)
+          frame_outputs_(std::move(other.frame_outputs_)), published_image_(other.published_image_),
+          sampled_slots_(std::move(other.sampled_slots_)), uses_(std::move(other.uses_))
     {
     }
 
-    bool OffscreenTarget::readable(std::uint32_t slot) const noexcept
+    OffscreenTarget::SelectedImage OffscreenTarget::selectRead(std::optional<std::uint32_t> writer_image) noexcept
     {
-        return session_.reached(uses_[slot].writes);
+        const auto image = writer_image.value_or(published_image_);
+        auto& uses = uses_[image];
+        return {
+            {.image = frames_[image].image, .queue_uses = {writer_image ? nullptr : &uses.writes, &uses.all}},
+            sampled_slots_[image]
+        };
     }
 
     bool OffscreenTarget::writable(std::uint32_t slot) const noexcept
@@ -112,26 +121,32 @@ namespace lux::render::detail
         return session_.reached(uses_[slot].all);
     }
 
-    void OffscreenTarget::acceptRead(std::uint32_t slot, const SubmissionFrontiers& uses) noexcept
+    std::uint32_t OffscreenTarget::writableImage(std::uint32_t preferred) const noexcept
     {
-        uses_[slot].all.merge(uses);
+        if (!description_.sampled) return writable(preferred) ? preferred : UINT32_MAX;
+        if (preferred != published_image_ && writable(preferred)) return preferred;
+        for (std::uint32_t i = 0; i < frames_.size(); ++i)
+            if (i != published_image_ && i != preferred && writable(i)) return i;
+        return UINT32_MAX;
     }
 
-    void OffscreenTarget::acceptWrite(std::uint32_t slot, const SubmissionFrontiers& uses) noexcept
+    void OffscreenTarget::bindOutput(std::uint32_t frame_slot, std::uint32_t image_index) noexcept
     {
-        uses_[slot].writes.merge(uses);
-        uses_[slot].content = 0;
+        // writableImage selected a retired slot outside the current publication. This Run
+        // starts a new producer frontier for that image; readers retain the separate all-use frontier.
+        uses_[image_index].writes.clear();
+        frame_outputs_[frame_slot] = frames_[image_index];
+    }
+
+    void OffscreenTarget::publish(std::uint32_t image) noexcept
+    {
+        if (!description_.sampled) return;
+        published_image_ = image;
     }
 
     void OffscreenTarget::appendUses(SubmissionFrontiers& uses) const noexcept
     {
         for (const auto& slot : uses_) uses.merge(slot.all);
-    }
-
-    std::uint64_t OffscreenTarget::publish(std::uint32_t slot) noexcept
-    {
-        if (content_revision_ == UINT64_MAX) std::terminate();
-        return uses_[slot].content = ++content_revision_;
     }
 
     OffscreenTarget::~OffscreenTarget() noexcept

@@ -22,7 +22,38 @@ namespace lux::render::detail
 
     } // namespace
 
-    void RasterEncoder::record(const RasterDrawList& list) const noexcept
+    void
+    RasterEncoder::beginRendering(const nri::RenderingDesc& rendering, bool initialize_resolve_targets) const noexcept
+    {
+        if (initialize_resolve_targets)
+        {
+            // Legacy D3D12 requires a clear, discard or copy before the first resolve into a placed RT.
+            // NRI resolves the entire selected destination subresource. Use the actual section views.
+            for (std::uint32_t i = 0; i < rendering.colorNum; ++i)
+            {
+                if (!rendering.colors[i].resolveDst) continue;
+                nri::AttachmentDesc clear{};
+                clear.descriptor = rendering.colors[i].resolveDst;
+                clear.loadOp = nri::LoadOp::CLEAR;
+                clear.storeOp = nri::StoreOp::STORE;
+                nri::RenderingDesc initialize{};
+                initialize.colors = &clear;
+                initialize.colorNum = 1;
+                core.CmdBeginRendering(command, initialize);
+                core.CmdEndRendering(command);
+            }
+        }
+        core.CmdBeginRendering(command, rendering);
+    }
+
+    void RasterEncoder::bindVertices(std::span<const FrozenVertexBinding> vertices) const noexcept
+    {
+        if (std::ranges::equal(state.vertices, vertices)) return;
+        for (const auto& vertex : vertices) core.CmdSetVertexBuffers(command, vertex.binding, &vertex.buffer, 1);
+        state.vertices = vertices;
+    }
+
+    void RasterEncoder::record(const RasterDrawList& list, bool initialize_resolve_targets) const noexcept
     {
         nri::Pipeline* pipeline = nullptr;
         nri::PipelineLayout* layout = nullptr;
@@ -33,9 +64,6 @@ namespace lux::render::detail
             core.CmdSetDescriptorSet(command, {set, value, nri::BindPoint::GRAPHICS});
             bound_sets[set] = value;
         };
-        // Graph-local vertex indices cannot describe the physical arrays in a dynamic packet.
-        state.vertices = {};
-        std::span<const RasterDrawList::Vertex> previous_vertices;
         for (const auto& section : list.recordSections())
         {
             const auto colors = std::span(list.colors).subspan(section.first_color, section.color_count);
@@ -43,7 +71,7 @@ namespace lux::render::detail
             rendering.colors = colors.data();
             rendering.colorNum = static_cast<std::uint32_t>(colors.size());
             rendering.depth = section.depth;
-            core.CmdBeginRendering(command, rendering);
+            beginRendering(rendering, initialize_resolve_targets);
             core.CmdSetViewports(command, &section.viewport, 1);
             bool section_parameters_pending = section.parameter_size != 0;
             for (const auto& packet : std::span(list.packets).subspan(section.first_draw, section.draw_count))
@@ -77,33 +105,13 @@ namespace lux::render::detail
                 {
                     setPassDepthBias(core, command, *section.depth_bias, state);
                 }
-                const auto descriptors =
-                    std::span(list.descriptors).subspan(packet.first_descriptor, packet.descriptor_count);
                 for (std::size_t kind = 0; kind < frame.shared_descriptors.size(); ++kind)
                 {
                     const auto set = packet.bindings.shared_sets[kind];
                     if (set != kGraphInvalidIndex) bindSet(set, frame.shared_descriptors[kind]);
                 }
-                for (std::uint32_t i = 0; i < descriptors.size(); ++i)
-                    bindSet(packet.bindings.private_set + i, descriptors[i]);
-                const auto vertices = std::span(list.vertices).subspan(packet.first_vertex, packet.vertex_count);
-                const bool same_vertices = std::ranges::equal(
-                    vertices,
-                    previous_vertices,
-                    [](const auto& a, const auto& b) noexcept
-                    {
-                        return a.binding == b.binding && a.buffer.buffer == b.buffer.buffer &&
-                               a.buffer.offset == b.buffer.offset && a.buffer.stride == b.buffer.stride;
-                    }
-                );
-                if (!same_vertices)
-                {
-                    for (const auto& vertex : vertices)
-                    {
-                        core.CmdSetVertexBuffers(command, vertex.binding, &vertex.buffer, 1);
-                    }
-                    previous_vertices = vertices;
-                }
+                if (packet.descriptor_set) bindSet(packet.bindings.private_set, packet.descriptor_set);
+                bindVertices(std::span(list.vertices).subspan(packet.first_vertex, packet.vertex_count));
                 if (packet.parameter_size)
                 {
                     core.CmdSetRootConstants(
@@ -160,10 +168,10 @@ namespace lux::render::detail
 
     void RasterEncoder::record(const RasterCommands& raster, const FramePass& pass) const noexcept
     {
-        const auto& bindings = frame.resources;
         if (const auto* dynamic = std::get_if<RasterListCommands>(&raster.draw))
         {
             const auto& draws = frame.draws[dynamic->data_index];
+            const auto& scope = *frame.plan.recordingProgram().rasterScope(*pass.compiled_pass);
             if (draws.recordSections().empty())
             {
                 // The complete dynamic stage still observes declared Clear/Load/Store with zero draws.
@@ -171,30 +179,17 @@ namespace lux::render::detail
                 rendering.colors = pass.colors.data();
                 rendering.colorNum = static_cast<std::uint32_t>(pass.colors.size());
                 rendering.depth = pass.depth;
-                core.CmdBeginRendering(command, rendering);
+                beginRendering(rendering, scope.initialize_resolve_targets);
                 core.CmdEndRendering(command);
             }
             else
             {
-                record(draws);
+                record(draws, scope.initialize_resolve_targets);
             }
             return;
         }
 
-        if (!std::ranges::equal(state.vertices, raster.vertices))
-        {
-            for (const auto& source : raster.vertices)
-            {
-                const auto& binding = bindings[source.buffer];
-                const nri::VertexBufferDesc buffer{
-                    binding.buffer,
-                    binding.buffer_offset + source.offset,
-                    source.stride
-                };
-                core.CmdSetVertexBuffers(command, source.binding, &buffer, 1);
-            }
-        }
-        state.vertices = raster.vertices;
+        bindVertices(frame.vertices.subspan(raster.first_vertex, raster.vertex_count));
         std::visit(
             [&](const auto& draw)
             {
@@ -209,8 +204,8 @@ namespace lux::render::detail
                 }
                 else
                 {
-                    const auto& index = bindings[draw.index.location.buffer];
-                    const auto index_offset = index.buffer_offset + draw.index.location.offset;
+                    const auto& index = frame.raster_addresses[draw.index.address];
+                    const auto index_offset = index.offset;
                     const auto index_type = draw.index.type;
                     const bool index_changed = state.index != index.buffer ||
                                                state.index_offset != index_offset ||
@@ -228,23 +223,17 @@ namespace lux::render::detail
                     }
                     else
                     {
-                        const auto& indirect = bindings[draw.arguments.buffer];
-                        nri::Buffer* count = nullptr;
-                        std::uint64_t count_offset = 0;
-                        if (draw.count_buffer.buffer != kGraphInvalidIndex)
-                        {
-                            const auto& count_binding = bindings[draw.count_buffer.buffer];
-                            count = count_binding.buffer;
-                            count_offset = count_binding.buffer_offset + draw.count_buffer.offset;
-                        }
+                        const auto& indirect = frame.raster_addresses[draw.arguments];
+                        FrozenBufferAddress count{};
+                        if (draw.count_buffer != kGraphInvalidIndex) count = frame.raster_addresses[draw.count_buffer];
                         core.CmdDrawIndexedIndirect(
                             command,
                             *indirect.buffer,
-                            indirect.buffer_offset + draw.arguments.offset,
+                            indirect.offset,
                             draw.count,
                             draw.stride,
-                            count,
-                            count_offset
+                            count.buffer,
+                            count.offset
                         );
                     }
                 }
@@ -267,15 +256,18 @@ namespace lux::render::detail
             case ETransferOpcode::COPY_BUFFER: recordCopy(core, command, operands.buffer_copies[row]); break;
             case ETransferOpcode::COPY_IMAGE: recordCopy(core, command, operands.image_copies[row]); break;
             case ETransferOpcode::UPLOAD:
-            {
-                const auto& copy = operands.image_buffers[row];
-                recordUpload(core, command, {*copy.image, copy.region, *copy.buffer, copy.layout});
-                break;
-            }
             case ETransferOpcode::READBACK:
             {
                 const auto& copy = operands.image_buffers[row];
-                recordReadback(core, command, {*copy.buffer, copy.layout, *copy.image, copy.region});
+                auto region = copy.region;
+                auto layout = copy.layout;
+                for (std::uint32_t z = 0; z < copy.slice_copies; ++z)
+                {
+                    if (opcode == ETransferOpcode::UPLOAD) recordUpload(core, command, {*copy.image, region, *copy.buffer, layout});
+                    else recordReadback(core, command, {*copy.buffer, layout, *copy.image, region});
+                    ++region.z;
+                    layout.offset += layout.slicePitch;
+                }
                 break;
             }
             case ETransferOpcode::CLEAR_COLOR:

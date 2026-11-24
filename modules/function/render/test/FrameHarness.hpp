@@ -4,7 +4,7 @@
 #include <lux/engine/render/graph/execute/FrameExecutor.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
-#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include <lux/engine/render/runtime/DeviceRound.hpp>
 
 namespace foundation_test
 {
@@ -38,9 +38,9 @@ namespace foundation_test
     class FrameHarness final
     {
     public:
-        FrameHarness(DeviceSession& device, std::uint32_t count) noexcept
+        FrameHarness(DeviceSession& device, std::uint32_t count, ResourceUploader* uploader = nullptr) noexcept
             : device_(device), progress_(count, &device, device.queueCount()),
-              workspace_(count, device.queueCount(), 0)
+              round_(device, progress_), uploader_(uploader)
         {
         }
 
@@ -48,25 +48,26 @@ namespace foundation_test
 
         [[nodiscard]] bool beginFrame(std::uint32_t& slot) noexcept
         {
-            if (!open()) return false;
-            slot = operation_->context().slot_index;
+            // The standalone driver owns admission, just as DeviceEntry does in the Server.
+            if (device_.terminalError().type || !open()) return false;
+            slot = round_.slot();
             return true;
         }
 
         [[nodiscard]] bool submitting() const noexcept
         {
-            return operation_ && operation_->submitting();
+            return round_.stage == runtime_detail::DeviceRound::EStage::SUBMITTING;
         }
 
         [[nodiscard]] bool completed(std::uint32_t slot, const runtime_detail::JobExecution& job) const noexcept
         {
-            const auto* receipt = workspace_.submissions.acceptedFrameUse(slot, 0, job.binding_identity);
+            const auto* receipt = round_.submissions.acceptedFrameUse(slot, 0, job.binding_identity);
             return receipt && receipt->completed;
         }
 
         [[nodiscard]] bool dumpSubmissions(DumpSink sink) const noexcept
         {
-            return workspace_.submissions.dumpSubmissions(progress_, sink);
+            return round_.submissions.dumpSubmissions(progress_, sink);
         }
 
         [[nodiscard]] RenderResult<bool> waitForProgress(std::uint64_t timeout) noexcept
@@ -76,30 +77,54 @@ namespace foundation_test
 
         [[nodiscard]] exec::task<RenderResult<std::uint32_t>>
         render(
-            std::span<runtime_detail::JobExecution* const> executions, std::span<const ResourceInstanceId> storages,
-            std::span<const SubmissionOrder> order = std::span<const SubmissionOrder>{}
+            std::span<runtime_detail::JobExecution* const> executions, std::span<const InstalledFrameResource> storages
         ) noexcept
         {
             if (auto error = device_.terminalError(); error.type) co_return lux::cxx::unexpected(error);
-            const bool in_flight = operation_ && operation_->active();
-            if (!in_flight && (executions.empty() || !open())) co_return 0;
-            co_return co_await operation_->run(executions, storages, order);
+            if (!round_.active() && (executions.empty() || !open())) co_return 0;
+            if (std::exchange(inputs_pending_, false))
+            {
+                round_.executions.assign(executions.begin(), executions.end());
+                round_.inputs.storages.assign(storages.begin(), storages.end());
+                round_.resource_uploads.clear();
+                for (std::uint32_t i = 0; i < storages.size(); ++i)
+                {
+                    const auto& source = storages[i];
+                    if (source.ops->selectRun) source.ops->selectRun(source.instance, round_.replicaFrame());
+                    if (source.ops->prepareFrame) round_.resource_uploads.emplace_back(i);
+                }
+                if (auto selected = round_.selectConstants(); !selected)
+                {
+                    round_.cancel(selected.error());
+                    co_return lux::cxx::unexpected(selected.error());
+                }
+            }
+            const auto ready = round_.prepareNativeWork();
+            if (!ready)
+            {
+                round_.cancel(ready.error());
+                co_return lux::cxx::unexpected(ready.error());
+            }
+            if (!*ready) co_return 0;
+            co_return co_await round_.submitNativeWork(lux::execution::ExecutionRuntime::instance().cpuScheduler());
         }
 
     private:
         [[nodiscard]] bool open() noexcept
         {
-            if (operation_ && operation_->active()) return true;
-            operation_.emplace(
-                device_, progress_, workspace_, lux::execution::ExecutionRuntime::instance().cpuScheduler()
-            );
-            auto opened = operation_->tryBegin();
-            return opened && *opened;
+            if (round_.active()) return true;
+            round_.stage = runtime_detail::DeviceRound::EStage::IDLE;
+            auto selected = progress_.availableFrame(device_);
+            if (!selected || !*selected) return false;
+            round_.begin(**selected, uploader_);
+            inputs_pending_ = true;
+            return true;
         }
 
         DeviceSession& device_;
         FrameProgress progress_;
-        FrameOperation::Workspace workspace_;
-        std::optional<FrameOperation> operation_;
+        runtime_detail::DeviceRound round_;
+        ResourceUploader* uploader_;
+        bool inputs_pending_ = false;
     };
 } // namespace foundation_test

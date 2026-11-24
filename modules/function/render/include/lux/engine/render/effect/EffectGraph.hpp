@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/effect/EffectNodeDefinition.hpp>
+#include <lux/engine/render/effect/EffectCapability.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
 #include <map>
 #include <span>
@@ -67,10 +67,11 @@ namespace lux::render
         EffectGraphEdit& operator=(EffectGraphEdit&&) = delete;
 
         [[nodiscard]] RenderResult<graph::NodeId> addNode(
-            const EffectNodeDefinition& capability,
+            const EffectCapability& capability,
             ImplementationSelection implementation,
             std::string arguments = {}
         ) noexcept;
+        
         [[nodiscard]] RenderResult<void> removeNode(graph::NodeId node) noexcept;
         [[nodiscard]] RenderResult<void> connect(graph::PinId from, graph::PinId to) noexcept;
         [[nodiscard]] RenderResult<void> disconnect(graph::PinId from, graph::PinId to) noexcept;
@@ -86,10 +87,10 @@ namespace lux::render
         [[nodiscard]] RenderError fail() noexcept;
         [[nodiscard]] bool writable() const noexcept { return target_ && !failed_; }
 
-        EffectGraph* target_;
-        graph::GraphEdit graph_edit_;
+        EffectGraph*                        target_;
+        graph::GraphEdit                    graph_edit_;
         std::map<graph::NodeId, EffectNode> nodes_;
-        std::vector<EffectOutput> outputs_;
-        bool failed_ = false;
+        std::vector<EffectOutput>           outputs_;
+        bool                                failed_ = false;
     };
 }

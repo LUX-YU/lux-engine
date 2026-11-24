@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/FrameOperation.hpp>
+#include "FrameHarness.hpp"
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
 #include "BufferReadback.hpp"
@@ -36,17 +36,21 @@ int main(int argc, char** argv)
     const auto prepare = [&]
     {
         device->readCompleted(completed);
-        return take(round.prepare(input, completed, *uploader));
+        CHECK(round.select(input));
+        return take(round.prepare(completed, *uploader)) ? std::optional{round.binding(storage)} : std::nullopt;
     };
     const auto upload = [&]
     {
         CHECK(uploader->hasFrameCopies());
-        CHECK(FrameOperation::flushFrameCopies(*uploader));
-        const auto receipt = take(runTask(FrameOperation::submitPreparationCopies(*uploader)));
-        CHECK(receipt && receipt->ranges == 1);
-        FrameOperation::acceptFrameCopies(*uploader, *receipt);
-        round.settle(receipt->point, {});
-        CHECK(take(graphics.wait(receipt->point.serial, 5'000'000'000)));
+        FrameHarness frame(*device, 1, uploader.get());
+        std::uint32_t slot;
+        CHECK(frame.beginFrame(slot));
+        const auto regions = uploader->statistics().copy_regions;
+        CHECK(take(runTask(frame.render({}, {}))) == 1);
+        CHECK(uploader->statistics().copy_regions == regions + 1);
+        const auto point = device->submissionPoint(device->queueIndex(graphics), graphics.submitted());
+        round.settle(point, {});
+        CHECK(take(graphics.wait(point.serial, 5'000'000'000)));
         const auto bound = prepare();
         CHECK(bound && bound->buffer);
         return *bound;
@@ -85,7 +89,7 @@ int main(int argc, char** argv)
     CHECK(take(compute.wait(compute_point.serial, 5'000'000'000)));
     CHECK(!prepare() && uploader->hasFrameCopies());
     // A second consumer arrives before the copy receipt. The receipt must still contain one range.
-    const auto peer = take(round.prepare(input, completed, *uploader));
+    const auto peer = prepare();
     CHECK(!peer);
     auto* recycled = upload().buffer;
     CHECK(recycled == first.buffer || recycled == second.buffer);
@@ -94,7 +98,7 @@ int main(int argc, char** argv)
     CHECK(stored == expected);
     round.finish(false);
     revision = 0;
-    const auto invalid = round.prepare(input, completed, *uploader);
+    const auto invalid = round.select(input);
     CHECK(!invalid && invalid.error().type == kFrameContract && !uploader->hasFrameCopies());
     round.finish(false);
     CHECK(device->drain() && validation.errors == 0);

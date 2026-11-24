@@ -8,108 +8,67 @@ namespace lux::render
     {
         struct OwnedColumn final
         {
+            std::size_t batch;
             const frame_detail::ColumnOps* operations;
             std::unique_ptr<void, void (*)(void*) noexcept> values;
         };
 
-        FrameLayout layout;
+        std::vector<Batch> batches;
         std::vector<OwnedColumn> columns;
-        EPhase phase = EPhase::WRITABLE;
     };
 
     FrameData::FrameData() noexcept = default;
 
     FrameData::FrameData(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-    FrameData::~FrameData() noexcept
-    {
-        requireUnsealed();
-    }
+    FrameData::~FrameData() noexcept = default;
 
-    FrameData::FrameData(FrameData&& other) noexcept
-    {
-        other.requireUnsealed();
-        impl_ = std::move(other.impl_);
-    }
+    FrameData::FrameData(FrameData&&) noexcept = default;
 
-    FrameData& FrameData::operator=(FrameData&& other) noexcept
-    {
-        requireUnsealed();
-        other.requireUnsealed();
-        if (this != &other) impl_ = std::move(other.impl_);
-        return *this;
-    }
-
-    void FrameData::requireUnsealed() const noexcept
-    {
-        if (sealed()) std::terminate();
-    }
+    FrameData& FrameData::operator=(FrameData&&) noexcept = default;
 
     RenderResult<FrameData>
     FrameData::create(
-        FrameLayout layout,
+        std::vector<Batch> batches,
         std::span<const frame_detail::ColumnOps* const> operations,
         std::span<const std::size_t> capacities
     ) noexcept
     {
-        const bool is_invalid_layout = !layout.valid() || operations.size() != layout.channels().size();
-        const bool is_invalid_capacities = !capacities.empty() && capacities.size() != operations.size();
-        if (is_invalid_layout || is_invalid_capacities) return cxx::unexpected(RenderError{kFrameContract});
+        if (!capacities.empty() && capacities.size() != operations.size())
+            return cxx::unexpected(RenderError{kFrameContract});
         auto result = std::make_unique<Impl>();
-        result->layout = std::move(layout);
+        result->batches = std::move(batches);
         result->columns.reserve(operations.size());
-        for (std::size_t i = 0; i < operations.size(); ++i)
+        for (std::size_t batch = 0; batch < result->batches.size(); ++batch)
         {
-            const auto* operation = operations[i];
-            if (!operation) return cxx::unexpected(RenderError{kFrameContract});
-            Impl::OwnedColumn column{operation, {operation->create(), operation->destroy}};
-            if (!capacities.empty())
+            for (std::size_t n = 0; n < result->batches[batch].channels.size(); ++n)
             {
-                if (auto reserved = operation->reserve(column.values.get(), capacities[i]); !reserved)
-                    return cxx::unexpected(reserved.error());
+                const auto i = result->columns.size();
+                const auto* ops = operations[i];
+                Impl::OwnedColumn column{batch, ops, {ops->create(), ops->destroy}};
+                if (!capacities.empty())
+                {
+                    if (auto reserved = ops->reserve(column.values.get(), capacities[i]); !reserved)
+                        return cxx::unexpected(reserved.error());
+                }
+                result->columns.push_back(std::move(column));
             }
-            result->columns.push_back(std::move(column));
         }
         return FrameData{std::move(result)};
     }
 
-    bool FrameData::writable() const noexcept
+    std::span<const FrameData::Batch> FrameData::batches() const & noexcept
     {
-        return impl_ && impl_->phase == EPhase::WRITABLE;
+        return impl_ ? std::span<const Batch>{impl_->batches} : std::span<const Batch>{};
     }
 
-    bool FrameData::sealed() const noexcept
+    bool FrameData::matchesChannel(std::size_t index, cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
     {
-        return impl_ && impl_->phase != EPhase::WRITABLE;
-    }
-
-    bool FrameData::beginSubmission() noexcept
-    {
-        if (!impl_ || impl_->phase != EPhase::SEALED) return false;
-        impl_->phase = EPhase::IN_FLIGHT;
-        return true;
-    }
-
-    void FrameData::completeSubmission() noexcept
-    {
-        if (!impl_ || impl_->phase != EPhase::IN_FLIGHT) std::terminate();
-        impl_->phase = EPhase::WRITABLE;
-    }
-
-    const FrameLayout& FrameData::layout() const & noexcept
-    {
-        if (!impl_) std::terminate();
-        return impl_->layout;
-    }
-
-    FrameLayoutKey FrameData::layoutKey() const noexcept
-    {
-        return impl_ ? impl_->layout.key() : FrameLayoutKey{};
-    }
-
-    std::size_t FrameData::findChannel(cxx::basic_type_info declaration, cxx::basic_type_info element) const noexcept
-    {
-        return impl_ ? impl_->layout.find(declaration, element) : SIZE_MAX;
+        if (!impl_ || index >= impl_->columns.size()) return false;
+        const auto& batch = impl_->batches[impl_->columns[index].batch];
+        const auto& schema = batch.channels[index - batch.first_column];
+        return schema.declaration == declaration && schema.element == element &&
+            schema.declaration.name() == declaration.name() && schema.element.name() == element.name();
     }
 
     FrameData::Column FrameData::column(std::size_t index) const & noexcept
@@ -129,7 +88,7 @@ namespace lux::render
     RenderResult<void*> FrameData::append(std::size_t index, std::size_t count) noexcept
     {
         const bool is_invalid_column = !impl_ || index >= impl_->columns.size();
-        if (is_invalid_column || !writable()) return cxx::unexpected(RenderError{kFrameContract});
+        if (is_invalid_column) return cxx::unexpected(RenderError{kFrameContract});
         auto& column = impl_->columns[index];
         return column.operations->append(column.values.get(), count);
     }
@@ -137,27 +96,13 @@ namespace lux::render
     RenderResult<void> FrameData::reserve(std::size_t index, std::size_t count) noexcept
     {
         const bool is_invalid_column = !impl_ || index >= impl_->columns.size();
-        if (is_invalid_column || !writable()) return cxx::unexpected(RenderError{kFrameContract});
+        if (is_invalid_column) return cxx::unexpected(RenderError{kFrameContract});
         auto& column = impl_->columns[index];
         return column.operations->reserve(column.values.get(), count);
     }
 
-    RenderResult<void> FrameData::seal() noexcept
-    {
-        if (!writable()) return cxx::unexpected(RenderError{kFrameContract});
-        impl_->phase = EPhase::SEALED;
-        return {};
-    }
-
-    void FrameData::release() noexcept
-    {
-        if (!impl_ || impl_->phase != EPhase::SEALED) std::terminate();
-        impl_->phase = EPhase::WRITABLE;
-    }
-
     void FrameData::reset() noexcept
     {
-        requireUnsealed();
         if (!impl_) return;
         for (auto& column : impl_->columns) column.operations->clear(column.values.get());
     }

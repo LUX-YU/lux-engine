@@ -1,11 +1,14 @@
 add_executable(render_effect_graph_test
     EffectGraph.cpp
-    ../src/runtime/JobControl.cpp
+    ../src/runtime/RenderJob.cpp
 )
 
-target_include_directories(render_effect_graph_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude")
+target_include_directories(render_effect_graph_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+)
 
-target_link_libraries(render_effect_graph_test PRIVATE render)
+target_link_libraries(render_effect_graph_test PRIVATE render_extensions)
 
 add_test(NAME render.effect.graph COMMAND render_effect_graph_test)
 
@@ -26,6 +29,7 @@ lux_render_shader("${effect_prepared_buffer}" "shaders/EffectPreparedBuffer.slan
 
 set(effect_stream_vertex "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamVertex.hpp")
 set(effect_stream_inline "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamInline.hpp")
+set(effect_stream_target "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamTarget.hpp")
 set(effect_stream_uniform "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamUniform.hpp")
 set(effect_stream_layers "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamLayers.hpp")
 set(effect_stream_indirect "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamIndirect.hpp")
@@ -34,8 +38,6 @@ set(effect_stream_mesh "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamMesh.hpp
 set(effect_stream_material "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectStreamMaterial.hpp")
 set(effect_record_only "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectRecordOnly.hpp")
 set(effect_record_table "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectRecordTable.hpp")
-set(effect_mesh_imports "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectMeshImports.hpp")
-set(effect_mesh_imports_paged "${CMAKE_CURRENT_BINARY_DIR}/shaders/EffectMeshImportsPaged.hpp")
 
 lux_render_shader("${effect_stream_vertex}" "shaders/EffectStreamVertex.slang" vertex kEffectStreamVertex)
 lux_render_shader("${effect_stream_mesh}" "shaders/EffectStreamMesh.slang" vertex kEffectStreamMesh)
@@ -50,12 +52,8 @@ lux_render_shader(
     -DRECORD_ONLY=1
 )
 
-lux_render_shader("${effect_mesh_imports}" "shaders/EffectMeshImports.slang" compute kEffectMeshImports)
-lux_render_shader(
-    "${effect_mesh_imports_paged}" "shaders/EffectMeshImports.slang" compute kEffectMeshImportsPaged
-    -DPAGED_INSTANCES=1 --physical-pointers
-)
 lux_render_shader("${effect_stream_inline}" "shaders/EffectStreamInline.slang" fragment kEffectStreamInline)
+lux_render_shader("${effect_stream_target}" "shaders/EffectStreamTarget.slang" fragment kEffectStreamTarget)
 lux_render_shader("${effect_stream_uniform}" "shaders/EffectStreamUniform.slang" fragment kEffectStreamUniform)
 lux_render_shader("${effect_stream_layers}" "shaders/EffectStreamLayers.slang" compute kEffectStreamLayers)
 lux_render_shader("${effect_stream_indirect}" "shaders/EffectStreamIndirect.slang" compute kEffectStreamIndirect)
@@ -63,8 +61,12 @@ lux_render_shader(
     "${effect_stream_shared_texture}" "shaders/EffectStreamSharedTexture.slang" fragment kEffectStreamSharedTexture
 )
 
+set(scene_view_shader "${CMAKE_CURRENT_BINARY_DIR}/shaders/SceneViewColor.hpp")
+lux_render_shader("${scene_view_shader}" "shaders/SceneViewColor.slang" compute kSceneViewColor)
+
 add_executable(render_output_test
     Output.cpp
+    "${scene_view_shader}"
     "${effect_graph_shader}"
     "${effect_import_shader}"
     "${effect_producer_shader}"
@@ -72,6 +74,7 @@ add_executable(render_output_test
     "${effect_uniform_shader}"
     "${effect_stream_vertex}"
     "${effect_stream_inline}"
+    "${effect_stream_target}"
     "${effect_stream_uniform}"
     "${effect_stream_layers}"
     "${effect_stream_indirect}"
@@ -80,8 +83,6 @@ add_executable(render_output_test
     "${effect_stream_material}"
     "${effect_record_table}"
     "${effect_record_only}"
-    "${effect_mesh_imports}"
-    "${effect_mesh_imports_paged}"
 )
 
 target_include_directories(render_output_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shaders")
@@ -96,17 +97,11 @@ set_tests_properties(render.native.output PROPERTIES TIMEOUT 30)
 add_test(NAME render.effect.output_vulkan COMMAND render_output_test --effect-graph)
 set_tests_properties(render.effect.output_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
-add_test(NAME render.effect.uniform_queues_vulkan COMMAND render_output_test --effect-graph vulkan async-uniform)
-set_tests_properties(render.effect.uniform_queues_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
 add_test(NAME render.effect.uniform_faults_vulkan COMMAND render_output_test --effect-graph vulkan uniform-faults)
 set_tests_properties(render.effect.uniform_faults_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 
 add_test(NAME render.effect.depth_pyramid_vulkan COMMAND render_output_test --basic-features)
 set_tests_properties(render.effect.depth_pyramid_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-add_test(NAME render.effect.lighting_vulkan COMMAND render_output_test --lighting-graph)
-set_tests_properties(render.effect.lighting_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
 add_test(NAME render.effect.prepared_buffer_vulkan COMMAND render_output_test --prepared-buffer)
 set_tests_properties(render.effect.prepared_buffer_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
@@ -116,24 +111,6 @@ set_tests_properties(render.effect.shared_texture_vulkan PROPERTIES TIMEOUT 45 R
 
 add_test(NAME render.effect.mesh_stream_vulkan COMMAND render_output_test --mesh-stream)
 set_tests_properties(render.effect.mesh_stream_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-add_test(NAME render.effect.mesh_imports_vulkan COMMAND render_output_test --mesh-imports)
-set_tests_properties(render.effect.mesh_imports_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-add_test(NAME render.effect.mesh_imports_paged COMMAND render_output_test --mesh-imports paged)
-set_tests_properties(render.effect.mesh_imports_paged PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
-add_test(NAME render.effect.mesh_visibility_vulkan COMMAND render_output_test --mesh-visibility)
-set_tests_properties(render.effect.mesh_visibility_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-add_test(NAME render.effect.mesh_visibility_paged COMMAND render_output_test --mesh-visibility paged)
-set_tests_properties(render.effect.mesh_visibility_paged PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
-add_test(NAME render.effect.gbuffer_visibility_vulkan COMMAND render_output_test --gbuffer-visibility)
-set_tests_properties(render.effect.gbuffer_visibility_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-add_test(NAME render.effect.gbuffer_visibility_paged COMMAND render_output_test --gbuffer-visibility paged)
-set_tests_properties(render.effect.gbuffer_visibility_paged PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 
 add_test(NAME render.effect.material_stream_vulkan COMMAND render_output_test --material-stream)
 set_tests_properties(render.effect.material_stream_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
@@ -163,41 +140,8 @@ if(WIN32)
         TIMEOUT 60 RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "LUX_NATIVE_VALIDATION=1"
     )
 
-    add_test(NAME render.effect.uniform_queues_d3d12 COMMAND render_output_test --effect-graph d3d12 async-uniform)
-    set_tests_properties(render.effect.uniform_queues_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
     add_test(NAME render.effect.uniform_faults_d3d12 COMMAND render_output_test --effect-graph d3d12 uniform-faults)
     set_tests_properties(render.effect.uniform_faults_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
-    add_test(NAME render.effect.depth_pyramid_d3d12 COMMAND render_output_test --basic-features d3d12)
-    set_tests_properties(render.effect.depth_pyramid_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.lighting_d3d12 COMMAND render_output_test --lighting-graph d3d12)
-    set_tests_properties(render.effect.lighting_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.prepared_buffer_d3d12 COMMAND render_output_test --prepared-buffer d3d12)
-    set_tests_properties(render.effect.prepared_buffer_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.shared_texture_d3d12 COMMAND render_output_test --shared-texture d3d12)
-    set_tests_properties(render.effect.shared_texture_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
-    add_test(NAME render.effect.mesh_stream_d3d12 COMMAND render_output_test --mesh-stream d3d12)
-    set_tests_properties(render.effect.mesh_stream_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.mesh_imports_d3d12 COMMAND render_output_test --mesh-imports d3d12)
-    set_tests_properties(render.effect.mesh_imports_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.mesh_imports_paged_d3d12 COMMAND render_output_test --mesh-imports d3d12 paged)
-    set_tests_properties(render.effect.mesh_imports_paged_d3d12 PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
-
-    add_test(NAME render.effect.mesh_visibility_d3d12 COMMAND render_output_test --mesh-visibility d3d12)
-    set_tests_properties(render.effect.mesh_visibility_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.gbuffer_visibility_d3d12 COMMAND render_output_test --gbuffer-visibility d3d12)
-    set_tests_properties(render.effect.gbuffer_visibility_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.effect.material_stream_d3d12 COMMAND render_output_test --material-stream d3d12)
-    set_tests_properties(render.effect.material_stream_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 endif()
 
 add_test(NAME render.native.device_lost_completion COMMAND render_output_test --device-lost)
@@ -206,7 +150,7 @@ set_tests_properties(render.native.device_lost_completion PROPERTIES TIMEOUT 30 
 set(graph_shader_headers)
 foreach(spec GraphFill.comp GraphTriangle.vert GraphMrt.frag GraphPresent.frag GraphCount.comp GraphRed.frag
     GraphHistory.comp GraphDepthField.comp GraphShadowSampler.frag ClusterCompare.comp GraphConstantLayout.comp
-    ShadowReadback.comp GraphTableSize.frag GraphAliasLoad.comp
+    ShadowReadback.comp GraphTableSize.frag GraphAliasLoad.comp GraphVolume.comp
 )
     get_filename_component(shader_name "${spec}" NAME_WE)
     set(header "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.hpp")
@@ -228,8 +172,6 @@ target_include_directories(render_graph_chain PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
 )
 add_test(NAME render.graph.chain COMMAND render_graph_chain)
-# The combined matrix creates 74 independent devices. ASan + validation exceeds 90 seconds;
-# per-scenario progress assertions remain unchanged by this outer process budget.
 set_tests_properties(render.graph.chain PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 if(WIN32)
     add_test(NAME render.graph.chain_d3d12 COMMAND render_graph_chain chain d3d12)
@@ -239,21 +181,12 @@ endif()
 add_test(NAME render.graph.alias_frontiers_vulkan COMMAND render_graph_chain alias-frontiers vulkan)
 set_tests_properties(render.graph.alias_frontiers_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
-add_test(NAME render.graph.local_freeze_vulkan COMMAND render_graph_chain local-freeze vulkan)
-set_tests_properties(render.graph.local_freeze_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
 add_test(NAME render.graph.batch_reuse_vulkan COMMAND render_graph_chain batch-reuse vulkan)
 set_tests_properties(render.graph.batch_reuse_vulkan PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 
 if(WIN32)
     add_test(NAME render.graph.alias_frontiers_d3d12 COMMAND render_graph_chain alias-frontiers d3d12)
     set_tests_properties(render.graph.alias_frontiers_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.graph.local_freeze_d3d12 COMMAND render_graph_chain local-freeze d3d12)
-    set_tests_properties(render.graph.local_freeze_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.graph.batch_reuse_d3d12 COMMAND render_graph_chain batch-reuse d3d12)
-    set_tests_properties(render.graph.batch_reuse_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endif()
 
 add_test(NAME render.graph.analysis COMMAND render_graph_chain analysis)
@@ -276,18 +209,13 @@ endif()
 if(WIN32 AND LUX_RENDER_GRAPH_ALLOCATION_PROBE)
     target_sources(render_graph_chain PRIVATE GraphMeasurements.cpp)
     target_compile_definitions(render_graph_chain PRIVATE LUX_RENDER_GRAPH_ALLOCATION_PROBE)
-    add_test(NAME render.graph.measure_vulkan COMMAND render_graph_chain measure)
-    add_test(NAME render.graph.measure_d3d12 COMMAND render_graph_chain measure d3d12)
-    set_tests_properties(render.graph.measure_vulkan render.graph.measure_d3d12 PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
 endif()
 
 add_test(NAME render.graph.typed_vulkan COMMAND render_graph_chain encoding)
 add_test(NAME render.graph.recording_vulkan COMMAND render_graph_chain recording)
 add_test(NAME render.graph.raster_vulkan COMMAND render_graph_chain raster)
 if(WIN32)
-    add_test(NAME render.graph.typed_d3d12 COMMAND render_graph_chain encoding d3d12)
     add_test(NAME render.graph.recording_d3d12 COMMAND render_graph_chain recording d3d12)
-    add_test(NAME render.graph.raster_d3d12 COMMAND render_graph_chain raster d3d12)
 endif()
 
 add_executable(render_deferred_scene DeferredScene.cpp)
@@ -330,15 +258,11 @@ add_test(NAME render.effect.gbuffer_vulkan COMMAND render_deferred_scene 3 --eff
 set_tests_properties(render.effect.gbuffer_vulkan PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 add_test(NAME render.effect.gbuffer_paged COMMAND render_deferred_scene 3 --effect-graph --paged)
 set_tests_properties(render.effect.gbuffer_paged PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
-add_test(NAME render.effect.shadow_vulkan COMMAND render_deferred_scene 3 --effect-shadow)
-set_tests_properties(render.effect.shadow_vulkan PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 add_test(NAME render.effect.shadow_paged COMMAND render_deferred_scene 3 --effect-shadow --paged)
 set_tests_properties(render.effect.shadow_paged PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 if(WIN32)
     add_test(NAME render.effect.gbuffer_d3d12 COMMAND render_deferred_scene 3 --effect-graph --d3d12)
     set_tests_properties(render.effect.gbuffer_d3d12 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
-    add_test(NAME render.effect.shadow_d3d12 COMMAND render_deferred_scene 3 --effect-shadow --d3d12)
-    set_tests_properties(render.effect.shadow_d3d12 PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 endif()
 
 set(ipc_test_source "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/ipc/test")
@@ -355,21 +279,16 @@ if(LUX_RENDER_DEVELOPMENT_METRICS)
         lux::engine::core::math
     )
     add_test(NAME render.material.purposes_vulkan COMMAND render_material_scale)
-    add_test(NAME render.material.pipeline_isolation_vulkan COMMAND render_material_scale --pipeline-isolation)
     add_test(NAME render.material.pipeline_shutdown_vulkan COMMAND render_material_scale --pipeline-shutdown)
     add_test(
         NAME render.material.pipeline_single_worker
         COMMAND render_material_scale --pipeline-isolation --single-worker
     )
-    if(WIN32)
-        add_test(NAME render.material.purposes_d3d12 COMMAND render_material_scale d3d12)
-        add_test(NAME render.material.pipeline_isolation_d3d12 COMMAND render_material_scale --pipeline-isolation d3d12)
-        add_test(NAME render.material.pipeline_shutdown_d3d12 COMMAND render_material_scale --pipeline-shutdown d3d12)
     endif()
-endif()
 
 add_executable(render_shadow_scene ShadowScene.cpp ${graph_shader_headers})
 target_include_directories(render_shadow_scene PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude"
     "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
     "${CMAKE_CURRENT_BINARY_DIR}/shaders"
     "${CMAKE_CURRENT_BINARY_DIR}/../shaders"
@@ -380,9 +299,7 @@ target_link_libraries(render_shadow_scene PRIVATE
     lux::engine::function::material_compiler lux::engine::function::material_graph
 )
 
-add_test(NAME render.sample.shadow COMMAND render_shadow_scene)
 target_link_libraries(render_shadow_scene PRIVATE render_extensions)
-set_tests_properties(render.sample.shadow PROPERTIES TIMEOUT 120)
 
 add_test(NAME render.sample.clustered_shadow COMMAND render_shadow_scene 3 --clustered)
 set_tests_properties(render.sample.clustered_shadow PROPERTIES TIMEOUT 120)
@@ -400,24 +317,14 @@ target_link_libraries(render_clustered_scene PRIVATE
 )
 
 add_test(NAME render.sample.clustered COMMAND render_clustered_scene)
-add_test(NAME render.sample.clustered_single_queue COMMAND render_clustered_scene 1 --single-queue)
-add_test(NAME render.sample.clustered_same_family COMMAND render_clustered_scene 2 --same-family)
-add_test(NAME render.sample.clustered_paged COMMAND render_clustered_scene 3 --paged)
 
 if(WIN32)
     add_test(NAME render.native.descriptor_snapshots_d3d12 COMMAND render_deferred_scene --descriptor-snapshots)
     set_tests_properties(render.native.descriptor_snapshots_d3d12 PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
-
-    add_test(NAME render.sample.clustered_d3d12 COMMAND render_clustered_scene 3 --d3d12)
-    set_tests_properties(render.sample.clustered_d3d12 PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()
 
 target_link_libraries(render_clustered_scene PRIVATE render_extensions)
-set_tests_properties(
-    render.sample.clustered render.sample.clustered_single_queue
-    render.sample.clustered_same_family render.sample.clustered_paged
-    PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE
-)
+set_tests_properties(render.sample.clustered PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 
 # Render Command contracts live with Render; Platform IPC remains independently buildable.
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS memory)

@@ -101,7 +101,8 @@ namespace lux::render::detail
             }
 
             const auto* previous = p ? recording.rasterScope(recording.passes[p - 1]) : nullptr;
-            bool same_attachments = previous && pass.condition_region == recording.passes[p - 1].condition_region &&
+            bool same_attachments = previous && pass.submission == recording.passes[p - 1].submission &&
+                                    pass.condition_region == recording.passes[p - 1].condition_region &&
                                     previous->colors.size() == raster->colors.size() &&
                                     bool(previous->depth) == bool(raster->depth);
             // Exclusive bodies own their sections and cannot share a managed rendering scope.
@@ -118,9 +119,9 @@ namespace lux::render::detail
                 }
             }
             const bool attachment_barriers_only =
-                pass.before.buffers.empty() &&
+                pass.entry_buffers.count == 0 &&
                 std::ranges::all_of(
-                    pass.before.images,
+                    recording.imageBarriers(pass),
                     [&](const auto& barrier) { return attachmentTransition(barrier, *raster); }
                 );
             if (same_attachments && attachment_barriers_only)
@@ -138,7 +139,7 @@ namespace lux::render::detail
                     group.depth->store = raster->depth->store;
                 }
                 // Attachment accesses are ordered inside one rendering scope, not by illegal in-scope barriers.
-                pass.before.images.clear();
+                pass.entry_images.count = 0;
             }
             else
             {
@@ -332,59 +333,61 @@ namespace lux::render::detail
         };
     } // namespace
 
-    void GraphCompiler::Workspace::compileFixedBindings(compiled::RenderGraph& graph) noexcept
+    void RenderGraphCompiler::Workspace::compileFixedBindings(compiled::RenderGraph& graph) noexcept
     {
         auto& recording = graph.recording_;
         const auto& programs = graph.programs_;
         const auto& bindings = *graph.binding_plan_;
         for (const auto& batch : graph.submissions())
         {
-            FixedBindingState state, skipped;
-            auto region = kGraphInvalidIndex, last = kGraphInvalidIndex;
-            auto skipped_pass = kGraphInvalidIndex, skipped_join = kGraphInvalidIndex;
-            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            for (const auto& part : batch.recordings)
             {
-                auto& pass = recording.passes[p];
-                if (p == batch.output_begin)
+                FixedBindingState state, skipped;
+                auto region = kGraphInvalidIndex, last = kGraphInvalidIndex;
+                auto skipped_pass = kGraphInvalidIndex, skipped_join = kGraphInvalidIndex;
+                for (auto p = part.first_pass; p < part.end_pass; ++p)
                 {
-                    state = {};
-                    region = last = kGraphInvalidIndex;
-                }
-                const auto* raster = recording.rasterCommands(pass);
-                const bool dynamic = raster && std::holds_alternative<RasterListCommands>(raster->draw);
-                const auto select = [&](FixedBindingState& facts)
-                {
-                    if (dynamic) return FixedBindingDelta{.pool = !facts.pool};
-                    const auto slot = pass.binding_slot;
-                    return facts.select(programs[slot], bindings.passes[slot].has_private_set, pass);
-                };
-                if (region != pass.condition_region)
-                {
-                    if (region != kGraphInvalidIndex)
+                    auto& pass = recording.passes[p];
+                    const auto* transfer = recording.transferCommands(pass);
+                    // A copy cannot change the predecessor on either conditional path. Resolve
+                    // their join at the next command that actually consumes or changes bindings.
+                    if (transfer && transfer->preserves_bindings) continue;
+                    const auto* raster = recording.rasterCommands(pass);
+                    const bool dynamic = raster && std::holds_alternative<RasterListCommands>(raster->draw);
+                    const auto select = [&](FixedBindingState& facts)
                     {
-                        auto taken = state;
-                        state.intersect(skipped);
-                        if (state.mixed)
+                        if (dynamic) return FixedBindingDelta{.pool = !facts.pool};
+                        const auto slot = pass.binding_slot;
+                        return facts.select(programs[slot], bindings.passes[slot].has_private_set, pass);
+                    };
+                    if (region != pass.condition_region)
+                    {
+                        if (region != kGraphInvalidIndex)
                         {
-                            pass.binding_join = static_cast<std::uint32_t>(recording.binding_joins.size());
-                            recording.conditions[region].binding_join = pass.binding_join;
-                            recording.binding_joins.push_back({
-                                p, last, skipped_pass, skipped_join, select(taken), select(skipped)
-                            });
+                            auto taken = state;
+                            state.intersect(skipped);
+                            if (state.mixed)
+                            {
+                                pass.binding_join = static_cast<std::uint32_t>(recording.binding_joins.size());
+                                recording.conditions[region].binding_join = pass.binding_join;
+                                recording.binding_joins.push_back({
+                                    p, last, skipped_pass, skipped_join, select(taken), select(skipped)
+                                });
+                            }
+                        }
+                        region = pass.condition_region;
+                        if (region != kGraphInvalidIndex)
+                        {
+                            skipped = state;
+                            skipped_pass = last;
+                            skipped_join = pass.binding_join;
                         }
                     }
-                    region = pass.condition_region;
-                    if (region != kGraphInvalidIndex)
-                    {
-                        skipped = state;
-                        skipped_pass = last;
-                        skipped_join = pass.binding_join;
-                    }
+                    pass.fixed_bindings = select(state);
+                    const bool clobbers = dynamic || transfer;
+                    if (clobbers) state = {};
+                    last = clobbers ? kGraphInvalidIndex : p;
                 }
-                pass.fixed_bindings = select(state);
-                const bool clobbers = dynamic || std::holds_alternative<TransferCommandSlot>(pass.commands);
-                if (clobbers) state = {};
-                last = clobbers ? kGraphInvalidIndex : p;
             }
         }
     }

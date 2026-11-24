@@ -12,7 +12,6 @@
 #include <lux/engine/render/runtime/commands/detail/CommandDispatchContext.hpp>
 #include <lux/engine/render/resource/ResourceIdentity.hpp>
 #include <stdexec/execution.hpp>
-#include <lux/engine/render/resource/ReplicaMutation.hpp>
 
 namespace lux::render::runtime_detail
 {
@@ -25,6 +24,7 @@ namespace lux::render
     {
         void (*invoke)(void*, runtime_detail::CommandDispatchContext&) noexcept = nullptr;
         void* object = nullptr;
+        bool synchronous = false;
     };
 
     template <class C>
@@ -105,9 +105,10 @@ namespace lux::render
             {
                 return C::nodeId(message.get<typename C::Request>());
             };
+            result.call_.synchronous = true;
             result.call_.invoke = [](void* object, runtime_detail::CommandDispatchContext& context) noexcept
             {
-                auto& output = runtime_detail::prepareResponse(context.outbox, context.response_route);
+                auto& output = context.response();
                 auto& response = output.emplace<typename C::Response>();
                 response.error = RenderError{kRuntimeState};
                 Method(*static_cast<State*>(object), context.request.get<typename C::Request>(), response);
@@ -166,8 +167,7 @@ namespace lux::render
                         }
                         if constexpr (!std::is_void_v<Storage>)
                             runtime_detail::finishResourceCommand(context.resources, context.resource_id);
-                        runtime_detail::prepareResponse(context.outbox, context.response_route)
-                            .emplace<typename C::Response>(std::move(response));
+                        context.response().emplace<typename C::Response>(std::move(response));
                     }
                     else
                     {
@@ -179,16 +179,10 @@ namespace lux::render
                         // Keep the request in operation state: a lazy Handler may borrow its fields
                         // after dispatchRequest has released the IPC message.
                         auto sender = stdexec::just(std::move(input)) | stdexec::let_value(
-                            [object, storage = context.resource, device = context.device, render_scheduler]
+                            [object, storage = context.resource]
                             (typename C::Request& request) noexcept
                             {
-                                if constexpr (requires { Invocation::writes_replica; })
-                                {
-                                    return invokeReplica<C, Method>(
-                                        *device, *static_cast<Storage*>(storage), request, render_scheduler
-                                    );
-                                }
-                                else if constexpr (std::is_void_v<H>)
+                                if constexpr (std::is_void_v<H>)
                                 {
                                     return Invocation::invoke(storage, std::move(request));
                                 }
@@ -222,7 +216,8 @@ namespace lux::render
                         );
                     }
                 },
-                nullptr
+                nullptr,
+                SyncCommandHandlerFor<C, H, Method>
             };
             return result;
         }
@@ -239,21 +234,6 @@ namespace lux::render
         }
 
     private:
-        template <class C, auto Method, class S>
-        static exec::task<typename C::Response>
-        invokeReplica(
-            detail::DeviceEntry& device,
-            S& storage,
-            typename C::Request& request,
-            cxx::execution::ManualContext::Scheduler delivery
-        ) noexcept
-        {
-            ReplicaMutation mutation(device);
-            auto completed = Method(storage, mutation, std::move(request)) | stdexec::upon_error(ResponseError<C>{}) |
-                stdexec::upon_stopped([]() noexcept { return ResponseError<C>{}(RenderError{kCommandCancelled}); });
-            co_return co_await (std::move(completed) | stdexec::continues_on(delivery));
-        }
-
         friend class runtime_detail::CommandRegistry;
 
         template <RenderCommand C> void initializeDeclaration() noexcept

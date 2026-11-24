@@ -2,10 +2,13 @@
 
 #include <lux/engine/render/graph/RasterViewport.hpp>
 #include <lux/engine/render/graph/Draw.hpp>
+#include <lux/engine/render/runtime/TargetId.hpp>
 #include <optional>
 #include <span>
 
 namespace nri { struct Texture; struct Buffer; }
+
+namespace lux::rdesc { struct ShaderBlock; }
 
 namespace lux::render
 {
@@ -13,6 +16,13 @@ namespace lux::render
     {
         const nri::Texture* image;
         GraphImageRange range;
+    };
+
+    struct RasterRecordLayout final
+    {
+        const rdesc::ShaderBlock& block;
+        std::uint32_t frame_slot;
+        bool reads_images;
     };
 
     struct RasterRecordInput final
@@ -65,7 +75,15 @@ namespace lux::render
         GraphImageRange range;
     };
 
-    using VRasterBindingSource = std::variant<RasterBufferSlice, RasterImageSlice, RasterSamplerSlot>;
+    // A sampled, single-mip offscreen publication selected before Job ordering.
+    struct RasterTargetImage final
+    {
+        TargetId target;
+        EProductRead read;
+        bool operator==(const RasterTargetImage&) const noexcept = default;
+    };
+
+    using VRasterBindingSource = std::variant<RasterBufferSlice, RasterImageSlice, RasterSamplerSlot, RasterTargetImage>;
 
     struct RasterStreamBinding final
     {
@@ -123,11 +141,18 @@ namespace lux::render
         }
     };
 
+    // Half-open edges in framebuffer pixels. Freeze intersects them with the selected section viewport.
+    struct RasterClipRect final
+    {
+        std::int32_t left, top, right, bottom;
+    };
+
     struct RasterStreamDraw final
     {
         RasterProgramSlot program;
         RasterStreamRange bindings, vertices, constants;
         VRasterStreamDraw draw;
+        std::optional<RasterClipRect> clip{};
     };
 
     struct RasterDepthBias final
@@ -146,7 +171,7 @@ namespace lux::render
         std::optional<RasterDepthBias> depth_bias;
     };
 
-    // Producer arrays are borrowed for one call. The Job owns the selected draw data.
+    // A Resource lends these arrays during Freeze. A producer submitting temporary arrays lends them during its call.
     struct RasterStreamData final
     {
         std::span<const RasterStreamDraw> draws;
@@ -155,5 +180,12 @@ namespace lux::render
         std::span<const std::byte> constants;
         // An empty section table uses the pass's original scope. Runtime-layer attachments require sections.
         std::span<const RasterStreamSection> sections = {};
+
+        [[nodiscard]] bool fitsSlotRanges() const noexcept
+        {
+            return draws.size() < kGraphInvalidIndex && bindings.size() < kGraphInvalidIndex &&
+                vertices.size() < kGraphInvalidIndex && constants.size() < kGraphInvalidIndex &&
+                sections.size() < kGraphInvalidIndex;
+        }
     };
 } // namespace lux::render

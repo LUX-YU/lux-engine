@@ -1,12 +1,13 @@
 #pragma once
 
 #include <lux/engine/render/device/DeviceId.hpp>
+#include <lux/engine/render/effect/EffectDeviceGraph.hpp>
 #include <lux/engine/render/runtime/Target.hpp>
-#include <lux/engine/render/graph/RenderGraph.hpp>
-#include <lux/engine/render/effect/EffectGraphBuild.hpp>
+#include <lux/engine/render/effect/EffectValidation.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <algorithm>
 #include <memory>
+#include <unordered_map>
 #include <tuple>
 #include <vector>
 
@@ -14,18 +15,8 @@ namespace lux::render::runtime_detail
 {
     struct RenderEffect final
     {
-        std::unique_ptr<const EffectGraph> source;
-        std::vector<EffectNodeConfiguration> node_configurations;
+        effect_detail::ValidatedEffectGraph graph;
 
-        struct NodeState final
-        {
-            using Destroy = void (*)(void*) noexcept;
-            std::unique_ptr<void, Destroy> value;
-            cxx::basic_type_info type;
-            graph::NodeId node;
-            std::size_t bytes;
-        };
-        std::vector<NodeState> node_states;
         struct CommandRoute final
         {
             CommandId command;
@@ -45,18 +36,14 @@ namespace lux::render::runtime_detail
 
         EffectOutputDesc output;
         DeviceSessionId preparing_device{};
-        struct DeviceGraph final
-        {
-            DeviceSessionId device;
-            std::unique_ptr<const compiled::RenderGraph> graph;
-        };
-        std::vector<DeviceGraph> device_graphs;
+        // Jobs borrow a device's linked graph until its users drain, including across other device insertions.
+        std::unordered_map<DeviceSessionId, detail::EffectDeviceGraph, DeviceSessionId::Hash> device_graphs;
 
-        [[nodiscard]] const compiled::RenderGraph* graphForDevice(DeviceSessionId device) const & noexcept
+        [[nodiscard]] const detail::EffectDeviceGraph* graphForDevice(DeviceSessionId device) const & noexcept
         {
-            const auto found = std::ranges::find(device_graphs, device, &DeviceGraph::device);
-            return found == device_graphs.end() ? nullptr : found->graph.get();
+            const auto found = device_graphs.find(device);
+            return found == device_graphs.end() ? nullptr : &found->second;
         }
-        const compiled::RenderGraph* graphForDevice(DeviceSessionId) const && = delete;
+        const detail::EffectDeviceGraph* graphForDevice(DeviceSessionId) const && = delete;
     };
 } // namespace lux::render::runtime_detail

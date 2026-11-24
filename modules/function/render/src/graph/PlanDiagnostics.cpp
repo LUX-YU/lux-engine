@@ -19,6 +19,8 @@ namespace lux::render::detail
             return quoteDumpText(
                 boundary == ETransitionBoundary::EXPORT             ? "export"
                 : boundary == ETransitionBoundary::RESTORE_IMPORTED ? "restore imported state"
+                : boundary == ETransitionBoundary::RESTORE_TRANSIENT ? "restore transient state"
+                : boundary == ETransitionBoundary::PUBLISH_READS ? "after writer"
                                                                     : "before pass"
             );
         }
@@ -80,13 +82,19 @@ namespace lux::render::detail
         {
             return false;
         }
-        std::string output;
         const auto& plan = graph.graph;
+        const auto& report = graph.diagnostics;
         const auto& program = plan.recording_;
+        const bool missing_passes = !plan.binding_plan_ || report.source_passes.size() != program.passes.size() ||
+            report.descriptor_fields.size() != plan.binding_plan_->passes.size();
+        const bool missing_resources = report.resource_keys.size() != plan.resources_.size() ||
+            report.resource_reuse.size() != plan.resources_.size();
+        if (missing_passes || missing_resources) return false;
+        std::string output;
         const auto sourcePass = [&](const auto& transition)
         {
             return transition.previous_slot == kGraphInvalidIndex
-                ? kGraphInvalidIndex : graph.diagnostics.source_passes[transition.previous_slot].index;
+                ? kGraphInvalidIndex : report.source_passes[transition.previous_slot].index;
         };
         constexpr std::string_view boundaries[]{
             "non-raster",
@@ -116,7 +124,7 @@ namespace lux::render::detail
                     output += "p" + std::to_string(previous) + " -> p" + std::to_string(i) + " [style=dashed,label=" +
                               quoteDumpText("resource " + std::to_string(transition.resource) + " " + detail) + "];\n";
                 };
-                for (const auto& transition : program.passes[i].before.images)
+                for (const auto& transition : program.imageBarriers(program.passes[i]))
                 {
                     barrierEdge(
                         transition,
@@ -124,7 +132,7 @@ namespace lux::render::detail
                             std::to_string(transition.native.layerOffset)
                     );
                 }
-                for (const auto& transition : program.passes[i].before.buffers)
+                for (const auto& transition : program.bufferBarriers(program.passes[i]))
                 {
                     barrierEdge(transition, "whole-buffer barrier");
                 }
@@ -134,13 +142,13 @@ namespace lux::render::detail
         }
         std::set<nri::Pipeline*> pipelines;
         std::set<nri::PipelineLayout*> layouts;
-        std::size_t image_barriers = program.after.images.size();
-        std::size_t buffer_barriers = program.after.buffers.size();
+        std::size_t image_barriers = program.after.images.size() + program.transient_exits.size();
+        std::size_t buffer_barriers = program.after.buffers.size() + program.buffer_read_releases.size();
         std::size_t dynamic_raster_passes = 0;
         for (const auto& pass : program.passes)
         {
-            image_barriers += pass.before.images.size();
-            buffer_barriers += pass.before.buffers.size();
+            image_barriers += pass.entry_images.count;
+            buffer_barriers += pass.entry_buffers.count;
             if (const auto* raster = plan.rasterCommands(pass))
             {
                 dynamic_raster_passes += std::holds_alternative<RasterListCommands>(raster->draw);
@@ -172,7 +180,7 @@ namespace lux::render::detail
             const auto& pass = program.passes[p];
             const auto kind = std::visit([](auto slot) { return slot.kind; }, pass.commands);
             output +=
-                "{\"source\":" + std::to_string(graph.diagnostics.source_passes[p].index) +
+                "{\"source\":" + std::to_string(report.source_passes[p].index) +
                 ",\"unit\":" + std::to_string(pass.unit) +
                 ",\"kind\":" + std::to_string(static_cast<unsigned>(kind)) +
                 ",\"group\":" + std::to_string(pass.rendering_group) +
@@ -181,7 +189,7 @@ namespace lux::render::detail
                 ",\"rendering_boundary\":" + quoteDumpText(boundaries[static_cast<unsigned>(pass.rendering_boundary)]) +
                 ",\"descriptors\":[";
             const auto& layout = plan.binding_plan_->pass(pass.binding_slot);
-            const auto& fields = graph.diagnostics.descriptor_fields[pass.binding_slot];
+            const auto& fields = report.descriptor_fields[pass.binding_slot];
             for (std::size_t i = 0; i < fields.size(); ++i)
             {
                 if (i)
@@ -212,22 +220,24 @@ namespace lux::render::detail
                           ",\"range\":" + dumpRange(use.range) + "}";
             }
             output += "],\"image_transitions\":[";
-            for (std::size_t i = 0; i < pass.before.images.size(); ++i)
+            const auto images = program.imageBarriers(pass);
+            for (std::size_t i = 0; i < images.size(); ++i)
             {
                 if (i)
                 {
                     output += ',';
                 }
-                output += imageTransitionDump(pass.before.images[i], sourcePass(pass.before.images[i]));
+                output += imageTransitionDump(images[i], sourcePass(images[i]));
             }
             output += "],\"buffer_transitions\":[";
-            for (std::size_t i = 0; i < pass.before.buffers.size(); ++i)
+            const auto buffers = program.bufferBarriers(pass);
+            for (std::size_t i = 0; i < buffers.size(); ++i)
             {
                 if (i)
                 {
                     output += ',';
                 }
-                output += bufferTransitionDump(pass.before.buffers[i], sourcePass(pass.before.buffers[i]));
+                output += bufferTransitionDump(buffers[i], sourcePass(buffers[i]));
             }
             output += "]}";
         }
@@ -254,7 +264,7 @@ namespace lux::render::detail
             }
             output += "{\"resource\":" + std::to_string(i) +
                       ",\"slot\":" + std::to_string(plan.physical_resources_.resource_slots[i].index) + ",\"reason\":" +
-                      quoteDumpText(reuse_reasons[static_cast<unsigned>(graph.diagnostics.resource_reuse[i])]) + "}";
+                      quoteDumpText(reuse_reasons[static_cast<unsigned>(report.resource_reuse[i])]) + "}";
         }
         output += "],\"alias_use_frontiers\":[";
         const auto& physical = plan.physical_resources_;
@@ -316,8 +326,8 @@ namespace lux::render::detail
             output += "{\"queue_role\":" + std::to_string(static_cast<unsigned>(batch.queue)) +
                       ",\"first_pass\":" + std::to_string(batch.first_pass) +
                       ",\"pass_count\":" + std::to_string(batch.pass_count) +
-                      ",\"output_begin\":" + std::to_string(batch.output_begin) +
-                      ",\"reusable_recording\":" + (batch.reusable_recording ? "true" : "false") +
+                      ",\"output_begin\":" + std::to_string(batch.outputBegin()) +
+                      ",\"reusable_recording\":" + (batch.recordings.front().reusable ? "true" : "false") +
                       ",\"dependencies\":[";
             for (std::size_t d = 0; d < batch.dependencies.size(); ++d)
             {
@@ -354,6 +364,13 @@ namespace lux::render::detail
             }
             output += imageTransitionDump(program.after.images[i], sourcePass(program.after.images[i]));
         }
+        output += "],\"transient_exit_transitions\":[";
+        for (std::size_t i = 0; i < program.transient_exits.size(); ++i)
+        {
+            if (i) output += ',';
+            const auto& transition = program.transient_exits[i];
+            output += imageTransitionDump(transition, sourcePass(transition));
+        }
         output += "],\"final_buffer_transitions\":[";
         for (std::size_t i = 0; i < program.after.buffers.size(); ++i)
         {
@@ -362,6 +379,13 @@ namespace lux::render::detail
                 output += ',';
             }
             output += bufferTransitionDump(program.after.buffers[i], sourcePass(program.after.buffers[i]));
+        }
+        output += "],\"buffer_read_releases\":[";
+        for (std::size_t i = 0; i < program.buffer_read_releases.size(); ++i)
+        {
+            if (i) output += ',';
+            const auto& release = program.buffer_read_releases[i];
+            output += bufferTransitionDump(release, sourcePass(release));
         }
         output += "],\"groups\":[";
         for (std::size_t i = 0; i < program.groups.size(); ++i)
@@ -394,7 +418,7 @@ namespace lux::render::detail
             const auto& resource = plan.resources_[i];
             const bool borrowed = resource.origin == EGraphOrigin::IMPORTED || i == plan.output_;
             output += "{\"id\":" + std::to_string(i) + ",\"key\":" +
-                      quoteDumpText(graph.diagnostics.resource_keys[i]) + ",\"allocation\":" +
+                      quoteDumpText(report.resource_keys[i]) + ",\"allocation\":" +
                       quoteDumpText(
                           !resource.used                                ? "culled"
                           : !resource.memory_used                       ? "CPU-parameter-input"

@@ -2,7 +2,6 @@
 
 #include <lux/engine/render/resource/lighting/Data.hpp>
 #include <lux/engine/render/resource/ResourceDefinition.hpp>
-#include <lux/engine/render/resource/BuiltinResources.hpp>
 
 #include <lux/engine/render/resource/lighting/Binding.hpp>
 
@@ -15,8 +14,8 @@ namespace lux::render
 
         static inline const ResourceDefinition descriptor{
             kLightResourceName,
-            0,
-            0,
+            {},
+            {},
             cxx::make_basic_type_info<DirectLightingBinding>(),
             "Scene direct-light GPU arrays: directional, finite point and spot lights, with independent FIF replicas.",
             EResourceDomain::SCENE,

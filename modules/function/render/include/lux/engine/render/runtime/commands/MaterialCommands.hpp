@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/render/resource/material/Data.hpp>
+#include <lux/engine/render/resource/material/MeshPipelines.hpp>
 #include <span>
 
 namespace lux::render::MaterialCommands
@@ -22,6 +23,8 @@ namespace lux::render::MaterialCommands
         {
             RenderError error{};
             MaterialProgramId program{};
+            // Indexed by EMaterialPurpose. Geometry and attachment state qualify the native pipeline separately.
+            std::array<bool, 3> indexed_mesh_shader{};
         };
 
         [[nodiscard]] static ResourceInstanceId resourceId(const Request& request) noexcept
@@ -30,19 +33,23 @@ namespace lux::render::MaterialCommands
         }
     };
 
+    struct PrepareMeshPipelines final
+    {
+        static constexpr std::string_view name = "lux.render.material.mesh_pipelines.prepare";
+
+        using Request = MaterialMeshPipelines;
+        using Data = Request;
+        using Response = AckResponse;
+
+        [[nodiscard]] static MaterialProgramId resourceId(const Request& request) noexcept { return request.program; }
+    };
+
     struct CreateInstance final
     {
         static constexpr std::string_view name = "lux.render.material.instance.create";
         static constexpr bool requires_idle_resource = true;
 
-        struct Request final
-        {
-            MaterialProgramId program;
-            MaterialParameters parameters;
-            // Referenced textures remain the client's responsibility.
-            std::vector<TextureId> textures;
-        };
-
+        using Request = MaterialInstanceData;
         using Data = Request;
 
         struct Response final

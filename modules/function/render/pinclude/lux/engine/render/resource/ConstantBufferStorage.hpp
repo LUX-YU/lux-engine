@@ -5,7 +5,6 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/graph/Ids.hpp>
 #include <lux/engine/render/graph/ConstantBlock.hpp>
-#include <optional>
 #include <vector>
 
 namespace lux::render::detail
@@ -33,8 +32,9 @@ namespace lux::render::detail
     private:
         friend class ConstantBufferSelections;
 
+        [[nodiscard]] RenderResult<ConstantBufferVersion> pinExisting(std::uint64_t revision) noexcept;
         [[nodiscard]] RenderResult<ConstantBufferVersion>
-        pin(std::uint64_t revision, const SubmissionFrontiers&) noexcept;
+        allocateVersion(std::uint64_t revision, const SubmissionFrontiers&) noexcept;
         [[nodiscard]] RenderResult<void>
         stage(ConstantBufferVersion, std::span<const std::byte>, ResourceUploader&) noexcept;
         void settleUpload(ConstantBufferVersion, SubmissionPoint, RenderError) noexcept;
@@ -73,8 +73,10 @@ namespace lux::render::detail
     class ConstantBufferSelections final
     {
     public:
-        [[nodiscard]] RenderResult<std::optional<ResourceInput>>
-        prepare(const BoundConstantBuffer&, const SubmissionFrontiers&, ResourceUploader&) noexcept;
+        [[nodiscard]] RenderResult<void> select(const BoundConstantBuffer&) noexcept;
+        [[nodiscard]] bool empty() const noexcept { return entries_.empty(); }
+        [[nodiscard]] RenderResult<bool> prepare(const SubmissionFrontiers&, ResourceUploader&) noexcept;
+        [[nodiscard]] ResourceInput binding(ConstantBufferStorage&) const noexcept;
         void settle(SubmissionPoint, RenderError) noexcept;
         void finish(bool unknown) noexcept;
 
@@ -83,9 +85,10 @@ namespace lux::render::detail
         {
             ConstantBufferStorage* storage;
             ConstantBufferVersion version{};
-            std::vector<std::byte> pending;
+            std::size_t offset;
             std::uint64_t revision = 0;
         };
         std::vector<Entry> entries_;
+        std::vector<std::byte> pending_;
     };
 } // namespace lux::render::detail

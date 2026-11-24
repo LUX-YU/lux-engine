@@ -2,9 +2,12 @@
 
 #include <lux/engine/render/frame/FrameError.hpp>
 #include <lux/engine/render/frame/FrameLayout.hpp>
+#include <lux/engine/render/resource/ResourceId.hpp>
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 namespace lux::render
 {
@@ -58,15 +61,10 @@ namespace lux::render
             }
         };
 
-        template <class Resource, class... Elements>
-        void appendColumnOps(
-            const FrameLayout& layout,
-            std::vector<const ColumnOps*>& output,
-            std::type_identity<std::tuple<Elements...>>
-        ) noexcept
+        template <class... Elements>
+        void appendColumnOps(std::vector<const ColumnOps*>& ops, std::type_identity<std::tuple<Elements...>>) noexcept
         {
-            ((output[layout.find(cxx::make_basic_type_info<Resource>(), cxx::make_basic_type_info<Elements>())] =
-                &columnOps<Elements>), ...);
+            (ops.push_back(&columnOps<Elements>), ...);
         }
     }
 
@@ -79,8 +77,9 @@ namespace lux::render
         std::size_t index_;
     };
 
+    // Moving this packet ends all borrows of its columns and writable spans.
     // One CPU input slot. Payloads are grouped by (Resource declaration, element type).
-    // Cross-channel application order is not insertion order; zero elements mean no update.
+    // Batches apply in packet order. An empty PER_RUN batch explicitly replaces its previous payload.
     // Pointer/span members do not acquire a deep lifetime: use explicit commands for foreign borrows.
     class LUX_RENDER_PUBLIC FrameData final
     {
@@ -98,31 +97,41 @@ namespace lux::render
         FrameData(const FrameData&) = delete;
         FrameData& operator=(const FrameData&) = delete;
 
-        // Initial capacities are per channel, or empty for no reservation. They are not schema limits.
-        // Element metadata and typed callbacks must remain loaded until this owner is destroyed.
-        template <class Resources> [[nodiscard]] static RenderResult<FrameData>
-        create(const FrameLayout& layout, std::span<const std::size_t> capacities = {}) noexcept
+        // The packet owns its columns. Static author metadata remains loaded until the host drains the endpoint.
+        struct Batch final
         {
-            auto declared = makeFrameLayout(std::type_identity<Resources>{}, layout.revision());
-            if (!declared) return cxx::unexpected(declared.error());
-            if (!declared->hasSameChannels(layout)) return cxx::unexpected(RenderError{kFrameContract});
-            std::vector<const frame_detail::ColumnOps*> operations(layout.channels().size());
-            [&]<class... R>(std::type_identity<std::tuple<R...>>) noexcept
+            ResourceAddress target;
+            std::span<const FrameChannel> channels;
+            std::size_t first_column;
+        };
+
+        template <class Resources> [[nodiscard]] static RenderResult<FrameData>
+        create(std::array<ResourceAddress, std::tuple_size_v<Resources>> targets,
+               std::span<const std::size_t> capacities = {}) noexcept
+        {
+            std::vector<Batch> batches;
+            std::vector<const frame_detail::ColumnOps*> operations;
+            batches.reserve(targets.size());
+            const auto add = [&]<class Resource>(std::type_identity<Resource>) noexcept
             {
-                (frame_detail::appendColumnOps<R>(
-                    layout, operations, std::type_identity<typename R::PerFrameData>{}
-                ), ...);
-            }(std::type_identity<Resources>{});
-            return create(layout, operations, capacities);
+                batches.push_back({targets[batches.size()], frameChannels<Resource>(), operations.size()});
+                frame_detail::appendColumnOps(operations, std::type_identity<typename Resource::PerFrameData>{});
+            };
+            const auto add_batches = [&]<class... R>(std::type_identity<std::tuple<R...>>) noexcept
+            {
+                (add(std::type_identity<R>{}), ...);
+            };
+            add_batches(std::type_identity<Resources>{});
+            return create(std::move(batches), operations, capacities);
         }
 
         template <class Resource, class T>
         requires(frame_detail::FrameElement<T> && frame_detail::declaredElement<Resource, T>)
-        [[nodiscard]] RenderResult<TypedColumnIndex<Resource, T>> resolveColumn() const noexcept
+        [[nodiscard]] RenderResult<TypedColumnIndex<Resource, T>> resolveColumn(std::optional<std::size_t> batch = {}) const noexcept
         {
             if (!impl_) return cxx::unexpected(RenderError{kFrameContract});
-            const auto index = channel<Resource, T>();
-            if (index >= layout().channels().size()) return cxx::unexpected(RenderError{kFrameContract});
+            const auto index = findChannel(cxx::make_basic_type_info<Resource>(), cxx::make_basic_type_info<T>(), batch);
+            if (index == SIZE_MAX) return cxx::unexpected(RenderError{kFrameContract});
             return TypedColumnIndex<Resource, T>{index};
         }
 
@@ -132,13 +141,9 @@ namespace lux::render
         appendData(TypedColumnIndex<Resource, T> column, std::size_t count) & noexcept
         {
             if (!impl_) return cxx::unexpected(RenderError{kFrameContract});
-            const auto channels = layout().channels();
             const auto index = column.index_;
-            if (index >= channels.size()) return cxx::unexpected(RenderError{kFrameContract});
-            const auto& schema = channels[index];
-            const bool is_wrong_column = schema.declaration != cxx::make_basic_type_info<Resource>() ||
-                schema.element != cxx::make_basic_type_info<T>();
-            if (is_wrong_column) return cxx::unexpected(RenderError{kFrameContract});
+            if (!matchesChannel(index, cxx::make_basic_type_info<Resource>(), cxx::make_basic_type_info<T>()))
+                return cxx::unexpected(RenderError{kFrameContract});
             auto appended = append(index, count);
             if (!appended) return cxx::unexpected(appended.error());
             return std::span<T>{static_cast<T*>(*appended), count};
@@ -182,35 +187,25 @@ namespace lux::render
 
         template <class Resource, class T> std::span<const T> getData() const && = delete;
 
-        [[nodiscard]] const FrameLayout& layout() const & noexcept;
-        [[nodiscard]] const FrameLayout& layout() const && = delete;
-        [[nodiscard]] FrameLayoutKey layoutKey() const noexcept;
+        [[nodiscard]] std::span<const Batch> batches() const & noexcept;
+        std::span<const Batch> batches() const && = delete;
         [[nodiscard]] Column column(std::size_t index) const & noexcept;
         [[nodiscard]] Column column(std::size_t index) const && = delete;
         [[nodiscard]] std::size_t capacity(std::size_t index) const noexcept;
-        [[nodiscard]] bool writable() const noexcept;
-        [[nodiscard]] bool sealed() const noexcept;
-        [[nodiscard]] RenderResult<void> seal() noexcept;
-        // Caller thread only. Cancel an unsubmitted seal, or release a raw IPC seal after terminal settlement.
-        // RenderClient controls its own submissions through the in-flight phase.
-        void release() noexcept;
-        // Reset retains capacities. Reset/move/destruction while sealed is a fatal ownership violation.
+        [[nodiscard]] explicit operator bool() const noexcept { return impl_ != nullptr; }
+        // Clears the packet for reuse and retains its column capacities.
         void reset() noexcept;
 
     private:
-        friend class RenderClient;
-        enum class EPhase : std::uint8_t { WRITABLE, SEALED, IN_FLIGHT };
-        [[nodiscard]] bool beginSubmission() noexcept;
-        void completeSubmission() noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
         explicit FrameData(std::unique_ptr<Impl>) noexcept;
         [[nodiscard]] static RenderResult<FrameData>
-        create(FrameLayout, std::span<const frame_detail::ColumnOps* const>, std::span<const std::size_t>) noexcept;
+        create(std::vector<Batch>, std::span<const frame_detail::ColumnOps* const>, std::span<const std::size_t>) noexcept;
         [[nodiscard]] RenderResult<void*> append(std::size_t, std::size_t) noexcept;
         [[nodiscard]] RenderResult<void> reserve(std::size_t, std::size_t) noexcept;
-        void requireUnsealed() const noexcept;
-        [[nodiscard]] std::size_t findChannel(cxx::basic_type_info, cxx::basic_type_info) const noexcept;
+        [[nodiscard]] std::size_t findChannel(cxx::basic_type_info, cxx::basic_type_info, std::optional<std::size_t> = {}) const noexcept;
+        [[nodiscard]] bool matchesChannel(std::size_t, cxx::basic_type_info, cxx::basic_type_info) const noexcept;
 
         template <class Resource, class T> [[nodiscard]] std::size_t channel() const noexcept
         {

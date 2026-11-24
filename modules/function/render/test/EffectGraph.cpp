@@ -1,5 +1,7 @@
 #include <lux/engine/render/effect/EffectValidation.hpp>
-#include <lux/engine/render/runtime/JobControl.hpp>
+#include <lux/engine/render/graph/ImportedResourceSlot.hpp>
+#include <lux/engine/render/runtime/RenderJob.hpp>
+#include <lux/engine/render/runtime/ProductOrder.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <lux/engine/render/resource/transform/TransformSlotRetirement.hpp>
 #include <lux/engine/render/resource/instance/Data.hpp>
@@ -17,11 +19,27 @@ namespace
     namespace graph = lux::graph;
 
     static_assert(sizeof(TransformMatrix) == 64 && alignof(TransformMatrix) == 4);
-    static_assert(offsetof(MeshInstanceGpuProperty, transform_record) == 20);
-    static_assert(std::is_same_v<decltype(MeshInstanceGpuProperty::transform_record), std::uint32_t>);
+    static_assert(offsetof(MeshInstanceGpuProperty, transform_id) == 20);
+    static_assert(std::is_same_v<decltype(MeshInstanceGpuProperty::transform_id), TransformId>);
+    static_assert(std::is_same_v<decltype(TransformId::value), std::uint32_t>);
     using TransformSlot = lux::cxx::SlotKey<TransformTag>;
     static_assert(std::is_same_v<decltype(TransformSlot::index), std::uint32_t>);
     static_assert(std::is_same_v<decltype(TransformSlot::gen), std::uint32_t>);
+
+    static_assert([]
+    {
+        constexpr std::array writes{
+            detail::FinalBufferWrite{{0, 6}, 0, kGraphInvalidIndex},
+            detail::FinalBufferWrite{{4, 4}, 1, 0},
+            detail::FinalBufferWrite{{8, 4}, 1, kGraphInvalidIndex}
+        };
+        constexpr auto all = [](auto) { return true; };
+        constexpr auto fixed = [](auto region) { return region == kGraphInvalidIndex; };
+        return detail::bufferWritesCover({2, 10}, writes, all) &&
+            !detail::bufferWritesCover({2, 10}, writes, fixed) &&
+            detail::bufferWritesCover({8, 4}, writes, fixed) &&
+            !detail::bufferWritesCover({8, 5}, writes, all);
+    }());
 
     constexpr auto kInput = effectPortSemantic("input");
     constexpr auto kOutput = effectPortSemantic("output");
@@ -42,40 +60,31 @@ namespace
     }
 
     [[nodiscard]] EffectPortDefinition port(
-        std::string name, std::string type, graph::EPinDirection direction, bool required = false
+        std::string_view name, std::string_view type, graph::EPinDirection direction, bool required = false
     )
     {
         const auto semantic = effectPortSemantic(name);
-        return {semantic, std::move(name), {std::move(type), 1}, direction, graph::kUnlimitedFan, required};
+        return {semantic, name, {type, 1}, direction, graph::kUnlimitedFan, required};
     }
 
-    [[nodiscard]] const EffectNodeDefinition* registerCapability(
+    [[nodiscard]] const EffectCapability* registerCapability(
         EffectCatalog& catalog, std::string name, std::vector<EffectPortDefinition> ports
     )
     {
-        auto definition = std::make_unique<EffectNodeDefinition>();
         const auto id = graph::nodeTypeId(name);
-        definition->identity = {id, std::move(name), 1};
-        definition->ports = std::move(ports);
-        check(catalog.addCapability(std::move(definition)));
+        const EffectCapability definition{.id = id, .canonical_name = name, .ports = ports};
+        check(catalog.addCapability(definition));
 
-        auto implementation = std::make_unique<EffectImplementation>();
+        auto implementation = std::make_unique<ImplementationEntry>();
         implementation->identity = {std::string{kImplementation}, 1};
         implementation->capability = id;
         implementation->supported_outputs = {kOutput};
-        implementation->initialize = [](EffectInitializationContext&, std::string_view) noexcept -> RenderResult<void>
-        {
-            std::abort();
-        };
-        implementation->build = [](EffectCompileContext&, std::string_view) noexcept -> RenderResult<void>
-        {
-            std::abort();
-        };
+        implementation->create = [](graph::NodeId, std::string_view) noexcept -> EffectCreateResult { std::abort(); };
         check(catalog.addImplementation(std::move(implementation)));
         return catalog.findCapability(id, 1);
     }
 
-    [[nodiscard]] graph::NodeId add(EffectGraphEdit& edit, const EffectNodeDefinition& capability)
+    [[nodiscard]] graph::NodeId add(EffectGraphEdit& edit, const EffectCapability& capability)
     {
         return take(edit.addNode(capability, {std::string{kImplementation}, 1}));
     }
@@ -150,7 +159,7 @@ static void validateTransformSlotRetirement()
 
 static void verifyInstallationGenerations()
 {
-    lux::render::detail::JobControl job{EJobCadence::CONTINUOUS};
+    lux::render::runtime_detail::RenderJob job{{}, EJobCadence::CONTINUOUS};
     const auto abandoned_start = job.reserveGeneration(false);
     const auto installed = job.reserveGeneration(false);
     check(abandoned_start && installed && *installed > *abandoned_start);
@@ -162,18 +171,39 @@ static void verifyInstallationGenerations()
     check(job.tryAdmit(0, 0));
     const auto busy = job.reserveGeneration(true);
     check(!busy && busy.error().type == kJobBusy);
-    check(!job.finishRun(*installed, {}));
+    job.finishRun(*installed, {});
 
     const auto retry = job.reserveGeneration(true);
     check(retry && *retry > *failed_rebind);
     job.publishGeneration(*retry);
-    job.stop();
+    job.closeAdmission();
     const auto restart = job.reserveGeneration(false);
     check(restart && *restart > *retry && job.executionGeneration() == *retry);
 }
 
 int main()
 {
+    // The reader changes its current-run image between frames. Duplicate bindings produce one edge;
+    // a cycle leaves the independent Job runnable, then replacing one edge restores the full order.
+    runtime_detail::ProductOrder products;
+    for (bool cycle : {false, false, true, true, false})
+    {
+        products.begin(4);
+        products.addRead(2, 0);
+        products.addRead(2, 0);
+        products.addRead(0, 1);
+        products.addRead(1, cycle ? 2 : 3);
+        check(products.finish() == !cycle);
+        if (cycle)
+        {
+            check(std::ranges::equal(products.ordered(), std::array{3u}));
+            check(products.blocked(0) && products.blocked(1) && products.blocked(2));
+        }
+        else check(std::ranges::equal(products.ordered(), std::array{2u, 0u, 1u, 3u}));
+    }
+    products.begin(4);
+    check(products.finish() && std::ranges::equal(products.ordered(), std::array{0u, 1u, 2u, 3u}));
+
     verifyInstallationGenerations();
     validateTransformSlotRetirement();
     constexpr auto input = graph::EPinDirection::INPUT;
@@ -214,8 +244,8 @@ int main()
     check(graph.findNode(abandoned) == nullptr);
     check(rejected(graph, catalog) == EEffectIssue::CATALOG_NOT_SEALED);
     catalog.seal();
-    check(!catalog.addCapability(std::make_unique<EffectNodeDefinition>()));
-    check(catalog.listImplementations(source->identity.id, 1).size() == 1);
+    check(!catalog.addCapability({}));
+    check(catalog.listImplementations(source->id, 1).size() == 1);
 
     const auto validated = validateEffectGraph(graph, catalog);
     check(validated);

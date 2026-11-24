@@ -11,7 +11,10 @@ namespace lux::render
             return cxx::unexpected(RenderError{kInvalidTargetExtent, {width, height, 0}});
         }
 
-        return validateEffectOutput({format, samples, kind, sampled});
+        const bool invalid_mode = display_mode != EDisplayMode::SDR && display_mode != EDisplayMode::HDR;
+        if (invalid_mode || (display_mode == EDisplayMode::HDR && kind != ETargetKind::SURFACE))
+            return cxx::unexpected(RenderError{kInvalidTargetKind, {static_cast<std::uint64_t>(kind)}});
+        return validateEffectOutput(outputContract());
     }
 
     RenderResult<void> validateEffectOutput(const EffectOutputDesc& output) noexcept

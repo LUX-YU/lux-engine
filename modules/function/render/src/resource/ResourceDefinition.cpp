@@ -6,11 +6,14 @@ namespace lux::render
     RenderResult<void> validateStorage(const ResourceDefinition& descriptor) noexcept
     {
         const bool invalid_identity = !descriptor.type.isValid();
-        const auto capabilities = descriptor.required_capabilities | descriptor.optional_capabilities;
-        const bool invalid_capabilities =
-            (capabilities & ~7u) != 0 || (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
-        const bool invalid_domain = descriptor.domain > EResourceDomain::VIEW;
-        const bool invalid_descriptor = invalid_identity || invalid_capabilities || invalid_domain;
+        constexpr auto known = GpuResourceFeatures{EGpuResourceFeature::SAMPLED_IMAGE_ARRAY} |
+            EGpuResourceFeature::BLOCK_COMPRESSION_BC | EGpuResourceFeature::STORAGE_BUFFER_ARRAY;
+        const bool unknown = !known.containsAll(descriptor.required_features | descriptor.optional_features);
+        const bool overlapping = descriptor.required_features.containsAny(descriptor.optional_features);
+        const bool invalid_capabilities = unknown || overlapping;
+        const bool invalid_domain = descriptor.domain > EResourceDomain::JOB;
+        const bool invalid_descriptor = invalid_identity || invalid_capabilities || invalid_domain ||
+            descriptor.lifetime > EResourceContentLifetime::PER_RUN;
         if (invalid_descriptor)
         {
             return cxx::unexpected(RenderError{kStorageContract});
@@ -42,6 +45,7 @@ namespace lux::render
             error::ErrorDescriptor{"lux.render.resource.mismatch", "Incompatible storage contract"},
             error::ErrorDescriptor{"lux.render.resource.factory", "Missing or conflicting storage factory"},
             error::ErrorDescriptor{"lux.render.resource.capability", "Storage capability unavailable"},
+            error::ErrorDescriptor{"lux.render.mesh.pipeline_not_ready", "Mesh pipeline is not prepared (material program slot, purpose, mesh slot)"},
             error::ErrorDescriptor{"lux.render.resource.identity", "Invalid storage identity"},
             error::ErrorDescriptor{"lux.render.resource.capacity", "Storage capacity exhausted"}
         };

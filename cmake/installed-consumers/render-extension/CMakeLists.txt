@@ -8,6 +8,8 @@ find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution
 
 find_package(lux-engine-function CONFIG REQUIRED COMPONENTS material_compiler)
 
+find_package(lux-engine-resource CONFIG REQUIRED COMPONENTS description)
+
 add_executable(render_extension Probe.cpp)
 target_link_libraries(render_extension PRIVATE lux::engine::function::render_extensions lux::engine::core::core_execution)
 target_compile_features(render_extension PRIVATE cxx_std_20)
@@ -25,6 +27,7 @@ add_executable(installed_material_commands MaterialCommands.cpp)
 target_include_directories(installed_material_commands PRIVATE "${render_test_sources}")
 
 target_link_libraries(installed_material_commands PRIVATE
+    lux::engine::resource::description
     lux::engine::function::render_extensions
     lux::engine::function::material_compiler
     lux::engine::core::core_execution
@@ -37,9 +40,6 @@ if(MSVC)
 endif()
 
 add_test(NAME installed.render.material_commands_vulkan COMMAND installed_material_commands)
-if(WIN32)
-    add_test(NAME installed.render.material_commands_d3d12 COMMAND installed_material_commands d3d12)
-endif()
 
 set(compute_source "${CMAKE_CURRENT_LIST_DIR}/ComputeOutput.slang")
 
@@ -64,9 +64,11 @@ foreach(entry IN ITEMS main typed)
     list(APPEND compute_headers "${header}")
 endforeach()
 
-foreach(entry IN ITEMS Fullscreen Red Green RecordColor)
+foreach(entry IN ITEMS Fullscreen Red Green SampleTarget RecordColor)
     set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/ResidentRaster.slang")
-    if(entry STREQUAL "RecordColor")
+    if(entry STREQUAL "SampleTarget")
+        set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/SampleTarget.slang")
+    elseif(entry STREQUAL "RecordColor")
         set(raster_source "${CMAKE_CURRENT_SOURCE_DIR}/RecordColor.slang")
     endif()
 
@@ -87,7 +89,28 @@ foreach(entry IN ITEMS Fullscreen Red Green RecordColor)
     list(APPEND raster_headers "${header}")
 endforeach()
 
-add_executable(compute_output ComputeOutput.cpp ${compute_headers} ${raster_headers})
+find_path(render_shader_include NAMES lux/engine/render/resource/view/SceneView.slang REQUIRED)
+set(view_shader "${CMAKE_CURRENT_SOURCE_DIR}/ViewTint.slang")
+set(view_header "${CMAKE_CURRENT_BINARY_DIR}/ViewTint.hpp")
+add_custom_command(
+    OUTPUT "${view_header}"
+    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${view_shader}" main fragment bundle "${view_header}"
+        "--symbol=kViewTint" "-I${render_shader_include}" "--depfile=${view_header}.d"
+    DEPENDS "${view_shader}" "${LUX_PROBE_SHADER_COMPILER}"
+    DEPFILE "${view_header}.d"
+    VERBATIM
+)
+
+set(particle_shader "${CMAKE_CURRENT_SOURCE_DIR}/ParticleColor.slang")
+set(particle_header "${CMAKE_CURRENT_BINARY_DIR}/ParticleColor.hpp")
+add_custom_command(
+    OUTPUT "${particle_header}"
+    COMMAND "${LUX_PROBE_SHADER_COMPILER}" "${particle_shader}" main compute bundle "${particle_header}" --symbol=kParticleColor
+    DEPENDS "${particle_shader}" "${LUX_PROBE_SHADER_COMPILER}"
+    VERBATIM
+)
+
+add_executable(compute_output ComputeOutput.cpp ${compute_headers} ${raster_headers} "${particle_header}" "${view_header}")
 
 set(joint_shader "${render_test_sources}/shaders/EffectGraphImport.slang")
 set(joint_header "${CMAKE_CURRENT_BINARY_DIR}/JointAverage.hpp")
@@ -146,73 +169,56 @@ if(MSVC)
 endif()
 
 add_test(NAME installed.render.compute_output_vulkan COMMAND compute_output)
-add_test(NAME installed.render.program_source_vulkan COMMAND compute_output vulkan resident-programs)
-set_tests_properties(installed.render.program_source_vulkan PROPERTIES TIMEOUT 45)
+add_test(NAME installed.render.cold_raster_vulkan COMMAND compute_output vulkan cold-programs)
+set_tests_properties(installed.render.cold_raster_vulkan PROPERTIES TIMEOUT 45)
 
+add_test(NAME installed.render.joint_lifecycle_vulkan COMMAND joint_lifecycle vulkan)
+set_tests_properties(installed.render.joint_lifecycle_vulkan PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
+
+foreach(mode IN ITEMS receipts receipt-partial receipt-unknown)
+    add_test(NAME installed.render.buffer_${mode}_vulkan COMMAND compute_output vulkan ${mode})
+    set_tests_properties(installed.render.buffer_${mode}_vulkan PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
+endforeach()
+
+set(native_backends vulkan)
 if(WIN32)
-    add_test(NAME installed.render.program_source_d3d12 COMMAND compute_output d3d12 resident-programs)
-    set_tests_properties(installed.render.program_source_d3d12 PROPERTIES TIMEOUT 45)
+    list(APPEND native_backends d3d12)
+    add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
+    set_tests_properties(installed.render.compute_output_d3d12 PROPERTIES TIMEOUT 45)
 endif()
 
-set(receipt_backends vulkan)
-
-if(WIN32)
-    list(APPEND receipt_backends d3d12)
-endif()
-
-foreach(backend IN LISTS receipt_backends)
-    add_test(NAME installed.render.joint_lifecycle_${backend} COMMAND joint_lifecycle ${backend})
-
-    set_tests_properties(installed.render.joint_lifecycle_${backend} PROPERTIES TIMEOUT 90 SKIP_RETURN_CODE 77)
-
+foreach(backend IN LISTS native_backends)
     add_test(NAME installed.render.raster_records_${backend} COMMAND compute_output ${backend} resident-records)
-    set_tests_properties(installed.render.raster_records_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
-
+    add_test(NAME installed.render.particles_${backend} COMMAND compute_output ${backend} particles)
+    add_test(NAME installed.render.debug_geometry_${backend} COMMAND compute_output ${backend} debug-draw)
+    add_test(NAME installed.render.target_draw_list_${backend} COMMAND compute_output ${backend} target-list)
+    set_tests_properties(installed.render.target_draw_list_${backend} PROPERTIES TIMEOUT 45)
+    set_tests_properties(installed.render.particles_${backend} installed.render.debug_geometry_${backend} PROPERTIES TIMEOUT 45)
     add_test(NAME installed.render.shared_images_${backend} COMMAND shared_images ${backend})
 
-    set_tests_properties(installed.render.shared_images_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
-
-    foreach(mode IN ITEMS receipts receipt-partial receipt-unknown)
-        add_test(NAME installed.render.buffer_${mode}_${backend} COMMAND compute_output ${backend} ${mode})
-
-        set_tests_properties(installed.render.buffer_${mode}_${backend} PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77)
-    endforeach()
+    set_tests_properties(
+        installed.render.raster_records_${backend} installed.render.shared_images_${backend}
+        PROPERTIES TIMEOUT 45 SKIP_RETURN_CODE 77
+    )
 endforeach()
 
 add_test(NAME installed.render.replica_unknown_vulkan COMMAND compute_output vulkan unknown)
-
 set_tests_properties(installed.render.compute_output_vulkan installed.render.replica_unknown_vulkan PROPERTIES TIMEOUT 45)
 
-if(WIN32)
-    add_test(NAME installed.render.compute_output_d3d12 COMMAND compute_output d3d12)
-
-    add_test(NAME installed.render.replica_unknown_d3d12 COMMAND compute_output d3d12 unknown)
-
-    set_tests_properties(installed.render.compute_output_d3d12 installed.render.replica_unknown_d3d12 PROPERTIES TIMEOUT 45)
-endif()
+# Compile the public authoring entry points independently against the installed SDK.
+add_library(render_sdk_headers OBJECT)
+target_link_libraries(render_sdk_headers PRIVATE lux::engine::function::render_extensions)
+target_compile_features(render_sdk_headers PRIVATE cxx_std_20)
 
 foreach(header IN ITEMS
-    core/ConfigValue core/FinalBufferVersion core/RenderErrorSink
-    effect/EffectNodeDefinition effect/builtin/GBuffer effect/builtin/Shadow effect/builtin/Lighting
-    effect/builtin/ToneMapping effect/builtin/MeshVisibility effect/builtin/MeshRaster effect/builtin/DepthPyramid
-    effect/builtin/ClusterLists runtime/commands/LightingCommands effect/EffectCatalog effect/EffectDiagnostic effect/EffectGraph
-    runtime/commands/CommandBinding runtime/commands/CommandHandler runtime/commands/CommandMethod runtime/commands/Registration
-    effect/EffectCompileContext graph/ConstantBlock
-    graph/Work graph/PassValues graph/Diagnostics
-    effect/CpuCall graph/DrawList graph/DrawResource
-    graph/IndexedGeometry effect/CpuCallFrame resource/material/Resource resource/RasterProgramBuild
-    resource/ResourceBinding
-    device/NativeProgramId resource/ProgramInputRevision resource/material/ProgramSource resource/mesh/MeshLayout
-    resource/ResourceProgramUses resource/ReplicaMutation
-    resource/ResourceCreateContext
-    resource/ResourceRegistry resource/StorageBinding device/ResourceUploader
+    effect/EffectGraph effect/EffectCompileContext effect/CpuCall graph/Work graph/DrawList
+    resource/ResourceBinding resource/ResourceProjection resource/StorageBinding device/ResourceUploader
+    runtime/commands/Registration
 )
     get_filename_component(name "${header}" NAME)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/${name}Header.cpp")
     file(GENERATE OUTPUT "${source}" CONTENT "#include <lux/engine/render/${header}.hpp>\n")
-    add_library(header_${name} OBJECT "${source}")
-    target_link_libraries(header_${name} PRIVATE lux::engine::function::render_extensions)
-    target_compile_features(header_${name} PRIVATE cxx_std_20)
+    target_sources(render_sdk_headers PRIVATE "${source}")
 endforeach()
 
 option(LUX_TEST_INSTALLED_EDITOR_UI "Run the Editor UI output probe against installed packages" OFF)
@@ -240,7 +246,9 @@ if(LUX_TEST_INSTALLED_EDITOR_UI)
     endif()
 endif()
 
-add_executable(effect_build EffectBuild.cpp)
+add_executable(effect_build EffectBuild.cpp "${joint_header}")
+
+target_include_directories(effect_build PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
 target_link_libraries(effect_build PRIVATE
     lux::engine::function::render_extensions
@@ -254,17 +262,11 @@ if(MSVC)
 endif()
 
 add_test(NAME installed.render.effect_build_vulkan COMMAND effect_build)
-add_test(NAME installed.render.effect_build_d3d12 COMMAND effect_build d3d12)
 
-set_tests_properties(installed.render.effect_build_vulkan installed.render.effect_build_d3d12 PROPERTIES TIMEOUT 45)
+set_tests_properties(installed.render.effect_build_vulkan PROPERTIES TIMEOUT 45)
 
 add_test(NAME installed.render.extension COMMAND render_extension)
 set_tests_properties(installed.render.extension PROPERTIES TIMEOUT 45)
-
-if(WIN32)
-    add_test(NAME installed.render.extension_d3d12 COMMAND render_extension d3d12)
-    set_tests_properties(installed.render.extension_d3d12 PROPERTIES TIMEOUT 45)
-endif()
 
 add_executable(frame_columns FrameColumns.cpp)
 

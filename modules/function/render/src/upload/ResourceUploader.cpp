@@ -1,4 +1,3 @@
-#include <lux/engine/render/runtime/FrameOperation.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/device/CopyEncoding.hpp>
 #include <algorithm>
@@ -46,7 +45,7 @@ namespace lux::render::detail
             std::span<const BufferWrite> writes;
             std::span<const BufferZero> fills;
             BufferPacking packing;
-            SubmissionFrontiers* progress;
+            SubmissionFrontiers* accepted;
         };
 
         struct ImageUpload final
@@ -234,7 +233,6 @@ namespace lux::render::detail
             std::size_t source_bytes, region_count;
             SubmissionQueue* queue;
             std::span<const BufferZero> fills;
-            SubmissionFrontiers* progress;
         };
 
         [[nodiscard]] RenderResult<UploadPlan>
@@ -276,7 +274,7 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return UploadPlan{BufferCursor{upload.writes, packing}, pending, runs, &device.queue(),
-                upload.fills, upload.progress};
+                upload.fills};
         }
 
         [[nodiscard]] RenderResult<UploadPlan> normalizeImageUpload(
@@ -284,8 +282,6 @@ namespace lux::render::detail
         ) noexcept
         {
             const auto& description = device.nriCore().GetTextureDesc(upload.target);
-            if (upload.boundary.accepted && !upload.boundary.accepted->belongsTo(&device, device.queueCount()))
-                return cxx::unexpected(RenderError{kDeviceArgument});
             const auto use = upload.boundary.use;
             const bool sampled = use == EImageUploadUse::SAMPLED;
             if (!sampled && use != EImageUploadUse::COPY_SOURCE) return cxx::unexpected(RenderError{kDeviceArgument});
@@ -302,7 +298,7 @@ namespace lux::render::detail
                     return cxx::unexpected(RenderError{kDeviceArgument});
             }
             return UploadPlan{ImageCursor{&upload, upload.original, alignment}, upload.source.size(),
-                upload.regions.size(), &queue, {}, nullptr};
+                upload.regions.size(), &queue, {}};
         }
     } // namespace
 
@@ -353,7 +349,6 @@ namespace lux::render::detail
         {
             std::span<Copy> copies{};
             std::span<const BufferZero> fills{};
-            SubmissionFrontiers* progress = nullptr;
             std::size_t minimum_range = 0;
         };
 
@@ -448,7 +443,7 @@ namespace lux::render::detail
 
     ResourceUploader::~ResourceUploader() noexcept
     {
-        if (hasPendingTransfers() || frame_copy_receipt_serial_)
+        if (hasPendingTransfers())
         {
             std::terminate();
         }
@@ -595,31 +590,28 @@ namespace lux::render::detail
     }
 
     static void bufferBarrier(
-        const nri::CoreInterface& nri_core,
-        nri::CommandBuffer& command,
-        nri::Buffer& buffer,
-        nri::AccessStage before,
-        nri::AccessStage after
+        const nri::CoreInterface& nri_core, nri::CommandBuffer& command, const nri::BufferBarrierDesc& barrier
     ) noexcept
     {
-        const nri::BufferBarrierDesc barrier{&buffer, before, after};
         const nri::BarrierDesc dependency{nullptr, 0, &barrier, 1};
         nri_core.CmdBarrier(command, dependency);
     }
 
     static void recordBuffer(
-        const nri::CoreInterface& core, nri::CommandBuffer& command, const StagingRange& staging,
+        const DeviceSession& device, nri::CommandBuffer& command, const StagingRange& staging,
         const BufferChunk& chunk
     ) noexcept
     {
+        const auto& core = device.nriCore();
         auto& target = *chunk.target;
-        const nri::AccessStage access{bufferAccess(core.GetBufferDesc(target).usage), nri::StageBits::ALL};
+        const auto usage = core.GetBufferDesc(target).usage;
+        const nri::AccessStage access{bufferBoundaryAccess(device.description(), usage), nri::StageBits::ALL};
         const nri::AccessStage copy{nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-        bufferBarrier(core, command, target, access, copy);
+        bufferBarrier(core, command, {&target, access, copy});
         recordCopy(core, command, BufferCopyRegion{
             staging.buffer, &target, staging.offset, chunk.offset, staging.bytes.size()
         });
-        bufferBarrier(core, command, target, copy, access);
+        bufferBarrier(core, command, {&target, copy, access});
     }
 
     struct ImageHandoff final
@@ -739,6 +731,7 @@ namespace lux::render::detail
 
     RenderResult<std::size_t> ResourceUploader::stageBuffer(const BufferWrite& write, std::size_t unit) noexcept
     {
+        if (submitting_frame_copies_) return cxx::unexpected(RenderError{kDeviceBusy});
         if (!write.target || write.source.empty())
         {
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -757,6 +750,7 @@ namespace lux::render::detail
 
     RenderResult<std::size_t> ResourceUploader::stageBufferPrefix(const BufferWrite& write, std::size_t unit) noexcept
     {
+        if (submitting_frame_copies_) return cxx::unexpected(RenderError{kDeviceBusy});
         const bool invalid_range = unit == 0 || write.source.size() % unit != 0;
         if (!write.target || write.source.empty() || invalid_range)
             return cxx::unexpected(RenderError{kDeviceArgument});
@@ -772,19 +766,6 @@ namespace lux::render::detail
             offset += bytes;
         }
         return offset;
-    }
-
-    RenderResult<void> FrameOperation::flushFrameCopies(ResourceUploader& uploads) noexcept
-    {
-        for (auto& copy : uploads.frame_copies_)
-        {
-            if (auto flushed = uploads.staging_arena_->flush(copy.staging); !flushed)
-            {
-                return flushed;
-            }
-            uploads.statistics_.copied_bytes += copy.staging.bytes.size();
-        }
-        return {};
     }
 
     bool ResourceUploader::hasFrameCopies() const noexcept
@@ -818,14 +799,10 @@ namespace lux::render::detail
             }
             // NRI barriers cover a whole Buffer. Disjoint, ordered writes share one transition;
             // overlapping or reverse ranges start another segment and retain their write dependency.
-            const auto access = bufferAccess(nri_core.GetBufferDesc(*target).usage);
-            bufferBarrier(
-                nri_core,
-                command,
-                *target,
-                {access, nri::StageBits::ALL},
-                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
-            );
+            const auto access = bufferBoundaryAccess(device_.description(), nri_core.GetBufferDesc(*target).usage);
+            bufferBarrier(nri_core, command, {
+                target, {access, nri::StageBits::ALL}, {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+            });
             for (auto i = first; i < last;)
             {
                 const auto& copy = frame_copies_[i];
@@ -848,36 +825,16 @@ namespace lux::render::detail
                 });
                 i = next;
             }
-            bufferBarrier(
-                nri_core,
-                command,
-                *target,
-                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                {access, nri::StageBits::ALL}
-            );
+            bufferBarrier(nri_core, command, {
+                target, {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}, {access, nri::StageBits::ALL}
+            });
             first = last;
         }
     }
 
-    void FrameOperation::acceptFrameCopies(ResourceUploader& uploads, FrameCopyReceipt receipt) noexcept
-    {
-        const auto queue_index = uploads.device_.queueIndex(uploads.device_.queue());
-        const bool wrong_submit = receipt.point.domain != &uploads.device_ || receipt.point.queue != queue_index ||
-            receipt.point.serial != uploads.frame_copy_receipt_serial_;
-        const bool wrong_ranges = !receipt.ranges || receipt.ranges != uploads.frame_copies_.size();
-        if (wrong_submit || wrong_ranges) std::terminate();
-        for (auto& copy : uploads.frame_copies_)
-        {
-            uploads.staging_arena_->markSubmitted(copy.staging, uploads.device_.queue(), receipt.point.serial);
-            ++uploads.statistics_.copy_regions;
-        }
-        uploads.frame_copies_.clear();
-        uploads.frame_copy_receipt_serial_ = 0;
-    }
-
     void ResourceUploader::cancelFrameCopies() noexcept
     {
-        if (frame_copy_receipt_serial_) std::terminate();
+        if (submitting_frame_copies_) std::terminate();
         // UNKNOWN returns only after the native queue has retired the uncertain submission.
         for (auto& copy : frame_copies_) staging_arena_->cancel(copy.staging);
         frame_copies_.clear();
@@ -885,19 +842,6 @@ namespace lux::render::detail
 
     void ResourceUploader::enqueue(UploadWindow& entry) noexcept
     {
-        // Current-frame writers precede background range waiters in the same finite list.
-        // Pending preparation can reserve one existing page. Both uses share the Arena
-        // and waiter list, and transfers can use every page after preparation settles.
-        if (entry.phase == UploadWindow::EPhase::WAIT_RANGE && entry.request.progress)
-        {
-            entry.next = range_waiters_;
-            range_waiters_ = &entry;
-            if (!range_waiters_tail_)
-            {
-                range_waiters_tail_ = &entry;
-            }
-            return;
-        }
         const bool waiting_range = entry.phase == UploadWindow::EPhase::WAIT_RANGE;
         auto*& head = waiting_range ? range_waiters_ : ready_head_;
         auto*& tail = waiting_range ? range_waiters_tail_ : ready_tail_;
@@ -950,15 +894,14 @@ namespace lux::render::detail
         next_commands_[index] = (slot + 1) % options_.staging_pages;
     }
 
-    exec::task<RenderResult<std::optional<FrameOperation::FrameCopyReceipt>>>
-    FrameOperation::submitPreparationCopies(ResourceUploader& uploads) noexcept
+    exec::task<RenderResult<std::optional<FrameCopyReceipt>>> ResourceUploader::submitFrameCopies() noexcept
     {
-        if (uploads.frame_copy_receipt_serial_) std::terminate();
-        const auto ranges = uploads.stagedFrameCopyCount();
+        if (submitting_frame_copies_) co_return cxx::unexpected(RenderError{kDeviceBusy});
+        const auto ranges = frame_copies_.size();
         if (!ranges) co_return std::nullopt;
-        auto& graphics = uploads.device_.queue();
+        auto& graphics = device_.queue();
         std::uint32_t slot = 0;
-        auto recorded = uploads.beginCommands(graphics, slot);
+        auto recorded = beginCommands(graphics, slot);
         if (!recorded)
         {
             const auto error = recorded.error();
@@ -966,15 +909,29 @@ namespace lux::render::detail
             co_return cxx::unexpected(error);
         }
         auto* command = *recorded;
-        uploads.recordFrameCopies(*command);
-        const auto ended = uploads.device_.nriCore().EndCommandBuffer(*command);
+        recordFrameCopies(*command);
+        const auto ended = device_.nriCore().EndCommandBuffer(*command);
         if (ended != nri::Result::SUCCESS) co_return cxx::unexpected(nativeError(ended));
+        for (const auto& copy : frame_copies_)
+        {
+            if (auto flushed = staging_arena_->flush(copy.staging); !flushed)
+                co_return cxx::unexpected(flushed.error());
+        }
+
+        submitting_frame_copies_ = true;
+        cxx::scope_exit joined([this]() noexcept { submitting_frame_copies_ = false; });
         auto accepted = co_await graphics.submit({&command, 1});
         if (!accepted) co_return cxx::unexpected(accepted.error());
-        uploads.acceptCommands(graphics, slot, *accepted);
-        ++uploads.statistics_.copy_submissions;
-        uploads.frame_copy_receipt_serial_ = *accepted;
-        co_return FrameCopyReceipt{uploads.device_.submissionPoint(uploads.device_.queueIndex(graphics), *accepted), ranges};
+        acceptCommands(graphics, slot, *accepted);
+        for (auto& copy : frame_copies_)
+        {
+            statistics_.copied_bytes += copy.staging.bytes.size();
+            staging_arena_->markSubmitted(copy.staging, graphics, *accepted);
+        }
+        statistics_.copy_regions += ranges;
+        ++statistics_.copy_submissions;
+        frame_copies_.clear();
+        co_return FrameCopyReceipt{device_.submissionPoint(device_.queueIndex(graphics), *accepted), ranges};
     }
 
     bool ResourceUploader::canBeginCommands(const SubmissionQueue& queue) const noexcept
@@ -984,7 +941,7 @@ namespace lux::render::detail
         return queue.terminalError().type || (!queue.submitting() && window.serial <= queue.completed());
     }
 
-    bool ResourceUploader::canSubmitPreparationCopies() const noexcept
+    bool ResourceUploader::canSubmitFrameCopies() const noexcept
     {
         return canBeginCommands(device_.queue());
     }
@@ -1005,8 +962,7 @@ namespace lux::render::detail
         const bool is_stopped = range_waiters_->stopping(*range_waiters_);
         const bool has_terminal = device_.terminalError().type != 0;
         if (is_stopped || has_terminal) return true;
-        const bool reserve_frame = !range_waiters_->request.progress && preparation_reserved_;
-        return staging_arena_->canAcquire(range_waiters_->request.minimum_range, reserve_frame);
+        return staging_arena_->canAcquire(range_waiters_->request.minimum_range, preparation_reserved_);
     }
 
     ResourceUploader::Task ResourceUploader::submitReadyTransfers() noexcept
@@ -1111,22 +1067,15 @@ namespace lux::render::detail
                     {
                         for (const auto& fill : entry->request.fills)
                         {
-                            const auto access = bufferAccess(nri_core.GetBufferDesc(*fill.target).usage);
-                            bufferBarrier(
-                                nri_core,
-                                command,
-                                *fill.target,
-                                {access, nri::StageBits::ALL},
-                                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
-                            );
+                            const auto usage = nri_core.GetBufferDesc(*fill.target).usage;
+                            const auto access = bufferBoundaryAccess(device_.description(), usage);
+                            bufferBarrier(nri_core, command, {
+                                fill.target, {access, nri::StageBits::ALL}, {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}
+                            });
                             nri_core.CmdZeroBuffer(command, *fill.target, fill.offset, fill.size);
-                            bufferBarrier(
-                                nri_core,
-                                command,
-                                *fill.target,
-                                {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY},
-                                {access, nri::StageBits::ALL}
-                            );
+                            bufferBarrier(nri_core, command, {
+                                fill.target, {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY}, {access, nri::StageBits::ALL}
+                            });
                         }
                         for (auto& copy : entry->request.copies)
                         {
@@ -1138,7 +1087,7 @@ namespace lux::render::detail
                             else
                             {
                                 if (acquiring) std::terminate();
-                                recordBuffer(nri_core, command, copy.staging, std::get<BufferChunk>(copy.chunk));
+                                recordBuffer(device_, command, copy.staging, std::get<BufferChunk>(copy.chunk));
                             }
                         }
                     }
@@ -1237,7 +1186,6 @@ namespace lux::render::detail
                 for (auto* entry : batch_entries_)
                 {
                     (acquiring ? entry->receipt.acquire : entry->receipt.copy) = point;
-                    if (entry->request.progress) entry->request.progress->accept(point);
                 }
                 const auto observe_measurement = [&](Measurement& measurement) noexcept
                 {
@@ -1327,9 +1275,8 @@ namespace lux::render::detail
         {
             auto* entry = range_waiters_;
             const bool stopping = entry->stopping(*entry);
-            const bool reserve_frame = !entry->request.progress && preparation_reserved_;
             if (!stopping && !device_.terminalError().type &&
-                !staging_arena_->canAcquire(entry->request.minimum_range, reserve_frame))
+                !staging_arena_->canAcquire(entry->request.minimum_range, preparation_reserved_))
             {
                 break;
             }
@@ -1353,17 +1300,10 @@ namespace lux::render::detail
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
-        std::span<const BufferWrite> writes,
-        std::span<const BufferZero> fills
+        std::span<const BufferWrite> writes, std::span<const BufferZero> fills, SubmissionFrontiers* accepted
     ) noexcept
     {
-        return write({BufferUpload{writes, fills, {}, nullptr}});
-    }
-
-    ResourceUploader::Task
-    ResourceUploader::writeReplicaBuffers(std::span<const BufferWrite> writes, SubmissionFrontiers& progress) noexcept
-    {
-        return write({BufferUpload{writes, {}, {}, &progress}});
+        return write({BufferUpload{writes, fills, {}, accepted}});
     }
 
     ResourceUploader::Task ResourceUploader::writeBuffers(
@@ -1403,7 +1343,9 @@ namespace lux::render::detail
         }, request.value);
         if (!plan) co_return cxx::unexpected(plan.error());
         const auto* image = std::get_if<ImageUpload>(&request.value);
-        auto* image_uses = image ? image->boundary.accepted : nullptr;
+        auto* accepted = image ? image->boundary.accepted : std::get<BufferUpload>(request.value).accepted;
+        if (accepted && !accepted->belongsTo(&device_, device_.queueCount()))
+            co_return cxx::unexpected(RenderError{kDeviceArgument});
         const auto source_bytes = plan->source_bytes;
         if (!reserveSourceBytes(source_bytes)) co_return cxx::unexpected(RenderError{kDeviceCapacity});
         cxx::scope_exit budget([&]() noexcept { releaseSourceBytes(source_bytes); });
@@ -1437,7 +1379,7 @@ namespace lux::render::detail
             {
                 const auto next = std::visit([](auto& cursor) noexcept { return cursor.next(); }, plan->cursor);
                 auto range = staging_arena_->acquire(
-                    std::min(next.bytes, options_.chunk_bytes), next.unit, !plan->progress && preparation_reserved_
+                    std::min(next.bytes, options_.chunk_bytes), next.unit, preparation_reserved_
                 );
                 if (!range)
                 {
@@ -1454,7 +1396,7 @@ namespace lux::render::detail
             if (copies.empty() && minimum_range)
             {
                 const auto available = co_await WindowSender{
-                    *this, *plan->queue, {.progress = plan->progress, .minimum_range = minimum_range}
+                    *this, *plan->queue, {.minimum_range = minimum_range}
                 };
                 if (!available.result) co_return failure(available.result.error());
                 continue;
@@ -1502,11 +1444,11 @@ namespace lux::render::detail
             }
             if (stop.stop_requested()) co_return failure(RenderError{kUploadStopped});
             const auto fills = accepted_any ? std::span<const BufferZero>{} : plan->fills;
-            const auto submitted = co_await WindowSender{*this, *plan->queue, {copies, fills, plan->progress}};
-            if (image_uses)
+            const auto submitted = co_await WindowSender{*this, *plan->queue, {copies, fills}};
+            if (accepted)
             {
-                if (submitted.copy.serial) image_uses->accept(submitted.copy);
-                if (submitted.acquire.serial) image_uses->accept(submitted.acquire);
+                if (submitted.copy.serial) accepted->accept(submitted.copy);
+                if (submitted.acquire.serial) accepted->accept(submitted.acquire);
             }
             if (!submitted.result)
             {

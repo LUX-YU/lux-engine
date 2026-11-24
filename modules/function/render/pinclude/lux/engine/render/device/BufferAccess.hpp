@@ -15,8 +15,12 @@ namespace lux::render::detail
                                                   : nri::StageBits::COPY | nri::StageBits::CLEAR_STORAGE;
     }
 
-    inline nri::AccessBits bufferAccess(nri::BufferUsageBits usage) noexcept
+    inline nri::AccessBits bufferBoundaryAccess(const nri::DeviceDesc& device, nri::BufferUsageBits usage) noexcept
     {
+        // Legacy D3D12 buffers decay to COMMON between native submissions. A copy window restores COMMON
+        // between segments as well. A combined read/write access mask cannot describe a legacy state.
+        if (device.graphicsAPI == nri::GraphicsAPI::D3D12 && !device.features.enhancedBarriers)
+            return nri::AccessBits::NONE;
         auto access = nri::AccessBits::COPY_SOURCE | nri::AccessBits::COPY_DESTINATION;
         if ((usage & nri::BufferUsageBits::VERTEX) != 0)
         {

@@ -1,14 +1,6 @@
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/runtime/BuiltinRegistration.hpp>
 #include <lux/engine/render/runtime/commands/Registration.hpp>
-#include <lux/engine/render/resource/instance/RasterMeshInstanceStorage.hpp>
-#include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
-#include <lux/engine/render/resource/material/RasterMaterialStorage.hpp>
-#include <lux/engine/render/resource/mesh/IndexedTriangleMeshStorage.hpp>
-#include <lux/engine/render/resource/texture/SampledTexture2DStorage.hpp>
-#include <lux/engine/render/resource/transform/TransformStorage.hpp>
-#include <lux/engine/render/resource/view/ViewParameterStorage.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
 #include <atomic>
@@ -37,6 +29,7 @@ namespace lux::render
             config.frames_in_flight == 0 ||
             config.frames_in_flight > 3 ||
             config.max_config_bytes == 0 ||
+            config.max_deferred_inputs == 0 ||
             config.gpu_wait_ns > 1'000'000;
 
         if (invalid)
@@ -69,31 +62,6 @@ namespace lux::render
         return server;
     }
 
-    RenderResult<void> RenderServer::registerBuiltins() noexcept
-    {
-        const std::array registrations{
-            std::pair{&detail::ViewParameterStorage::factory, &detail::viewParameterStorageCommands},
-            std::pair{&detail::SampledTexture2DStorage::factory, &detail::sampledTexture2DStorageCommands},
-            std::pair{&detail::IndexedTriangleMeshStorage::factory, &detail::indexedTriangleMeshStorageCommands},
-            std::pair{&detail::RasterMaterialStorage::factory, &detail::rasterMaterialStorageCommands},
-            std::pair{&detail::RasterMeshInstanceStorage::factory, &detail::rasterMeshInstanceStorageCommands},
-            std::pair{&detail::TransformStorage::factory, &detail::transformStorageCommands},
-            std::pair{&detail::DirectLightingStorage::factory, &detail::directLightingStorageCommands}
-        };
-        for (const auto& [factory, commands] : registrations)
-        {
-            auto added = registerResource(factory(), {}, commands());
-            if (!added) return cxx::unexpected(added.error());
-        }
-        if (auto depth = detail::registerDepthPyramid(*this); !depth) return depth;
-        if (auto lighting = detail::registerLighting(*this); !lighting) return lighting;
-        if (auto visibility = detail::registerMeshVisibility(*this); !visibility) return visibility;
-        if (auto gbuffer = detail::registerGBuffer(*this); !gbuffer) return gbuffer;
-        if (auto mesh_raster = detail::registerMeshRaster(*this); !mesh_raster) return mesh_raster;
-        if (auto shadow = detail::registerShadow(*this); !shadow) return shadow;
-        return detail::registerToneMapping(*this);
-    }
-
     RenderResult<ResourceTypeId>
     RenderServer::registerResource(ResourceRegistration factory, ConfigValue configuration, std::span<const CommandBinding> commands) noexcept
     {
@@ -104,7 +72,7 @@ namespace lux::render
         }
         if (auto valid = impl_->runtime_->resources_.validateFactory(factory, configuration); !valid)
             return cxx::unexpected(valid.error());
-        if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.storage()->implementation_type, commands); !valid)
+        if (auto valid = impl_->runtime_->command_registry_.validateResourceBindings(factory.storage().implementation_type, commands); !valid)
             return cxx::unexpected(valid.error());
         auto& resources = impl_->runtime_->resources_;
         const auto type = resources.publishFactory(std::move(factory), std::move(configuration));
@@ -134,7 +102,7 @@ namespace lux::render
         return id;
     }
 
-    RenderResult<void> RenderServer::registerEffectCapability(EffectNodeDefinition definition, std::vector<CommandId> commands) noexcept
+    RenderResult<void> RenderServer::registerEffectCapability(const EffectCapability& definition, std::vector<CommandId> commands) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
         for (std::size_t i = 0; i < commands.size(); ++i)
@@ -143,15 +111,17 @@ namespace lux::render
             if (std::ranges::find(prior, commands[i]) != prior.end())
                 return cxx::unexpected(RenderError{kCapabilityDeclaration});
         }
-        auto node = std::make_unique<EffectNodeDefinition>(std::move(definition));
-        const auto* identity = node.get();
-        auto added = impl_->effect_catalog_.addCapability(std::move(node));
-        if (added) impl_->runtime_->command_registry_.publishNodeCommands(*identity, std::move(commands));
+        auto added = impl_->effect_catalog_.addCapability(definition);
+        if (added)
+        {
+            const auto* node = impl_->effect_catalog_.findCapability(definition.id, definition.version);
+            impl_->runtime_->command_registry_.publishNodeCommands(*node, std::move(commands));
+        }
         return added;
     }
 
     RenderResult<void> RenderServer::registerEffectImplementation(
-        EffectImplementation implementation, std::vector<CommandBindingLocation> bindings
+        ImplementationEntry implementation, std::vector<CommandBindingLocation> bindings
     ) noexcept
     {
         if (!impl_->canAccessCatalog()) return cxx::unexpected(RenderError{kCapabilityInUse});
@@ -169,7 +139,7 @@ namespace lux::render
         const auto required = registry.nodeCommands(*node);
         if (!std::ranges::is_permutation(required, bindings, std::ranges::equal_to{}, std::identity{}, &CommandBindingLocation::command))
             return cxx::unexpected(RenderError{kCapabilityDeclaration});
-        auto candidate = std::make_unique<EffectImplementation>(std::move(implementation));
+        auto candidate = std::make_unique<ImplementationEntry>(std::move(implementation));
         const auto* identity = candidate.get();
         auto added = impl_->effect_catalog_.addImplementation(std::move(candidate));
         if (added) registry.publishImplementationBindings(*identity, std::move(bindings));

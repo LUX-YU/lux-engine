@@ -1,10 +1,7 @@
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
-#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/runtime/FrameProgress.hpp>
-#include <lux/engine/render/runtime/DeviceEntry.hpp>
-#include <lux/engine/render/device/ResourceUploader.hpp>
 
 namespace lux::render::detail
 {
@@ -25,7 +22,7 @@ namespace lux::render::detail
 
     FrameProgress::~FrameProgress() noexcept
     {
-        if (access_ != ECpuAccess::IDLE)
+        if (active_)
         {
             std::terminate();
         }
@@ -36,83 +33,41 @@ namespace lux::render::detail
         return static_cast<std::uint32_t>(next_frame_index_ % slots_.size());
     }
 
-    FrameProgress::SlotSelection FrameProgress::beginCpuAccess(ECpuAccess access) noexcept
+    void FrameProgress::requireFrame(FrameContext selected) const noexcept
     {
-        if (access_ != ECpuAccess::IDLE || epoch_ == UINT64_MAX) std::terminate();
-        access_slot_ = nextSlot();
-        access_ = access;
-        return {{next_frame_index_, access_slot_}, ++epoch_};
+        const bool current = active_ && selected.frame_index == next_frame_index_ - 1 &&
+            selected.slot_index == selected.frame_index % slots_.size();
+        if (!current) std::terminate();
     }
 
-    void FrameProgress::requireAccess(ReplicaFrame selection, ECpuAccess access) const noexcept
+    RenderResult<std::optional<FrameContext>>
+    FrameProgress::availableFrame(const DeviceSession& device) noexcept
     {
-        const bool wrong_operation = selection.epoch != epoch_ || selection.slot != access_slot_;
-        if (access_ != access || wrong_operation) std::terminate();
-    }
-
-    void FrameProgress::endCpuAccess(ReplicaFrame selection, ECpuAccess access) noexcept
-    {
-        requireAccess(selection, access);
-        access_ = ECpuAccess::IDLE;
-    }
-
-    RenderResult<std::optional<FrameProgress::SlotSelection>>
-    FrameProgress::tryBegin(const DeviceSession& device) noexcept
-    {
-        const bool exhausted = epoch_ == UINT64_MAX || next_frame_index_ == UINT64_MAX;
-        if (exhausted) return cxx::unexpected(RenderError{kFrameContract});
+        if (next_frame_index_ == UINT64_MAX) return cxx::unexpected(RenderError{kFrameContract});
         device.readCompleted(completed_);
-        if (!canBegin(completed_)) return std::nullopt;
-        const auto selection = beginCpuAccess(ECpuAccess::FRAME);
-        slots_[selection.frame.slot_index].clear();
+        if (active_ || !slots_[nextSlot()].reachedBy(completed_)) return std::nullopt;
+        return FrameContext{next_frame_index_, nextSlot()};
+    }
+
+    void FrameProgress::beginFrame(FrameContext selection) noexcept
+    {
+        const bool is_current = selection.frame_index == next_frame_index_ && selection.slot_index == nextSlot();
+        if (active_ || !is_current || !slots_[selection.slot_index].reachedBy(completed_)) std::terminate();
+        active_ = true;
+        slots_[selection.slot_index].clear();
         ++next_frame_index_;
-        return selection;
     }
 
-    void FrameProgress::adopt(SlotSelection selection, SubmissionPoint accepted) noexcept
+    void FrameProgress::adopt(FrameContext selection, SubmissionPoint accepted) noexcept
     {
-        requireAccess({selection.frame.slot_index, selection.epoch}, ECpuAccess::FRAME);
-        slots_[selection.frame.slot_index].accept(accepted);
+        requireFrame(selection);
+        slots_[selection.slot_index].accept(accepted);
     }
 
-    void FrameProgress::endFrame(SlotSelection selection) noexcept
+    void FrameProgress::endFrame(FrameContext selection) noexcept
     {
-        endCpuAccess({selection.frame.slot_index, selection.epoch}, ECpuAccess::FRAME);
-    }
-
-    bool FrameProgress::canBegin(const SubmissionFrontiers& completed) const noexcept
-    {
-        return access_ == ECpuAccess::IDLE && slots_[nextSlot()].reachedBy(completed);
-    }
-
-    bool FrameProgress::canBegin(const DeviceSession& device) noexcept
-    {
-        device.readCompleted(completed_);
-        return canBegin(completed_);
-    }
-
-    exec::task<RenderResult<ReplicaFrame>> FrameProgress::acquireReplica(DeviceSession& device) noexcept
-    {
-        if (access_ != ECpuAccess::IDLE) co_return cxx::unexpected(RenderError{kDeviceBusy});
-        if (epoch_ == UINT64_MAX) co_return cxx::unexpected(RenderError{kFrameContract});
-        const auto selected = beginCpuAccess(ECpuAccess::REPLICA);
-        const ReplicaFrame selection{selected.frame.slot_index, selected.epoch};
-        cxx::scope_exit cancel([&]() noexcept { endReplica(selection); });
-        auto ready = co_await device.waitFrontiers(slots_[selection.slot]);
-        if (!ready) co_return cxx::unexpected(ready.error());
-        cancel.release();
-        co_return selection;
-    }
-
-    SubmissionFrontiers& FrameProgress::replicaFrontiers(ReplicaFrame selection) noexcept
-    {
-        requireAccess(selection, ECpuAccess::REPLICA);
-        return slots_[selection.slot];
-    }
-
-    void FrameProgress::endReplica(ReplicaFrame selection) noexcept
-    {
-        endCpuAccess(selection, ECpuAccess::REPLICA);
+        requireFrame(selection);
+        active_ = false;
     }
 
     RenderResult<bool> FrameProgress::waitForProgress(DeviceSession& device, std::uint64_t timeout_ns) noexcept
@@ -144,30 +99,3 @@ namespace lux::render::detail
     }
 
 } // namespace lux::render::detail
-
-namespace lux::render
-{
-    ReplicaMutation::~ReplicaMutation() noexcept
-    {
-        if (selected_.epoch) device_.frameProgress().endReplica(selected_);
-    }
-
-    exec::task<RenderResult<detail::ReplicaFrame>> ReplicaMutation::select() noexcept
-    {
-        if (!device_.uploader()) co_return cxx::unexpected(RenderError{kDeviceUnsupported});
-        if (!selected_.epoch)
-        {
-            auto selected = co_await device_.frameProgress().acquireReplica(device_.session());
-            if (!selected) co_return cxx::unexpected(selected.error());
-            selected_ = *selected;
-        }
-        co_return selected_;
-    }
-
-    exec::task<RenderResult<void>> ReplicaMutation::writeBuffers(std::span<const detail::BufferWrite> writes) noexcept
-    {
-        if (!selected_.epoch) co_return cxx::unexpected(RenderError{kFrameContract});
-        auto& frontiers = device_.frameProgress().replicaFrontiers(selected_);
-        co_return co_await device_.uploader()->writeReplicaBuffers(writes, frontiers);
-    }
-}

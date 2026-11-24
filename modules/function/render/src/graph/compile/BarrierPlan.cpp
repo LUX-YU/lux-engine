@@ -5,9 +5,12 @@
 #include <tuple>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
+#include <bit>
+#include <numeric>
 #include <lux/engine/render/device/ImageFormat.hpp>
 #include <lux/engine/render/graph/compile/BarrierPlan.hpp>
 #include <lux/engine/render/graph/compile/ShaderBindingPlan.hpp>
+#include <lux/engine/render/graph/compile/SubmissionPlan.hpp>
 #include <lux/engine/render/graph/Shader.hpp>
 
 namespace lux::render::detail
@@ -25,6 +28,42 @@ namespace lux::render::detail
             ETransitionBoundary boundary = ETransitionBoundary::PASS;
             EQueueRole queue = EQueueRole::GRAPHICS;
             std::uint32_t resource = kGraphInvalidIndex;
+        };
+
+        // One unconditional whole-buffer definition makes the writer a RAW predecessor of
+        // every reader of that version. All queues may then observe one common read state.
+        struct BufferReadFanout final
+        {
+            bool eligible = true;
+            std::uint32_t writer = kGraphInvalidIndex, version = 0, readers = 0;
+            nri::AccessStage write{}, read{};
+
+            void observe(const ResourceAccess& use, Access current, const CompiledPass& pass, std::uint64_t size) noexcept
+            {
+                if (!eligible) return;
+                if (writer == kGraphInvalidIndex)
+                {
+                    const auto* range = std::get_if<GraphBufferRange>(&use.range);
+                    const bool defines_all_bytes = use.access == EGraphAccess::WRITE && range &&
+                        range->offset == 0 && range->size == size && !use.fallback;
+                    const bool can_publish = current.queue == EQueueRole::GRAPHICS &&
+                        pass.condition_region == kGraphInvalidIndex && !std::holds_alternative<RasterCommandSlot>(pass.commands);
+                    eligible = defines_all_bytes && can_publish;
+                    writer = current.pass_slot;
+                    version = use.version.number;
+                    write = {current.access, current.stages};
+                    return;
+                }
+                const bool reads_definition = use.access == EGraphAccess::READ && use.version.number == version &&
+                    !use.fallback && current.pass_slot > writer;
+                const bool compatible_access = current.access != nri::AccessBits::NONE && (!readers || read.access == current.access);
+                eligible = reads_definition && compatible_access;
+                if (!eligible) return;
+                read = {current.access, readers ? combineStages(read.stages, current.stages) : current.stages};
+                readers |= 1u << static_cast<unsigned>(current.queue);
+            }
+
+            [[nodiscard]] bool shared() const noexcept { return eligible && std::popcount(readers) > 1; }
         };
 
         Access accessFor(const ResourceAccess& use, const PassBindings& program) noexcept
@@ -64,6 +103,9 @@ namespace lux::render::detail
             case EGraphUse::INDIRECT:
                 result.access = nri::AccessBits::ARGUMENT_BUFFER;
                 result.stages = nri::StageBits::INDIRECT;
+                break;
+            case EGraphUse::SHADER_BUFFER_READ:
+                result.access = nri::AccessBits::SHADER_RESOURCE;
                 break;
             case EGraphUse::UNIFORM_READ:
                 result.access = nri::AccessBits::CONSTANT_BUFFER;
@@ -145,9 +187,7 @@ namespace lux::render::detail
             }
             if (const auto* transfer = std::get_if<GraphTransferCommand>(&pass.command))
             {
-                const auto native = TransferPass::access(
-                    transfer->work, transfer->typed_buffer_writes, use, description, backend
-                );
+                const auto native = transferAccess(*transfer, use, description, backend);
                 if (native)
                 {
                     current.access = native->access;
@@ -209,9 +249,91 @@ namespace lux::render::detail
             use.access = writes ? EGraphAccess::WRITE : EGraphAccess::READ;
             return accessFor(use, {});
         }
+
+        void mergeUseStages(std::vector<ResourceUseStages>& uses, std::size_t first) noexcept
+        {
+            auto batch = std::span{uses}.subspan(first);
+            std::ranges::sort(batch, {}, &ResourceUseStages::resource_index);
+            std::size_t count = 0;
+            for (const auto& use : batch)
+            {
+                if (count && batch[count - 1].resource_index == use.resource_index)
+                    batch[count - 1].stages = combineStages(batch[count - 1].stages, use.stages);
+                else
+                    batch[count++] = use;
+            }
+            uses.resize(first + count);
+        }
     } // namespace
 
-    void GraphCompiler::Workspace::collectUseStages() noexcept
+    void RenderGraphCompiler::Workspace::linkBatchResourceFrontiers(compiled::RenderGraph& plan) const noexcept
+    {
+        auto& uses = plan.batch_resource_frontiers_;
+        std::vector<std::size_t> offsets;
+        offsets.reserve(plan.submissions_.size() + 1);
+        for (std::uint32_t b = 0; b < plan.submissions_.size(); ++b)
+        {
+            auto& batch = plan.submissions_[b];
+            offsets.push_back(uses.size());
+            const auto retain = [&](std::uint32_t resource, nri::StageBits stages)
+            {
+                if (resource == plan.output_)
+                {
+                    plan.output_first_batch_ = std::min(plan.output_first_batch_, b);
+                    batch.accesses_output = true;
+                }
+                const auto& binding = plan.resources_[resource];
+                if (binding.origin == EGraphOrigin::IMPORTED || binding.history != kGraphInvalidIndex)
+                    uses.push_back({resource, stages == nri::StageBits::NONE ? nri::StageBits::ALL : stages});
+            };
+            // A transition can execute even when the guarded command is skipped. Keep its
+            // resource wait at ALL, including a restore in an otherwise empty epilogue.
+            const auto retainBarriers = [&](const auto& barriers)
+            {
+                for (const auto& barrier : barriers) retain(barrier.resource, nri::StageBits::ALL);
+            };
+            for (auto p = batch.first_pass; p < batch.first_pass + batch.pass_count; ++p)
+            {
+                for (const auto use : use_stages[source.analysis.execution_order[p].index])
+                    retain(use.resource_index, use.stages);
+                const auto& pass = plan.recording_.passes[p];
+                retainBarriers(plan.recording_.imageBarriers(pass));
+                retainBarriers(plan.recording_.bufferBarriers(pass));
+            }
+            if (b + 1 == plan.submissions_.size())
+            {
+                retainBarriers(plan.recording_.after.images);
+                retainBarriers(plan.recording_.after.buffers);
+            }
+            mergeUseStages(uses, offsets.back());
+        }
+        offsets.push_back(uses.size());
+        const auto physical = physicalQueueIndices(device.queues);
+        std::array<std::vector<std::size_t>, 3> first_use;
+        for (std::size_t b = 0; b < plan.submissions_.size(); ++b)
+        {
+            auto& batch = plan.submissions_[b];
+            batch.resource_frontiers = std::span{uses}.subspan(offsets[b], offsets[b + 1] - offsets[b]);
+            if (batch.resource_frontiers.empty() || plan.submissions_.size() == 1) continue;
+            auto& positions = first_use[physical[static_cast<std::size_t>(batch.queue)]];
+            if (positions.empty()) positions.resize(plan.resources_.size(), SIZE_MAX);
+            for (auto i = offsets[b]; i < offsets[b + 1]; ++i)
+            {
+                auto& use = uses[i];
+                auto& first = positions[use.resource_index];
+                if (first == SIZE_MAX) first = i;
+                else
+                {
+                    // Physical FIFO keeps the first wait ahead of every later use of the frozen
+                    // binding. Later accepts still extend its frontier if submission stops partway.
+                    uses[first].stages = combineStages(uses[first].stages, use.stages);
+                    use.stages = nri::StageBits::NONE;
+                }
+            }
+        }
+    }
+
+    void RenderGraphCompiler::Workspace::collectUseStages() noexcept
     {
         const auto& graph = source.graph;
         const auto order = std::span(source.analysis.execution_order);
@@ -245,20 +367,7 @@ namespace lux::render::detail
                     }
                 }
             }
-            std::ranges::sort(uses, {}, &ResourceUseStages::resource_index);
-            std::size_t count = 0;
-            for (const auto& use : uses)
-            {
-                if (count && uses[count - 1].resource_index == use.resource_index)
-                {
-                    uses[count - 1].stages = combineStages(uses[count - 1].stages, use.stages);
-                }
-                else
-                {
-                    uses[count++] = use;
-                }
-            }
-            uses.resize(count);
+            mergeUseStages(uses, 0);
         }
     }
 
@@ -273,11 +382,11 @@ namespace lux::render::detail
                 barrier.after.access, barrier.after.layout, barrier.after.stages
             };
         };
-        const auto compact = [&](BarrierBatch& batch) noexcept
+        const auto compact = [&](std::span<ImageTransition> images) noexcept
         {
             for (bool layers : {false, true})
             {
-                std::ranges::sort(batch.images, [&](const auto& left, const auto& right) noexcept
+                std::ranges::sort(images, [&](const auto& left, const auto& right) noexcept
                 {
                     const auto a = key(left), b = key(right);
                     if (a != b) return a < b;
@@ -289,12 +398,12 @@ namespace lux::render::detail
                                         std::tie(y.layerOffset, y.layerNum, y.mipOffset);
                 });
                 std::size_t count = 0;
-                for (const auto& transition : batch.images)
+                for (const auto& transition : images)
                 {
                     bool merged = false;
-                    if (count && key(batch.images[count - 1]) == key(transition))
+                    if (count && key(images[count - 1]) == key(transition))
                     {
-                        auto& previous = batch.images[count - 1].native;
+                        auto& previous = images[count - 1].native;
                         const auto& next = transition.native;
                         const bool same_identity = previous.texture == next.texture &&
                             previous.srcQueue == next.srcQueue && previous.dstQueue == next.dstQueue;
@@ -310,34 +419,69 @@ namespace lux::render::detail
                             merged = true;
                         }
                     }
-                    if (!merged) batch.images[count++] = transition;
+                    if (!merged) images[count++] = transition;
                 }
-                batch.images.resize(count);
+                images = images.first(count);
             }
+            return images;
         };
         for (auto& resource : resources)
         {
             resource.barrier_uses.clear();
-            resource.final_barrier_uses.clear();
+            resource.exit_barrier_uses.clear();
         }
+        auto& entries = recording.before;
+        std::size_t image_end = 0;
         for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
         {
-            auto& batch = recording.passes[p].before;
-            compact(batch);
-            for (std::uint32_t i = 0; i < batch.images.size(); ++i)
-                resources[batch.images[i].resource].barrier_uses.emplace_back(p, i);
-            for (std::uint32_t i = 0; i < batch.buffers.size(); ++i)
-                resources[batch.buffers[i].resource].barrier_uses.emplace_back(p, i);
+            auto& pass = recording.passes[p];
+            const auto retained = compact(pass.entry_images.select(std::span{entries.images}));
+            if (!retained.empty() && image_end != pass.entry_images.first)
+                std::ranges::move(retained, entries.images.begin() + image_end);
+            pass.entry_images = {image_end, retained.size()};
+            for (const auto& image : recording.imageBarriers(pass))
+                resources[image.resource].barrier_uses.push_back(image_end++);
+            auto buffer_row = pass.entry_buffers.first;
+            for (const auto& buffer : recording.bufferBarriers(pass))
+                resources[buffer.resource].barrier_uses.push_back(buffer_row++);
         }
-        compact(recording.after);
+        entries.images.resize(image_end);
+        recording.after.images.resize(compact(recording.after.images).size());
         for (std::uint32_t i = 0; i < recording.after.images.size(); ++i)
-            resources[recording.after.images[i].resource].final_barrier_uses.push_back(i);
+            resources[recording.after.images[i].resource].exit_barrier_uses.push_back(i);
         for (std::uint32_t i = 0; i < recording.after.buffers.size(); ++i)
-            resources[recording.after.buffers[i].resource].final_barrier_uses.push_back(i);
+            resources[recording.after.buffers[i].resource].exit_barrier_uses.push_back(i);
+        for (std::uint32_t i = 0; i < recording.buffer_read_releases.size(); ++i)
+        {
+            const auto resource = recording.buffer_read_releases[i].resource;
+            resources[resource].exit_barrier_uses.push_back(static_cast<std::uint32_t>(recording.after.buffers.size()) + i);
+        }
+
+        if (recording.transient_exits.empty()) return;
+        auto& exits = recording.transient_exits;
+        exits.resize(compact(exits).size());
+        const auto scope_end = [&](const ImageTransition& transition) noexcept
+        {
+            const auto last = transition.previous_slot;
+            const auto group = recording.passes[last].rendering_group;
+            if (group == kGraphInvalidIndex) return last;
+            const auto& scope = recording.groups[group];
+            return scope.first_pass + scope.pass_count - 1;
+        };
+        std::ranges::stable_sort(exits, {}, scope_end);
+        auto& offsets = recording.transient_exit_offsets;
+        offsets.assign(recording.passes.size() + 1, 0);
+        for (std::uint32_t i = 0; i < exits.size(); ++i)
+        {
+            ++offsets[scope_end(exits[i]) + 1];
+            const auto native_index = static_cast<std::uint32_t>(recording.after.images.size()) + i;
+            resources[exits[i].resource].exit_barrier_uses.push_back(native_index);
+        }
+        for (std::size_t i = 1; i < offsets.size(); ++i) offsets[i] += offsets[i - 1];
     }
 
     RenderResult<void>
-    GraphCompiler::Workspace::planBarriers(
+    RenderGraphCompiler::Workspace::planBarriers(
         compiled::RenderGraph& plan, const PhysicalResourcePlan* physical
     ) const noexcept
     {
@@ -351,14 +495,27 @@ namespace lux::render::detail
         // Image cells extend that algorithm to actual aspects/mips/layers; NRI Buffer barriers are whole-resource.
         std::vector<std::vector<Access>> states(resources.size());
         recording.after = {};
-        for (auto& pass : recording.passes)
+        recording.transient_exits.clear();
+        recording.transient_exit_offsets.clear();
+        recording.buffer_read_releases.clear();
+        recording.buffer_release_offsets.clear();
+        std::vector<BufferReadFanout> fanouts;
+        if (std::ranges::any_of(recording.passes, [](const auto& pass) { return pass.queue == EQueueRole::COMPUTE; }))
         {
-            pass.before = {};
+            fanouts.resize(resources.size());
+            for (const auto& output : graph.outputs())
+            {
+                fanouts[output.version.resource.index].eligible = false;
+                if (output.alternate) fanouts[output.alternate->value.resource.index].eligible = false;
+            }
         }
+        auto& entries = recording.before;
+        entries.images.clear();
+        entries.buffers.clear();
         for (std::size_t i = 0; i < resources.size(); ++i)
         {
             resources[i].descriptor_uses.clear();
-            resources[i].final_barrier_uses.clear();
+            resources[i].exit_barrier_uses.clear();
             const auto* image = std::get_if<GraphImageDesc>(&resources[i].description);
             states[i].resize(image ? std::size_t(image->mips) * image->layers * 3 : 1);
             if (resources[i].memory_used && resources[i].origin != EGraphOrigin::TRANSIENT &&
@@ -420,7 +577,8 @@ namespace lux::render::detail
                     barrier.mipOffset = static_cast<nri::Dim_t>(cell % image->mips);
                     barrier.mipNum = 1;
                     barrier.layerOffset = static_cast<nri::Dim_t>((cell / image->mips) % image->layers);
-                    barrier.layerNum = 1;
+                    // A volume mip is one graph subresource. Its transition covers every depth slice.
+                    barrier.layerNum = image->volume_depth ? nri::REMAINING : 1;
                     const auto plane = cell / (image->mips * image->layers);
                     barrier.planes = plane == 0   ? nri::PlaneBits::COLOR
                                      : plane == 1 ? nri::PlaneBits::DEPTH
@@ -429,10 +587,14 @@ namespace lux::render::detail
                 }
                 else
                 {
+                    // Object reuse can follow several concurrent reads. The last visited reader
+                    // alone cannot describe the local stages that must finish before the handoff.
+                    const bool follows_shared_reads = previous.resource != index && previous.resource < fanouts.size() &&
+                        fanouts[previous.resource].shared();
                     nri::BufferBarrierDesc barrier{};
                     barrier.before = {
                         cross_queue ? nri::AccessBits::NONE : previous.access,
-                        cross_queue ? nri::StageBits::ALL : previous.stages
+                        cross_queue || follows_shared_reads ? nri::StageBits::ALL : previous.stages
                     };
                     barrier.after = {current.access, current.stages};
                     const bool bind_initial_access = current.boundary == ETransitionBoundary::PASS &&
@@ -515,6 +677,12 @@ namespace lux::render::detail
                     current.queue = pass.queue;
                     current.pass_slot = p;
                     includeUsage(resource, current);
+                    if (!fanouts.empty() && resource.origin == EGraphOrigin::TRANSIENT &&
+                        resource.history == kGraphInvalidIndex)
+                    {
+                        if (const auto* buffer = std::get_if<GraphBufferDesc>(&resource.description))
+                            fanouts[index].observe(use, current, pass, buffer->size);
+                    }
                     if (next[index].empty())
                     {
                         next[index].resize(states[index].size());
@@ -546,16 +714,20 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(RenderError{kDeviceArgument});
             }
+            pass.entry_images.first = entries.images.size();
+            pass.entry_buffers.first = entries.buffers.size();
             for (auto index : touched)
             {
                 for (std::size_t cell = 0; cell < next[index].size(); ++cell)
                 {
                     if (next[index][cell].known)
                     {
-                        apply(index, cell, next[index][cell], pass.before);
+                        apply(index, cell, next[index][cell], entries);
                     }
                 }
             }
+            pass.entry_images.count = entries.images.size() - pass.entry_images.first;
+            pass.entry_buffers.count = entries.buffers.size() - pass.entry_buffers.first;
             for (std::uint32_t binding = 0; binding < layout.uses.size(); ++binding)
             {
                 if (layout.uses[binding].resource != kGraphInvalidIndex &&
@@ -568,6 +740,38 @@ namespace lux::render::detail
                     }
                 }
             }
+        }
+        auto& releases = recording.buffer_read_releases;
+        for (std::uint32_t r = 0; r < fanouts.size(); ++r)
+        {
+            const auto& fanout = fanouts[r];
+            if (fanout.shared())
+            {
+                releases.push_back({
+                    r, {nullptr, fanout.write, fanout.read}, fanout.writer, ETransitionBoundary::PUBLISH_READS
+                });
+            }
+        }
+        if (!releases.empty())
+        {
+            std::ranges::sort(releases, {}, &BufferTransition::previous_slot);
+            auto& offsets = recording.buffer_release_offsets;
+            offsets.resize(recording.passes.size() + 1);
+            for (const auto& release : releases) ++offsets[release.previous_slot + 1];
+            std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+            std::size_t end = 0;
+            for (std::uint32_t p = 0; p < recording.passes.size(); ++p)
+            {
+                auto& pass = recording.passes[p];
+                const auto first = end;
+                for (const auto& transition : recording.bufferBarriers(pass))
+                {
+                    const auto& fanout = fanouts[transition.resource];
+                    if (!fanout.shared() || p <= fanout.writer) entries.buffers[end++] = transition;
+                }
+                pass.entry_buffers = {first, end - first};
+            }
+            entries.buffers.resize(end);
         }
         std::vector<std::vector<Access>> final_states(resources.size());
         for (std::uint32_t i = 0; i < resources.size(); ++i)
@@ -628,6 +832,27 @@ namespace lux::render::detail
                     apply(i, cell, final_states[i][cell], recording.after);
                 }
             }
+        }
+        if (legacy_d3d12)
+        {
+            BarrierBatch exits;
+            for (auto& physical_cells : states)
+            {
+                for (std::size_t cell = 0; cell < physical_cells.size(); ++cell)
+                {
+                    const auto& last = physical_cells[cell];
+                    if (last.pass_slot == kGraphInvalidIndex || last.access == nri::AccessBits::NONE) continue;
+                    const auto& resource = resources[last.resource];
+                    if (resource.origin != EGraphOrigin::TRANSIENT ||
+                        !std::holds_alternative<GraphImageDesc>(resource.description)) continue;
+                    // Each FIF's reusable recording enters from COMMON. Restore on the actual last-use queue,
+                    // before a later batch can activate another image sharing this memory.
+                    Access closed{.layout = nri::Layout::GENERAL, .known = true,
+                                  .boundary = ETransitionBoundary::RESTORE_TRANSIENT, .queue = last.queue};
+                    apply(last.resource, cell, closed, exits);
+                }
+            }
+            recording.transient_exits = std::move(exits.images);
         }
         return {};
     }

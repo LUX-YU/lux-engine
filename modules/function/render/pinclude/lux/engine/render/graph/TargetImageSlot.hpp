@@ -1,5 +1,7 @@
 #pragma once
 
+#include <NRI.h>
+
 #include <lux/engine/render/graph/Ids.hpp>
 #include <lux/engine/render/runtime/Target.hpp>
 #include <array>
@@ -19,6 +21,11 @@ namespace lux::render::detail
         rdesc::ETextureFormat format;
         std::uint32_t samples;
         GraphResourceId resource;
-        QueueBatchSlots first_reads;
+        struct QueueRead final
+        {
+            std::uint32_t first_batch = kGraphInvalidIndex;
+            nri::StageBits stages = nri::StageBits::NONE;
+        };
+        std::array<QueueRead, 3> first_reads{};
     };
 } // namespace lux::render::detail

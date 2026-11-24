@@ -1,12 +1,13 @@
+#include <lux/engine/render/resource/ResourceSet.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
-#include <lux/engine/render/graph/execute/PreparedBufferUpload.hpp>
 #include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/BufferAccess.hpp>
 #include <lux/engine/render/device/CompiledPrograms.hpp>
 #include <lux/engine/render/graph/execute/RasterStreamPlan.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
 #include <lux/engine/render/graph/RenderGraph.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <bit>
 #include <limits>
+#include <ranges>
 #include <utility>
 
 namespace lux::render::detail
@@ -81,7 +83,8 @@ namespace lux::render::detail
         }
         const bool wrong_extent = expected->extent.source != EImageExtentSource::IMPORTED &&
             (actual.width != width || actual.height != height);
-        const bool wrong_shape = actual.type != nri::TextureType::TEXTURE_2D || actual.depth != 1 ||
+        const auto type = expected->volume_depth ? nri::TextureType::TEXTURE_3D : nri::TextureType::TEXTURE_2D;
+        const bool wrong_shape = actual.type != type || actual.depth != expected->volume_depth.value_or(1) ||
             actual.mipNum != expected->mips || actual.layerNum != expected->layers ||
             actual.sampleNum != expected->samples;
         const bool wrong_format = actual.format != imageFormat(expected->format).native;
@@ -95,8 +98,10 @@ namespace lux::render::detail
     RenderResult<nri::TextureDesc>
     graphTextureDescription(DeviceSession& session, const CompiledResource& resource, const TargetDesc& target) noexcept
     {
-        const auto max_extent = session.description().dimensions.texture2DMaxDim;
         const auto* image = &std::get<GraphImageDesc>(resource.description);
+        const auto& limits = session.description().dimensions;
+        const auto max_extent = image->volume_depth ? limits.texture3DMaxDim : limits.texture2DMaxDim;
+        const std::uint64_t depth = image->volume_depth.value_or(1);
         const auto dimension = [&](std::uint32_t absolute, std::uint32_t target)
         {
             if (!resource.target_sized)
@@ -111,17 +116,17 @@ namespace lux::render::detail
         const auto width = dimension(image->width, target.width);
         const auto height = dimension(image->height, target.height);
         if (!width || !height || width > max_extent || height > max_extent ||
-            image->mips > std::bit_width(std::max(width, height)))
+            depth > max_extent || image->mips > std::bit_width(std::max({width, height, depth})))
         {
             return cxx::unexpected(RenderError{kInvalidTargetExtent});
         }
         const nri::TextureDesc description{
-            nri::TextureType::TEXTURE_2D,
+            image->volume_depth ? nri::TextureType::TEXTURE_3D : nri::TextureType::TEXTURE_2D,
             resource.image_usage,
             imageFormat(image->format).native,
             static_cast<nri::Dim_t>(width),
             static_cast<nri::Dim_t>(height),
-            1,
+            static_cast<nri::Dim_t>(depth),
             static_cast<nri::Dim_t>(image->mips),
             static_cast<nri::Dim_t>(image->layers),
             static_cast<nri::Sample_t>(image->samples),
@@ -377,38 +382,56 @@ namespace lux::render::detail
     {
     }
 
-    const DynamicRasterPrograms* JobGpuResources::dynamicRasterPrograms(std::uint32_t list) const noexcept
+    RenderResult<RasterProgramSelection> JobGpuResources::programSlots(const CompiledRasterStream& stream) const noexcept
     {
-        return list < raster_programs_.size() ? raster_programs_[list].get() : nullptr;
+        if (!stream.runtime) return RasterProgramSelection{stream.programs, {}, 0};
+        if (stream.list >= program_slots_.size() || !program_slots_[stream.list].revision)
+            return cxx::unexpected(RenderError{kFrameContract, {stream.pass}});
+        const auto& bound = program_slots_[stream.list];
+        return RasterProgramSelection{{}, bound.slots, bound.revision};
     }
 
-    RenderResult<RasterProgramSelection>
-    JobGpuResources::selectRasterPrograms(std::uint32_t pass, const CompiledRasterStream& stream) const noexcept
+    void JobGpuResources::releaseProgramUses(const BoundProgramSlots& bound) noexcept
     {
-        if (!stream.runtime) return RasterProgramSelection{stream.programs, 0};
-        const auto* dynamic = dynamicRasterPrograms(stream.list);
-        if (!dynamic) return cxx::unexpected(RenderError{kFrameContract, {pass}});
-        return RasterProgramSelection{dynamic->programs, dynamic->revision};
+        const auto id = [&](std::size_t i) noexcept { return bound.slots[i]->cache_id; };
+        session.programs().release(bound.slots.size(), id, accepted);
     }
 
-    void JobGpuResources::releaseRasterPrograms(const DynamicRasterPrograms& selected) noexcept
+    RenderResult<void> JobGpuResources::bindProgramSlots(
+        const compiled::RenderGraph& graph, const CompiledRasterStream& stream, std::span<FrameResources> frames,
+        std::span<const PublishedRasterProgram> programs
+    ) noexcept
     {
-        const auto id = [&](std::size_t i) noexcept { return selected.programs[i].cache_id; };
-        session.programs().release(selected.programs.size(), id, accepted);
-    }
+        const auto list = stream.list;
+        if (programs.size() > kGraphInvalidIndex) return cxx::unexpected(RenderError{kDeviceCapacity});
+        if (list >= program_slots_.size()) program_slots_.resize(std::size_t(list) + 1);
+        auto& bound = program_slots_[list];
+        if (bound.revision && std::ranges::equal(bound.slots, programs, sameRasterProgram)) return {};
+        if (bound.revision == UINT64_MAX) return cxx::unexpected(RenderError{kDeviceCapacity});
 
-    void JobGpuResources::adoptRasterPrograms(std::uint32_t list, std::unique_ptr<DynamicRasterPrograms> candidate) noexcept
-    {
-        if (list >= raster_programs_.size()) raster_programs_.resize(std::size_t(list) + 1);
-        auto& previous = raster_programs_[list];
-        if (previous) releaseRasterPrograms(*previous);
-        previous = std::move(candidate);
+        for (const auto& program : programs) session.programs().retainLive(program->cache_id);
+        if (!bound.slots.empty())
+        {
+            std::vector<nri::Descriptor*> views;
+            for (auto& frame : frames)
+            {
+                frame.invalidatePass(graph, stream.pass);
+                frame.releaseRasterBindings(list, views);
+            }
+            if (!views.empty()) session.deferRelease(accepted, [core = &session.nriCore(), views = std::move(views)]() noexcept
+            {
+                for (auto* view : views) core->DestroyDescriptor(view);
+            });
+        }
+        releaseProgramUses(bound);
+        bound.slots.assign(programs.begin(), programs.end());
+        ++bound.revision;
+        return {};
     }
 
     JobGpuResources::~JobGpuResources() noexcept
     {
-        for (const auto& selected : raster_programs_)
-            if (selected) releaseRasterPrograms(*selected);
+        for (const auto& bound : program_slots_) releaseProgramUses(bound);
         auto release = [frames = std::move(frames), histories = std::move(histories),
                         core = &session.nriCore()]() mutable noexcept
         {
@@ -441,52 +464,23 @@ namespace lux::render::detail
         for (auto* allocator : allocators) if (allocator) core.DestroyCommandAllocator(allocator);
     }
 
-    void JobGpuResources::settlePreparedBuffer(
-        std::uint32_t slot, const PreparedBufferCopy& copy, SubmissionPoint point, RenderError error
-    ) noexcept
+    void PreparedBufferUpload::settle(SubmissionPoint point, RenderError error) noexcept
     {
-        auto& replica = frames[slot].prepared_buffers[copy.buffer];
-        const bool wrong_range = copy.begin >= copy.end || copy.end > copy.size;
-        if (replica.generation != copy.generation || wrong_range) std::terminate();
+        if (destination.generation != generation || begin >= end || end > bytes.size()) std::terminate();
+        ranges = {};
         if (error.type)
         {
-            if (error.type == kOutcomeUnknown) replica.accepted = {};
+            if (error.type == kOutcomeUnknown) destination.accepted = {};
             return;
         }
         if (!point.serial) std::terminate();
-        accepted.accept(point);
-        auto& contents = replica.accepted;
-        if (!copy.begin) contents = {copy.revision, copy.size, 0};
-        const bool wrong_selection = contents.revision != copy.revision || contents.size != copy.size;
-        if (wrong_selection || contents.prefix != copy.begin) std::terminate();
-        contents.prefix = copy.end;
-    }
-
-    void JobFrameResources::collectRasterViews(
-        nri::Buffer* buffer, nri::Texture* image, std::vector<nri::Descriptor*>& views
-    ) noexcept
-    {
-        if (!buffer && !image) return;
-        if (image)
-        {
-            std::erase_if(raster_attachment_views, [&](const auto& attachment) noexcept
-            {
-                if (attachment.image != image) return false;
-                views.push_back(attachment.view);
-                return true;
-            });
-        }
-        for (auto& record : raster_bindings)
-        {
-            for (std::size_t i = 0; i < record.inputs.size(); ++i)
-            {
-                const auto& input = record.inputs[i];
-                const bool matches = (buffer && input.buffer == buffer) || (image && input.image == image);
-                if (!matches) continue;
-                if (auto* view = std::exchange(record.views[i], nullptr)) views.push_back(view);
-                record.inputs[i] = {};
-            }
-        }
+        allocation_uses.accept(point);
+        auto& contents = destination.accepted;
+        if (!begin) contents = {revision, bytes.size(), 0};
+        const bool wrong_selection = contents.revision != revision || contents.size != bytes.size();
+        if (wrong_selection || contents.prefix != begin) std::terminate();
+        contents.prefix = end;
+        begin = end;
     }
 
     void JobFrameResources::release(const nri::CoreInterface& nri_core) noexcept
@@ -507,6 +501,11 @@ namespace lux::render::detail
         for (auto* view : views)
         {
             nri_core.DestroyDescriptor(view);
+        }
+        for (const auto& image : layered_images)
+        {
+            for (auto* view : image.views) nri_core.DestroyDescriptor(view);
+            nri_core.DestroyTexture(image.texture);
         }
         for (auto* image : images)
         {
@@ -537,10 +536,7 @@ namespace lux::render::detail
         for (std::size_t batch = 0; batch < schedule.size(); ++batch)
         {
             const auto& description = schedule[batch];
-            const bool has_tail = description.output_begin != kGraphInvalidIndex;
-            const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
-            const std::uint32_t end_part = has_tail ? 2u : 1u;
-            for (auto part = first_part; part < end_part; ++part)
+            for (std::size_t part = 0; part < description.recordings.size(); ++part)
             {
                 auto result = core.CreateCommandAllocator(
                     session.queue(description.queue).native(), candidate[batch].allocators[part]

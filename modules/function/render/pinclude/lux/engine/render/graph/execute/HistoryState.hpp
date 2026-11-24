@@ -8,7 +8,13 @@ namespace lux::render::detail
 {
     struct HistoryState final
     {
+        [[nodiscard]] bool hasPrevious() const noexcept
+        {
+            return retained_samples >= plan->description.distance;
+        }
+
         void bindBank(const HistoryPlan&, JobHistoryResources&) noexcept;
+        void invalidateSamples() noexcept;
         [[nodiscard]] bool select(const DeviceSession&) noexcept;
         void publish() noexcept;
 
@@ -19,7 +25,6 @@ namespace lux::render::detail
         std::uint32_t retained_samples = 0;
         std::uint32_t latest = kGraphInvalidIndex;
         std::uint32_t previous = 0, current = 1;
-        bool invalidate = false;
         bool clear_previous = true, clear_current = true;
     };
 

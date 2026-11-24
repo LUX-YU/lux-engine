@@ -42,11 +42,14 @@ namespace lux::render
             const auto bytes = rdesc::textureBlockBytes(image.format, image_range.aspects);
             const auto row_bytes = ((std::uint64_t(width) + block - 1) / block) * bytes;
             const auto rows = (std::uint64_t(height) + block - 1) / block;
-            if (!width || !height || !bytes)
+            const auto mip_depth = std::max(1u, image.volume_depth.value_or(1) >> image_range.first_mip);
+            const auto depth = copy.image_region ? copy.image_region->depth : mip_depth;
+            const auto z = copy.image_region ? copy.image_region->z : 0;
+            if (!width || !height || !bytes || !depth || z >= mip_depth || depth > mip_depth - z)
             {
                 return cxx::unexpected(graphError(kGraphInvalidRange));
             }
-            if (rows > 1 && !copy.row_pitch)
+            if ((rows > 1 && !copy.row_pitch) || (depth > 1 && !copy.slice_pitch))
             {
                 return std::vector<GraphBufferRange>{};
             }
@@ -58,17 +61,22 @@ namespace lux::render
             {
                 return cxx::unexpected(graphError(kGraphInvalidRange));
             }
+            const auto slice_bytes = (rows - 1) * pitch + row_bytes;
+            const std::uint64_t stride = copy.slice_pitch;
+            if (depth > 1 && (stride < slice_bytes || depth - 1 > (capacity.size - slice_bytes) / stride))
+                return cxx::unexpected(graphError(kGraphInvalidRange));
+            if (pitch == row_bytes && (depth == 1 || stride == slice_bytes))
+                return std::vector<GraphBufferRange>{{capacity.offset, slice_bytes * depth}};
+
             std::vector<GraphBufferRange> ranges;
-            if (pitch == row_bytes)
+            for (std::uint32_t slice = 0; slice < depth; ++slice)
             {
-                ranges.push_back({capacity.offset, rows * row_bytes});
-            }
-            else
-            {
-                ranges.reserve(static_cast<std::size_t>(rows));
-                for (std::uint64_t row = 0; row < rows; ++row)
+                const auto first = capacity.offset + slice * stride;
+                if (pitch == row_bytes) ranges.push_back({first, slice_bytes});
+                else
                 {
-                    ranges.push_back({capacity.offset + row * pitch, row_bytes});
+                    for (std::uint64_t row = 0; row < rows; ++row)
+                        ranges.push_back({first + row * pitch, row_bytes});
                 }
             }
             return ranges;
@@ -95,6 +103,8 @@ namespace lux::render
             const bool is_invalid_predecessor =
                 is_write && detail::reads(use.access) && use.input_version >= use.version.number;
             const auto* image = std::get_if<GraphImageDesc>(&resource.description);
+            if (image && image->volume_depth && kind != EGraphPassKind::TRANSFER)
+                return cxx::unexpected(graphError(kDeviceUnsupported, id, resource_id));
             const bool is_attachment_format =
                 image && (rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::COLOR_ATTACHMENT) ||
                           rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT));
@@ -370,30 +380,29 @@ namespace lux::render
             const bool no_bias_source = !dynamic.usesStreamProducer() || !has_depth;
             const bool invalid_bias = dynamic.section_depth_bias && no_bias_source;
             const bool invalid_owners = !dynamic.draw_resources.empty() && !dynamic.usesStreamProducer();
+            constexpr auto supported_reads = DrawResourceReads{EDrawResourceRead::INDEXED_GEOMETRY} |
+                EDrawResourceRead::SAMPLED_IMAGES | EDrawResourceRead::STORAGE_RECORDS;
             for (const auto& input : dynamic.draw_resources)
             {
                 const auto occurrences = std::ranges::count(
                     dynamic.draw_resources, input.binding, &DrawResourceInput::binding
                 );
-                const bool invalid_source = input.binding.empty() || occurrences != 1 ||
-                    !input.source.type.isValid() || !input.source.implementation.isValid();
+                const bool invalid_source = !supported_reads.containsAll(input.reads) || input.binding.empty() || occurrences != 1 ||
+                    !input.source.isValid();
                 if (invalid_source) return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             }
-            if (dynamic.purpose.empty() || invalid_bias || invalid_owners)
+            const auto* ready = std::get_if<RasterPassTemplate::ReadyPrograms>(&dynamic.programs);
+            const bool has_programs = !dynamic.fixedPrograms().empty() || (ready && !ready->resource.empty());
+            const bool invalid_list = !dynamic.draw_list.empty() && (!has_programs || !dynamic.draw_resources.empty());
+            if (dynamic.purpose.empty() || invalid_bias || invalid_owners || invalid_list)
             {
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor));
             }
             const auto programs = dynamic.fixedPrograms();
             for (const auto& program : programs)
             {
-                const bool unknown = program.program >= builder_.candidate_.programs().size();
-                const bool duplicate =
-                    std::ranges::count(programs, program.program,
-                        &RasterPassTemplate::StreamProgram::program) != 1;
-                if (unknown || duplicate)
-                {
+                if (program.program >= builder_.candidate_.programs().size())
                     return cxx::unexpected(graphError(kGraphInvalidDescriptor));
-                }
             }
             for (auto sampler : dynamic.stream_samplers)
             {
@@ -404,6 +413,7 @@ namespace lux::render
                     return cxx::unexpected(graphError(kGraphInvalidDescriptor));
                 }
             }
+            const auto reads = dynamic.externalReads();
             for (const auto& input : dynamic.inputs)
             {
                 const bool is_read = input.usage == EGraphUse::SAMPLED ||
@@ -415,7 +425,7 @@ namespace lux::render
                 const bool is_invalid_stage =
                     is_shader_input ? input.stages == 0 || (input.stages & ~3u) != 0 : input.stages != 0;
                 const bool invalid_records = input.shared_records &&
-                    (!dynamic.requiresCapability(EStorageCapability::STORAGE_BUFFER_ARRAY) ||
+                    (!reads.containsAny(EDrawResourceRead::STORAGE_RECORDS) ||
                      input.kind != rdesc::EDescriptorType::STORAGE_BUFFER ||
                      input.usage != EGraphUse::STORAGE_READ);
                 const bool is_invalid_kind = (!is_shader_input && input.kind.has_value()) || invalid_records;
@@ -429,7 +439,9 @@ namespace lux::render
                     input.usage != descriptor_usage;
                 const bool duplicate =
                     std::ranges::count(dynamic.inputs, input.name, &RasterPassTemplate::Input::name) != 1;
-                const bool is_invalid_slot = input.name.empty() || !is_read || is_invalid_stage ||
+                const bool invalid_target = input.target_format != rdesc::ETextureFormat::UNDEFINED &&
+                    (dynamic.draw_list.empty() || input.kind != rdesc::EDescriptorType::SAMPLED_IMAGE);
+                const bool is_invalid_slot = invalid_target || input.name.empty() || !is_read || is_invalid_stage ||
                     is_invalid_kind || is_invalid_comparison || is_wrong_stream_use || duplicate;
                 if (is_invalid_slot)
                 {

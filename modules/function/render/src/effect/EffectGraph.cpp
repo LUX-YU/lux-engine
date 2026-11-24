@@ -33,13 +33,13 @@ namespace lux::render
     }
 
     RenderResult<graph::NodeId> EffectGraphEdit::addNode(
-        const EffectNodeDefinition& capability,
+        const EffectCapability& capability,
         ImplementationSelection implementation,
         std::string arguments
     ) noexcept
     {
         if (!writable()) return cxx::unexpected(fail());
-        const auto& identity = capability.identity;
+        const auto& identity = capability;
         const bool is_invalid_identity = !identity.id.valid() || identity.version == 0 ||
             identity.canonical_name.empty() || identity.id != graph::nodeTypeId(identity.canonical_name);
         if (is_invalid_identity) return cxx::unexpected(fail());
@@ -51,7 +51,7 @@ namespace lux::render
             if (!pin) return cxx::unexpected(fail());
         }
         nodes_.emplace(*added, EffectNode{
-            identity.canonical_name, identity.version, std::move(implementation), std::move(arguments)
+            std::string{identity.canonical_name}, identity.version, std::move(implementation), std::move(arguments)
         });
         return *added;
     }

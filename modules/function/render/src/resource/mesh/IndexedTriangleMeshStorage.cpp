@@ -1,9 +1,9 @@
+#include <lux/engine/render/graph/execute/RasterDraws.hpp>
+#include <lux/engine/render/resource/mesh/Resource.hpp>
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/runtime/commands/MeshCommands.hpp>
-#include <lux/engine/render/resource/mesh/MeshLayout.hpp>
-#include <lux/engine/render/effect/CpuCallFrame.hpp>
-#include <lux/engine/render/resource/RasterProgramBuild.hpp>
+#include <lux/engine/render/frame/FrameError.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -296,6 +296,7 @@ namespace lux::render::detail
         }
         retire(entry->geometry);
         entries_.erase(extension_detail::ResourceIdentity::local(id));
+        if (++release_revision_ == 0) std::terminate();
         return {};
     }
 
@@ -340,30 +341,20 @@ namespace lux::render::detail
 
 namespace lux::render
 {
-    RenderResult<MeshDescription>
-    readMeshLayout(const RasterProgramBuildContext& selection, DrawStreamSlot slot, MeshId id) noexcept
+    RenderResult<MeshDrawBinding>
+    MeshDrawBinding::bind(const InstalledDrawSources& sources, RasterResourceSlot slot) noexcept
     {
-        const auto resource = extension_detail::ResourceIdentity::parent(id);
-        auto storage = selection.readResource<detail::IndexedTriangleMeshStorage>(slot, resource);
-        if (!storage) return cxx::unexpected(storage.error());
-        const auto* layout = (*storage)->find(id);
-        if (!layout) return cxx::unexpected(RenderError{kStorageIdentity, {slot.index}});
-        return *layout;
+        const auto source = sources.bind<detail::IndexedTriangleMeshStorage>(slot, EDrawResourceRead::INDEXED_GEOMETRY);
+        if (!source) return cxx::unexpected(source.error());
+        if (!source->owner) return cxx::unexpected(RenderError{kStorageIdentity});
+        return MeshDrawBinding{*source->owner, source->output};
     }
 
-    DrawResourceType MeshResource::drawResourceType() noexcept
+    RenderResult<RasterIndexedGeometry> MeshDrawBinding::geometry(MeshId id) const noexcept
     {
-        return {ResourceName{kMeshResourceName.name()}, cxx::make_basic_type_info<detail::IndexedTriangleMeshStorage>()};
-    }
-
-    RenderResult<RasterIndexedGeometry>
-    MeshResource::geometry(CpuCallFrame& frame, DrawResourceSlot<DrawStorage> source, MeshId id) noexcept
-    {
-        const auto storage = frame.readDrawResource(source);
-        if (!storage) return cxx::unexpected(storage.error());
-        if (!*storage) return cxx::unexpected(RenderError{kStorageIdentity});
-        auto selected = (*storage)->geometry(id);
+        if (output_.frame_slot == kGraphInvalidIndex) return cxx::unexpected(RenderError{kFrameContract});
+        const auto selected = storage_.geometry(id);
         if (!selected) return cxx::unexpected(selected.error());
-        return frame.bindIndexedGeometry(source, *selected);
+        return output_.appendGeometry(storage_.id(), *selected);
     }
-}
+} // namespace lux::render

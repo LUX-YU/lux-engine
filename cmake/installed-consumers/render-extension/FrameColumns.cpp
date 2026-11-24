@@ -62,12 +62,6 @@ namespace
         static inline const ResourceA::Descriptor descriptor{ResourceNameView{"test.frame.b"}};
     };
 
-    struct ConflictingResource final
-    {
-        using PerFrameData = ResourceA::PerFrameData;
-        static inline const auto descriptor = ResourceA::descriptor;
-    };
-
     template <class R, class T> concept CanAppend = requires(FrameData& packet)
     {
         packet.appendData<R, T>(1);
@@ -131,12 +125,9 @@ namespace
     static_assert(!CanMakeConfig<MoveOnlyConfig&>);
     static_assert(CanBorrowConfig<const ConfigValue&> && !CanBorrowConfig<ConfigValue>);
 
-    using Resources = std::tuple<ResourceA, ResourceB, ResourceA>;
-
-    FrameLayout layout()
-    {
-        return take(makeFrameLayout(std::type_identity<Resources>{}, 3));
-    }
+    using Resources = std::tuple<ResourceA, ResourceB>;
+    constexpr ResourceAddress a{{1}, {0, 1}}, b{{1}, {1, 1}};
+    constexpr std::array destinations{a, b};
 
     void columns()
     {
@@ -144,28 +135,13 @@ namespace
         const auto config = take(ConfigValue::make(source));
         const auto* copied_config = config.borrow<DynamicConfig>();
         CHECK(copied_config && copied_config->label == "dynamic config");
-        const auto schema = layout();
-        CHECK(schema.channels().size() == 3 && schema.revision() == 3);
-        CHECK(!schema.key().valid());
-        auto independent = [&]()
-        {
-            std::vector<FrameChannel> channels(schema.channels().begin(), schema.channels().end());
-            std::string name{"test.frame.columns.temporary.type"};
-            auto& element = channels.front().element;
-            element = {element.hash(), name};
-            auto original = take(FrameLayout::create(channels, schema.revision()));
-            auto copy = original;
-            return take(FrameData::create<Resources>(copy));
-        }();
-        CHECK(independent.layout().channels().front().element.name() == "test.frame.columns.temporary.type");
-        CHECK(!independent.layoutKey().valid());
-        CHECK(!makeFrameLayout(std::type_identity<std::tuple<ResourceA, ConflictingResource>>{}, 3));
-        CHECK(!FrameLayout::create(schema.channels(), 0));
-        std::vector<FrameChannel> reordered(schema.channels().begin(), schema.channels().end());
-        std::ranges::reverse(reordered);
-        const auto reversed = take(FrameLayout::create(reordered, 4));
-        CHECK(schema.hasSameChannels(reversed) && schema != reversed);
-        auto packet = take(FrameData::create<Resources>(reversed));
+        auto packet = take(FrameData::create<Resources>(destinations));
+        CHECK(packet.batches().size() == 2 && packet.batches()[1].first_column == 2);
+        auto twins = take(FrameData::create<std::tuple<ResourceA, ResourceA>>({a, b}));
+        CHECK(!twins.resolveColumn<ResourceA, Element>());
+        const auto second = take(twins.resolveColumn<ResourceA, Element>(1));
+        CHECK(twins.appendData(second, 1));
+        CHECK(twins.column(0).count == 0 && twins.column(2).count == 1);
         CHECK(packet.writable());
         CHECK(packet.getData<ResourceA, Element>().empty());
         CHECK(packet.appendData<ResourceA, Element>(0)->empty());
@@ -186,8 +162,7 @@ namespace
         CHECK(packet.getData<ResourceA, Element>()[0].value == 101);
         CHECK(packet.getData<ResourceA, Element>()[2].value == 103);
         CHECK(packet.getData<ResourceA, std::uint32_t>()[0] == 25);
-        const auto index = reversed.find(lux::cxx::make_basic_type_info<ResourceA>(),
-            lux::cxx::make_basic_type_info<Element>());
+        const auto index = packet.batches().front().first_column;
         const auto capacity = packet.capacity(index);
         const auto* retained = packet.column(index).data;
         CHECK(capacity >= 4);
@@ -201,7 +176,7 @@ namespace
         const auto blocked = packet.addData<ResourceA>(Element{});
         CHECK(!blocked && blocked.error().type == kFrameContract);
         // Another CPU slot can grow while the first is sealed; no global pool or GPU slot is involved.
-        auto other = take(FrameData::create<Resources>(schema));
+        auto other = take(FrameData::create<std::tuple<ResourceB, ResourceA>>({b, a}));
         const auto wrong_column = other.appendData(resource_a_column, 1);
         CHECK(!wrong_column && wrong_column.error().type == kFrameContract);
         CHECK(other.appendData<ResourceA, Element>(8193));
@@ -217,28 +192,15 @@ namespace
         CHECK(!packet.addData<ResourceA>(Element{}));
         CHECK(!packet.appendData<ResourceA, Element>(1));
         moved.reset();
-
-        auto single_schema = take(makeFrameLayout(std::type_identity<std::tuple<ResourceA>>{}, 1));
-        auto single = take(FrameData::create<std::tuple<ResourceA>>(single_schema));
+        auto single = take(FrameData::create<std::tuple<ResourceA>>({a}));
         CHECK(!single.appendData<ResourceB, Element>(1));
-        CHECK(!FrameData::create<Resources>(single_schema));
         std::array<std::size_t, 1> wrong_capacities{1};
-        CHECK(!FrameData::create<Resources>(schema, wrong_capacities));
+        CHECK(!FrameData::create<Resources>(destinations, wrong_capacities));
         std::array<std::size_t, 3> capacities{8, 16, 32};
-        auto reserved = take(FrameData::create<Resources>(schema, capacities));
+        auto reserved = take(FrameData::create<Resources>(destinations, capacities));
         for (std::size_t i = 0; i < capacities.size(); ++i)
             CHECK(reserved.capacity(i) >= capacities[i] && reserved.column(i).count == 0);
-        std::vector<FrameChannel> malformed(schema.channels().begin(), schema.channels().end());
-        malformed[0].alignment = 3;
-        CHECK(!FrameLayout::create(malformed, 3));
-        malformed[0] = schema.channels()[0];
-        malformed[0].size *= 2;
-        const auto wrong_abi = take(FrameLayout::create(malformed, 3));
-        CHECK(!FrameData::create<Resources>(wrong_abi));
-        malformed.push_back(schema.channels()[0]);
-        CHECK(!FrameLayout::create(malformed, 3));
-        auto empty_schema = take(makeFrameLayout(std::type_identity<std::tuple<>>{}, 1));
-        auto empty = take(FrameData::create<std::tuple<>>(empty_schema));
+        auto empty = take(FrameData::create<std::tuple<>>({}));
         CHECK(empty.seal());
         empty.release();
         empty.reset();
@@ -247,11 +209,10 @@ namespace
     void ownershipViolation(std::string_view mode)
     {
         std::set_terminate([]() noexcept { std::_Exit(86); });
-        auto packet = take(FrameData::create<Resources>(layout()));
+        auto packet = take(FrameData::create<Resources>(destinations));
         if (mode == "missing-read")
         {
-            auto single_schema = take(makeFrameLayout(std::type_identity<std::tuple<ResourceA>>{}, 1));
-            auto single = take(FrameData::create<std::tuple<ResourceA>>(single_schema));
+            auto single = take(FrameData::create<std::tuple<ResourceA>>({a}));
             (void)single.getData<ResourceB, Element>();
             std::_Exit(1);
         }

@@ -1,4 +1,5 @@
 #pragma once
+#include "FixtureEffect.hpp"
 #include <lux/engine/render/runtime/commands/InstanceCommands.hpp>
 #include <lux/engine/render/runtime/commands/LightingCommands.hpp>
 #include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
@@ -17,7 +18,7 @@
 #include <cstring>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/runtime/commands/Commands.hpp>
-#include <lux/engine/render/effect/builtin/ToneMapping.hpp>
+#include <lux/engine/render/effect/capabilities/ToneMapping.hpp>
 #include <lux/engine/render/runtime/commands/Registration.hpp>
 #include <lux/engine/render/effect/EffectCompileContext.hpp>
 #include <lux/engine/render/effect/EffectImplementation.hpp>
@@ -55,9 +56,11 @@ inline std::atomic<std::uint64_t> call_capture_fail_set = 0;
 inline std::atomic<std::uint64_t> call_capture_fail_pool = 0;
 inline std::atomic<std::uint64_t> call_capture_failed_allocations = 0;
 inline std::array<std::atomic<std::uint64_t>, 45> call_capture_counts{};
+inline std::atomic<std::uint64_t> call_capture_vertex_input_pipelines = 0;
 inline std::atomic<std::uint64_t> call_capture_graphics_pipeline_ns = 0;
 inline std::atomic<std::uint64_t> call_capture_compute_pipeline_ns = 0;
 inline std::atomic<std::uint64_t> call_capture_placed_buffers = 0;
+inline std::atomic<const nri::Buffer*> call_capture_dispatch_buffer = nullptr;
 
 inline void beginCallCapture(const nri::CoreInterface& input) noexcept
 {
@@ -100,6 +103,8 @@ inline void beginCallCapture(const nri::CoreInterface& input) noexcept
     ) noexcept -> nri::Result
     {
         call_capture_counts[2].fetch_add(1, std::memory_order_relaxed);
+        if (graphicsPipelineDesc.vertexInput && graphicsPipelineDesc.vertexInput->attributeNum)
+            call_capture_vertex_input_pipelines.fetch_add(1, std::memory_order_relaxed);
         const auto begin = Clock::now();
         const auto result = call_capture_original.CreateGraphicsPipeline(device, graphicsPipelineDesc, pipeline);
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
@@ -346,6 +351,7 @@ inline void beginCallCapture(const nri::CoreInterface& input) noexcept
     ) noexcept -> void
     {
         call_capture_counts[23].fetch_add(1, std::memory_order_relaxed);
+        call_capture_dispatch_buffer.store(&buffer, std::memory_order_relaxed);
         call_capture_original.CmdDispatchIndirect(commandBuffer, buffer, offset);
     };
     core.CmdCopyBuffer = [](
@@ -498,6 +504,12 @@ struct CapturedPixels
     std::atomic<unsigned> ready = 0;
 };
 
+// These color capture fixtures copy a 64-pixel row with a minimum 256-byte pitch.
+static constexpr std::uint32_t captureRowBytes(rdesc::ETextureFormat format) noexcept
+{
+    return std::max(256u, 64u * rdesc::textureBlockBytes(format));
+}
+
 struct CaptureConfig
 {
     CapturedPixels* result = nullptr;
@@ -513,7 +525,7 @@ struct CaptureDescriptor
     using Config = void;
 
     static inline const ResourceDefinition descriptor{
-        ResourceNameView{"test.deferred.Capture"}, 0, 0, lux::cxx::make_basic_type_info<CaptureConfig>(),
+        ResourceNameView{"test.deferred.Capture"}, {}, {}, lux::cxx::make_basic_type_info<CaptureConfig>(),
         "View-owned terminal copy collection.", EResourceDomain::VIEW
     };
 };
@@ -582,7 +594,7 @@ public:
         if (found == value.allocations_.end())
         {
             const auto alignment = value.device_.description().memoryAlignment.uploadBufferTextureRow;
-            const auto pitch = (256 + alignment - 1) / alignment * alignment;
+            const auto pitch = (captureRowBytes(config.format) + alignment - 1) / alignment * alignment;
             const auto bytes = std::max<std::uint64_t>(pitch * 64u, config.bytes);
             Allocation allocation{config, std::vector<nri::Buffer*>(value.frame_count_), pitch, bytes};
             for (auto*& buffer : allocation.buffers)
@@ -613,7 +625,7 @@ struct GraphCaptureDescriptor final
     using Config = void;
 
     static inline const ResourceDefinition descriptor{
-        ResourceNameView{"test.graph.capture"}, 0, 0, {}, "View-owned EffectGraph readback.", EResourceDomain::VIEW
+        ResourceNameView{"test.graph.capture"}, {}, {}, {}, "View-owned EffectGraph readback.", EResourceDomain::VIEW
     };
 };
 
@@ -661,13 +673,14 @@ private:
         return std::make_unique<GraphCaptureBuffer>(std::move(*storage), *config);
     }
 
-    static RenderResult<StorageGraphImport> describe(const void* object, std::uint32_t projection) noexcept
+    static RenderResult<ResourceProjection> describe(const void* object, std::uint32_t projection) noexcept
     {
         const auto& capture = *static_cast<const GraphCaptureBuffer*>(object);
         if (projection >= capture.config_.size() || !capture.config_[projection].result)
             return lux::cxx::unexpected(RenderError{kStorageContract});
-        const auto bytes = std::max(image_bytes, capture.config_[projection].bytes);
-        return StorageGraphImport::bufferOutput(bytes, EGraphUse::TRANSFER_DESTINATION);
+        const auto& config = capture.config_[projection];
+        const auto bytes = std::max(64u * captureRowBytes(config.format), config.bytes);
+        return ResourceProjection::bufferOutput(bytes, EGraphUse::TRANSFER_DESTINATION);
     }
 
     static RenderResult<void> resolve(
@@ -692,15 +705,13 @@ struct ColorCapture final
     static constexpr auto color = effectPortSemantic("color");
     static constexpr auto pixels = effectPortSemantic("pixels");
 
-    static EffectNodeDefinition definition()
+    static EffectCapability definition()
     {
-        return {
-            .identity = {lux::graph::nodeTypeId(name), std::string{name}, 1},
-            .ports = {
-                {color, "color", {std::string{ToneMapping::display_type}, 1}, lux::graph::EPinDirection::INPUT, 1, true},
+        static constexpr EffectPortDefinition ports[]{
+                {color, "color", {kDisplayColorType, 1}, lux::graph::EPinDirection::INPUT, 1, true},
                 {pixels, "pixels", {"test.graph.pixels", 1}, lux::graph::EPinDirection::OUTPUT}
-            }
-        };
+            };
+        return {.id = lux::graph::nodeTypeId(name), .canonical_name = name, .ports = ports};
     }
 
     static void registerWith(RenderServer& server)
@@ -708,13 +719,11 @@ struct ColorCapture final
         take(server.registerResource<GraphCaptureBuffer>());
         const auto capability = definition();
         CHECK(server.registerEffectCapability(capability));
-        EffectImplementation implementation;
-        implementation.capability = capability.identity.id;
+        ImplementationEntry implementation;
+        implementation.capability = capability.id;
         implementation.identity = {std::string{name}, 1};
         implementation.supported_outputs = {pixels};
-        implementation.initialize = [](EffectInitializationContext&, std::string_view) noexcept
-            -> RenderResult<void> { return {}; };
-        implementation.build = build;
+        implementation.create = fixture::Effect<build>::create;
         CHECK(server.registerEffectImplementation(std::move(implementation)));
     }
 
@@ -723,16 +732,18 @@ private:
     {
         const auto input = context.inputs(color);
         CHECK(input.size() == 1 && input.front().size() == 1);
+        const auto pitch = captureRowBytes(context.target().format);
+        const auto bytes = 64u * pitch;
         const auto readback = context.importFinalBuffer(
             name,
-            {ResourceName{GraphCaptureDescriptor::descriptor.type.name()}},
-            {"", GraphBufferDesc{GraphCaptureBuffer::image_bytes}, EGraphOrigin::IMPORTED, {},
+            GraphCaptureDescriptor::descriptor.type,
+            {"", GraphBufferDesc{bytes}, EGraphOrigin::IMPORTED, {},
                 EGraphUse::TRANSFER_DESTINATION}
         );
         if (!readback) return lux::cxx::unexpected(readback.error());
         const auto copy = take(context.addTransferPass(
             "copy color pixels", TransferWork{{CopyImageBuffer{
-                {input.front().front().version}, {*readback}, 256, GraphCaptureBuffer::image_bytes,
+                {input.front().front().version}, {*readback}, pitch, bytes,
                 ImageCopyRegion{0, 0, 64, 64}
             }}}
         ));
@@ -818,6 +829,16 @@ call(ipc::IpcRequester& client, const CommandList& catalog, typename C::Request 
     return receiveSceneReply<C>(client, sendSceneRequest<C>(client, catalog, std::move(request)), success);
 }
 
+template <class... Resources>
+static FrameData framePacket(
+    ipc::IpcRequester& client, const CommandList& commands, DeviceSessionId device, const VResourceScope& scope
+)
+{
+    return take(FrameData::create<std::tuple<Resources...>>({
+        call<QueryResource>(client, commands, {device, scope, Resources::descriptor.type}).address()...
+    }));
+}
+
 inline MaterialProgramId registerMaterialProgram(
     ipc::IpcRequester& client, const CommandList& commands, ResourceInstanceId resource, rdesc::MaterialProgramSet program
 )
@@ -842,7 +863,7 @@ static ResourceInstanceId sceneTransformStorage(
     return call<GetOrCreateResource>(client, commands, {device, scene, kTransformResourceName}).resource_id;
 }
 
-static TransformId createTransform(
+static TransformRef createTransform(
     ipc::IpcRequester& client,
     const CommandList& commands,
     ResourceInstanceId resource,
@@ -852,18 +873,17 @@ static TransformId createTransform(
     return call<TransformCommands::Create>(client, commands, {resource, std::span{&matrix, 1}}).transforms.front();
 }
 
-static std::vector<TransformId> bindTransforms(
+static std::vector<TransformRef> bindTransforms(
     ipc::IpcRequester& client,
     const CommandList& commands,
-    ResourceInstanceId resource,
-    std::span<MeshInstanceData> instances,
-    std::span<const TransformMatrix> matrices
+    TransformCommands::Create::Request request,
+    std::span<MeshInstanceData> instances
 )
 {
-    CHECK(instances.size() == matrices.size());
-    auto transforms = call<TransformCommands::Create>(client, commands, {resource, matrices}).transforms;
+    CHECK(instances.size() == request.matrices.size());
+    auto transforms = call<TransformCommands::Create>(client, commands, request).transforms;
     CHECK(transforms.size() == instances.size());
-    for (std::size_t i = 0; i < instances.size(); ++i) instances[i].transform_id = transforms[i];
+    for (std::size_t i = 0; i < instances.size(); ++i) instances[i].transform = transforms[i];
     return transforms;
 }
 

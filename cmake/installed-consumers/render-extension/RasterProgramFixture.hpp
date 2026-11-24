@@ -4,10 +4,11 @@
 #include <lux/engine/render/frame/FrameError.hpp>
 #include "Support.hpp"
 #include <array>
+#include <chrono>
+#include <thread>
 #include <cstring>
-#include <exec/create.hpp>
 #include <lux/engine/render/resource/view/Parameters.hpp>
-#include <lux/engine/render/resource/FrameDataCall.hpp>
+#include <lux/engine/render/resource/RasterProgramSet.hpp>
 #include "SdkFullscreen.hpp"
 #include "SdkGreen.hpp"
 #include "SdkRed.hpp"
@@ -18,6 +19,15 @@
 
 namespace sdk_programs
 {
+    inline void attachVertexShader(lux::rdesc::ShaderProgramArtifact& shader, const lux::rdesc::ShaderProgramArtifact& vertex)
+    {
+        shader.interface.vertex_inputs = vertex.interface.vertex_inputs;
+        shader.interface.entry_points.insert(
+            shader.interface.entry_points.begin(), vertex.interface.entry_points.begin(), vertex.interface.entry_points.end()
+        );
+        shader.stages.insert(shader.stages.begin(), vertex.stages.front());
+    }
+
     struct ColorIndex final { std::uint32_t page, index; };
 }
 
@@ -37,19 +47,12 @@ template <> struct lux::render::ConstantBlockTraits<sdk_programs::ColorIndex> fi
 namespace sdk_programs
 {
     using namespace lux::render;
-    using ItemId = ResourceId<struct ShaderItem>;
 
     struct DrawOrder final { std::uint32_t swapped; };
 
-    struct CodeSnapshot final
-    {
-        ItemId item;
-        bool swapped;
-    };
-
     struct SetDrawOrder final
     {
-        static constexpr std::string_view name = "test.sdk.shader_code.set_order";
+        static constexpr std::string_view name = "test.sdk.draw_order.set";
         struct Request final
         {
             ResourceInstanceId resource;
@@ -60,38 +63,91 @@ namespace sdk_programs
         static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
     };
 
-    struct HoldCode final
+    struct PrepareRecordPrograms final
     {
-        static constexpr std::string_view name = "test.sdk.shader_code.hold";
-        static constexpr bool requires_idle_resource = true;
-        using Data = ResourceInstanceId;
-        using Request = ResourceInstanceId;
+        static constexpr std::string_view name = "test.sdk.prepare_record_programs";
+        struct Request final { ResourceInstanceId resource; bool clear = false; };
+        using Data = Request;
         using Response = AckResponse;
-        static ResourceInstanceId resourceId(Request id) noexcept { return id; }
+        static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
     };
 
-    struct ReleaseCode final
+    struct NativeRasterProbe final
     {
-        static constexpr std::string_view name = "test.sdk.shader_code.resume";
-        using Request = EmptyRequest;
-        using Response = AckResponse;
+        explicit NativeRasterProbe(detail::DeviceSession& device) noexcept
+            : core(const_cast<nri::CoreInterface&>(device.nriCore()))
+        {
+            native_create = core.CreateGraphicsPipeline;
+            native_destroy = core.DestroyPipeline;
+            core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
+            {
+                auto tracked = pipeline;
+                const bool observed = pipeline && first_candidate.compare_exchange_strong(tracked, nullptr);
+                native_destroy(pipeline);
+                if (observed) ++candidate_destroys;
+            };
+            core.CreateGraphicsPipeline = [](nri::Device& device, const nri::GraphicsPipelineDesc& desc,
+                                             nri::Pipeline*& pipeline) noexcept
+            {
+                if (fail_after_prefix && first_candidate.load()) return nri::Result::OUT_OF_MEMORY;
+                const auto result = native_create(device, desc, pipeline);
+                if (result == nri::Result::SUCCESS)
+                {
+                    if (watch_next.exchange(false)) first_candidate = pipeline;
+                    ++created;
+                }
+                return result;
+            };
+        }
+
+        NativeRasterProbe(const NativeRasterProbe&) = delete;
+        NativeRasterProbe& operator=(const NativeRasterProbe&) = delete;
+
+        ~NativeRasterProbe() noexcept
+        {
+            core.CreateGraphicsPipeline = native_create;
+            core.DestroyPipeline = native_destroy;
+        }
+
+        static void waitForRetirement(unsigned expected) noexcept
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+            while (candidate_destroys != expected)
+            {
+                CHECK(std::chrono::steady_clock::now() < deadline);
+                std::this_thread::yield();
+            }
+        }
+
+        static inline std::atomic_bool watch_next{}, fail_after_prefix{};
+        static inline std::atomic<unsigned> candidate_destroys{};
+        static inline std::atomic<unsigned> created{};
+
+    private:
+        static inline decltype(nri::CoreInterface::CreateGraphicsPipeline) native_create{};
+        static inline decltype(nri::CoreInterface::DestroyPipeline) native_destroy{};
+        static inline std::atomic<nri::Pipeline*> first_candidate{};
+        nri::CoreInterface& core;
     };
 
-    class TriangleGeometry final
+    class TriangleBatch final
     {
     public:
-        using Descriptor = TriangleGeometry;
+        using Descriptor = TriangleBatch;
+        using PerFrameData = std::tuple<DrawOrder>;
         using Config = void;
 
         static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.sdk.triangle"}, 0, 0, {}, "Indexed fullscreen triangle.", EResourceDomain::DEVICE
+            ResourceNameView{"test.sdk.triangle"}, 0, 0, {}, "Indexed fullscreen draws.", EResourceDomain::DEVICE,
+            resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
         };
 
-        explicit TriangleGeometry(detail::DeviceSession& device) noexcept : device_(device) {}
-        TriangleGeometry(const TriangleGeometry&) = delete;
-        TriangleGeometry& operator=(const TriangleGeometry&) = delete;
+        explicit TriangleBatch(ResourceCreateContext& context) noexcept
+            : device_(context.device), probe_(context.device), programs(context) {}
+        TriangleBatch(const TriangleBatch&) = delete;
+        TriangleBatch& operator=(const TriangleBatch&) = delete;
 
-        ~TriangleGeometry() noexcept
+        ~TriangleBatch() noexcept
         {
             if (buffer_)
                 device_.deferRelease([destroy = device_.nriCore().DestroyBuffer, buffer = buffer_]() noexcept
@@ -100,10 +156,10 @@ namespace sdk_programs
                 });
         }
 
-        static RenderResult<std::unique_ptr<TriangleGeometry>>
+        static RenderResult<std::unique_ptr<TriangleBatch>>
         create(ResourceCreateContext& context, ResourceInstanceId) noexcept
         {
-            auto asset = std::make_unique<TriangleGeometry>(context.device);
+            auto asset = std::make_unique<TriangleBatch>(context);
             const auto& core = context.device.nriCore();
             const nri::BufferDesc desc{.size = 40, .usage = nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
             const auto created = core.CreatePlacedBuffer(
@@ -120,10 +176,26 @@ namespace sdk_programs
             return asset;
         }
 
+        static RenderResult<void> apply(TriangleBatch& storage, std::span<const DrawOrder> values) noexcept
+        {
+            if (std::ranges::any_of(values, [](DrawOrder value) noexcept { return value.swapped > 1; }))
+                return lux::cxx::unexpected(RenderError{kFrameContract});
+            if (!values.empty()) storage.swapped = values.back().swapped != 0;
+            return {};
+        }
+
+        static void setOrder(TriangleBatch& storage, const SetDrawOrder::Request& input, AckResponse& reply) noexcept
+        {
+            const auto result = apply(storage, std::span{&input.order, 1});
+            reply.error = result ? RenderError{} : result.error();
+        }
+
         static ResourceRegistration factory() noexcept
         {
-            return makeResourceRegistration<Descriptor, TriangleGeometry, &create>();
+            return makeResourceRegistration<Descriptor, TriangleBatch, &create, &apply>(nullptr);
         }
+
+        bool swapped = false;
 
         IndexedGeometryInput input(std::span<const GeometryAttribute> attributes) const noexcept
         {
@@ -133,6 +205,11 @@ namespace sdk_programs
     private:
         detail::DeviceSession& device_;
         nri::Buffer* buffer_ = nullptr;
+        NativeRasterProbe probe_;
+
+    public:
+        RasterProgramSet programs;
+        static exec::task<AckResponse> preparePrograms(TriangleBatch&, PrepareRecordPrograms::Request&&) noexcept;
     };
 
     class ColorPage final
@@ -235,257 +312,17 @@ namespace sdk_programs
         }
     };
 
-    enum class EDriverGate { OPEN, ARMED, HELD };
-    struct CodeStorage final
-    {
-        using Descriptor = CodeStorage;
-        using Config = void;
-
-        using PerFrameData = std::tuple<DrawOrder>;
-        static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.sdk.shader_code"}, 0, 0, {}, "Two resident raster uses.", EResourceDomain::DEVICE,
-            resourceFrameTypes(static_cast<PerFrameData*>(nullptr))
-        };
-
-        CodeStorage(ResourceCreateContext& context, ResourceInstanceId id) noexcept
-            : core(const_cast<nri::CoreInterface&>(context.device.nriCore())),
-              snapshot_{extension_detail::ResourceIdentity::make<ItemId>(id, lux::cxx::SlotKey<ShaderItem>{0, 1}), false},
-              uses(context.device)
-        {
-            native_create = core.CreateGraphicsPipeline;
-            native_destroy = core.DestroyPipeline;
-            core.DestroyPipeline = [](nri::Pipeline* pipeline) noexcept
-            {
-                auto tracked = pipeline;
-                const bool observed = pipeline && first_candidate.compare_exchange_strong(tracked, nullptr);
-                native_destroy(pipeline);
-                if (observed) ++candidate_destroys;
-            };
-            core.CreateGraphicsPipeline = [](nri::Device& device, const nri::GraphicsPipelineDesc& desc,
-                                             nri::Pipeline*& pipeline) noexcept
-            {
-                auto expected = EDriverGate::ARMED;
-                if (gate.compare_exchange_strong(expected, EDriverGate::HELD)) gate.wait(EDriverGate::HELD);
-                if (fail_after_prefix && first_candidate.load()) return nri::Result::OUT_OF_MEMORY;
-                const auto result = native_create(device, desc, pipeline);
-                if (result == nri::Result::SUCCESS)
-                {
-                    if (watch_next.exchange(false)) first_candidate = pipeline;
-                    ++created;
-                }
-                return result;
-            };
-        }
-
-        ~CodeStorage() noexcept
-        {
-            core.CreateGraphicsPipeline = native_create;
-            core.DestroyPipeline = native_destroy;
-        }
-
-        static exec::task<AckResponse> hold(CodeStorage&, HoldCode::Request&&) noexcept
-        {
-            co_return co_await exec::create<stdexec::set_value_t(AckResponse)>([](auto& context) noexcept
-            {
-                using Context = std::remove_cvref_t<decltype(context)>;
-                CHECK(!pending);
-                pending = &context;
-                resume = [](void* value) noexcept
-                {
-                    auto& context = *static_cast<Context*>(value);
-                    stdexec::set_value(std::move(context.receiver), AckResponse{});
-                };
-                held.store(true);
-            });
-        }
-
-        static void release(const EmptyRequest&, AckResponse& output) noexcept
-        {
-            if (!pending) { output.error = {kRuntimeState}; return; }
-            output = {};
-            held.store(false);
-            resume(std::exchange(pending, nullptr));
-        }
-
-        ResourceProgramUses* lookup(ItemId requested) noexcept
-        {
-            CHECK(!held.load());
-            return requested == snapshot_.item ? &uses : nullptr;
-        }
-
-        static RenderResult<void> apply(CodeStorage& storage, std::span<const DrawOrder> values) noexcept
-        {
-            if (std::ranges::any_of(values, [](DrawOrder value) noexcept { return value.swapped > 1; }))
-                return lux::cxx::unexpected(RenderError{kFrameContract});
-            if (!values.empty() && storage.snapshot_.swapped != bool(values.back().swapped))
-            {
-                storage.snapshot_.swapped = values.back().swapped != 0;
-                storage.revision.advance();
-            }
-            return {};
-        }
-
-        static void setOrder(CodeStorage& storage, const SetDrawOrder::Request& input, AckResponse& reply) noexcept
-        {
-            const auto result = apply(storage, std::span{&input.order, 1});
-            reply.error = result ? RenderError{} : result.error();
-        }
-
-        RenderResult<SnapshotValue<CodeSnapshot>> selectCode() const noexcept
-        {
-            ++captures;
-            return SnapshotValue<CodeSnapshot>{snapshot_, revision.value()};
-        }
-
-        static RenderResult<std::unique_ptr<CodeStorage>>
-        create(ResourceCreateContext& context, ResourceInstanceId id) noexcept
-        {
-            return std::make_unique<CodeStorage>(context, id);
-        }
-
-        static std::span<const CommandBinding> commandBindings() noexcept
-        {
-            static const std::array commands{
-                CommandBinding::declare<HoldCode, &hold>(), CommandBinding::declare<SetDrawOrder, &setOrder>()
-            };
-            return commands;
-        }
-
-        static ResourceRegistration factory() noexcept
-        {
-            static constexpr auto snapshot = []() noexcept
-            {
-                auto ops = detail::StorageSnapshotOps::make<CodeStorage, CodeSnapshot, &CodeStorage::selectCode>();
-                ops.program_input = [](void* object) noexcept -> ProgramInputRevision&
-                {
-                    ++source_links;
-                    return static_cast<CodeStorage*>(object)->revision;
-                };
-                return ops;
-            }();
-            static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
-            static const auto frame = FrameDataCall::declare<CodeStorage, CodeStorage, &apply>();
-            return makeResourceRegistration<Descriptor, CodeStorage, &create>(&binding, frame);
-        }
-
-        static inline std::atomic gate{EDriverGate::OPEN};
-        static inline std::atomic_bool watch_next{}, fail_after_prefix{};
-        static inline std::atomic<unsigned> candidate_destroys{};
-        static inline std::atomic<unsigned> created{}, builds{}, clear_builds{}, source_links{}, captures{};
-        static inline std::atomic_bool held{};
-
-    private:
-        static inline decltype(nri::CoreInterface::CreateGraphicsPipeline) native_create{};
-        static inline decltype(nri::CoreInterface::DestroyPipeline) native_destroy{};
-        static inline std::atomic<nri::Pipeline*> first_candidate{};
-        static inline void* pending = nullptr;
-        static inline void (*resume)(void*) noexcept = nullptr;
-        nri::CoreInterface& core;
-        CodeSnapshot snapshot_;
-        ProgramInputRevision revision;
-        ResourceProgramUses uses;
-    };
-
-    template <auto Lookup>
-    concept ProgramLookup = requires(ItemId item) { ResourceProgramSource::from<CodeStorage, Lookup>(item); };
-
-    static_assert(ProgramLookup<&CodeStorage::lookup>);
-    static_assert(!ProgramLookup<&CodeStorage::selectCode>);
-
-    struct SetBackground final
-    {
-        static constexpr std::string_view name = "test.sdk.background.set";
-        struct Request final { ResourceInstanceId resource; std::uint32_t value; };
-        using Data = Request;
-        using Response = AckResponse;
-        static ResourceInstanceId resourceId(const Request& request) noexcept { return request.resource; }
-    };
-
-    struct BackgroundSettings final
-    {
-        using Descriptor = BackgroundSettings;
-        using Config = void;
-
-        static inline const ResourceDefinition descriptor{
-            ResourceNameView{"test.sdk.background"}, 0, 0, {}, "Background program input.", EResourceDomain::DEVICE
-        };
-
-        static RenderResult<std::unique_ptr<BackgroundSettings>> create(ResourceCreateContext&, ResourceInstanceId) noexcept
-        {
-            return std::make_unique<BackgroundSettings>();
-        }
-
-        static void set(BackgroundSettings& state, const SetBackground::Request& input, AckResponse& reply) noexcept
-        {
-            state.value = input.value;
-            state.revision.advance();
-            reply = {};
-        }
-
-        RenderResult<SnapshotValue<std::uint32_t>> selectValue() const noexcept
-        {
-            return SnapshotValue<std::uint32_t>{value, revision.value()};
-        }
-
-        static std::span<const CommandBinding> commandBindings() noexcept
-        {
-            static const std::array commands{CommandBinding::declare<SetBackground, &set>()};
-            return commands;
-        }
-
-        static ResourceRegistration factory() noexcept
-        {
-            static constexpr auto snapshot =
-                detail::StorageSnapshotOps::make<BackgroundSettings, std::uint32_t, &BackgroundSettings::selectValue, &BackgroundSettings::revision>();
-            static const detail::StorageBindingOps binding{.cpu_snapshot = &snapshot};
-            return makeResourceRegistration<Descriptor, BackgroundSettings, &create>(&binding);
-        }
-
-        std::uint32_t value = 0;
-        ProgramInputRevision revision;
-    };
-
-    struct ClearBackground final
-    {
-        using Configuration = std::monostate;
-        struct LinkedData final { DrawStreamSlot stream; };
-        static RenderResult<LinkedData>
-        resolve(const Configuration&, std::span<const RasterOperands, 1> streams) noexcept
-        {
-            return LinkedData{streams.front().stream()};
-        }
-
-        static RenderResult<void> buildPrograms(
-            const LinkedData& linked, RasterProgramBuildContext& build, const SnapshotValues<std::uint32_t>& sources
-        ) noexcept
-        {
-            ++CodeStorage::clear_builds;
-            if (std::get<0>(sources).value.get() == 2) return lux::cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-            return build.setPrograms(linked.stream, {}, {});
-        }
-
-        static RenderResult<void> prepare(const LinkedData& linked, CpuCallFrame& frame) noexcept
-        {
-            return frame.setRasterStream(linked.stream, {});
-        }
-    };
-
     struct ProgramDraws final
     {
-        struct Configuration final
-        {
-            lux::rdesc::EShaderTarget target;
-            bool stale, reads_records;
-        };
+        using Configuration = bool;
 
         struct LinkedData final
         {
             DrawStreamSlot stream;
             DrawResourceSlot<DrawMask> mask;
-            DrawResourceSlot<TriangleGeometry> geometry;
+            DrawResourceSlot<TriangleBatch> geometry;
             std::optional<DrawResourceSlot<ColorPage>> records;
-            lux::rdesc::EShaderTarget target;
-            bool stale;
+            std::array<RasterProgramSlot, 3> programs;
         };
 
         struct Workspace final
@@ -499,14 +336,22 @@ namespace sdk_programs
         {
             const auto undeclared = streams.front().resource<DrawMask>("absent");
             CHECK(!undeclared && undeclared.error().type == kGraphUnknownResource);
-            const auto wrong_type = streams.front().resource<CodeStorage>("clip_height");
+            const auto wrong_type = streams.front().resource<TriangleBatch>("clip_height");
             CHECK(!wrong_type && wrong_type.error().type == kStorageMismatch);
             auto mask = streams.front().resource<DrawMask>("clip_height");
             if (!mask) return lux::cxx::unexpected(mask.error());
-            const auto geometry = streams.front().resource<TriangleGeometry>("triangle");
+            const auto geometry = streams.front().resource<TriangleBatch>("triangle");
             if (!geometry) return lux::cxx::unexpected(geometry.error());
-            LinkedData linked{streams.front().stream(), *mask, *geometry, {}, input.target, input.stale};
-            if (input.reads_records)
+            LinkedData linked{streams.front().stream(), *mask, *geometry, {}, {}};
+            for (std::uint32_t i = 0; !input && i < linked.programs.size(); ++i)
+            {
+                const auto program = streams.front().programAt(i);
+                if (!program) return lux::cxx::unexpected(program.error());
+                linked.programs[i] = *program;
+            }
+            const auto missing = streams.front().programAt(static_cast<std::uint32_t>(linked.programs.size()));
+            CHECK(!missing && missing.error().type == kGraphInvalidDescriptor);
+            if (input)
             {
                 const auto records = streams.front().resource<ColorPage>("colors");
                 if (!records) return lux::cxx::unexpected(records.error());
@@ -515,77 +360,65 @@ namespace sdk_programs
             return linked;
         }
 
-        using DrawMapping = std::array<std::uint32_t, 2>;
-
-        static RenderResult<std::unique_ptr<DrawMapping>>
-        buildPrograms(
-            const LinkedData& linked,
-            RasterProgramBuildContext& selection,
-            const SnapshotValues<CodeSnapshot, CodeSnapshot>& sources,
-            const DrawMapping* previous
-        ) noexcept
+        static std::vector<RasterPassTemplate::Input> arguments(bool records)
         {
-            const auto& [code, alias] = sources;
-            CHECK(&code.value.get() == &alias.value.get() && code.revision == alias.revision);
-            ++CodeStorage::builds;
-            const auto& snapshot = alias.value.get();
-            const auto mapping = snapshot.swapped ? DrawMapping{0, 1} : DrawMapping{1, 0};
-            if (previous)
-            {
-                auto reused = selection.reusePrograms(linked.stream);
-                if (!reused) return lux::cxx::unexpected(reused.error());
-                return std::make_unique<DrawMapping>(mapping);
-            }
-            auto vertex = kSdkFullscreen.load(linked.target);
-            std::vector<lux::rdesc::ShaderProgramArtifact> shaders{
-                (linked.records ? kSdkRecordColor : kSdkRed).load(linked.target), kSdkGreen.load(linked.target)
-            };
+            std::vector<RasterPassTemplate::Input> inputs{{"vertices", {}, EGraphUse::VERTEX}, {"indices", {}, EGraphUse::INDEX}};
+            if (records)
+                inputs.push_back({
+                    .name = "colorPages", .kind = lux::rdesc::EDescriptorType::STORAGE_BUFFER,
+                    .usage = EGraphUse::STORAGE_READ, .stages = 2, .shared_records = true
+                });
+            return inputs;
+        }
+
+        static RasterProgramSet::Description describe(lux::rdesc::EShaderTarget target, bool records)
+        {
+            RasterProgramSet::Description result;
+            result.colors = {lux::rdesc::ETextureFormat::RGBA8_UNORM};
+            result.arguments = arguments(records);
+            result.shared_records = records;
+            auto vertex = kSdkFullscreen.load(target);
+            auto& shaders = result.shaders;
+            shaders.push_back((records ? kSdkRecordColor : kSdkRed).load(target));
+            shaders.push_back(kSdkGreen.load(target));
             CHECK(vertex.stages.front().entry == "Fullscreen" && vertex.interface.vertex_inputs.size() == 1);
-            CHECK(shaders[0].stages.front().entry == (linked.records ? "RecordColor" : "Red"));
+            CHECK(shaders[0].stages.front().entry == (records ? "RecordColor" : "Red"));
             CHECK(shaders[1].stages.front().entry == "Green");
-            for (auto& shader : shaders)
-            {
-                shader.interface.vertex_inputs = vertex.interface.vertex_inputs;
-                shader.interface.entry_points.insert(shader.interface.entry_points.begin(),
-                    vertex.interface.entry_points.begin(), vertex.interface.entry_points.end());
-                shader.stages.insert(shader.stages.begin(), vertex.stages.front());
-            }
-            auto item = snapshot.item;
-            if (linked.stale)
-            {
-                using Identity = extension_detail::ResourceIdentity;
-                auto key = Identity::local(item);
-                ++key.gen;
-                item = Identity::make<ItemId>(Identity::parent(item), key);
-            }
-            std::array<RuntimeRasterProgram, 2> programs{};
+            for (auto& shader : shaders) attachVertexShader(shader, vertex);
+            std::vector<RasterPassTemplate::StreamProgram> programs(2);
             for (std::uint32_t i = 0; i < programs.size(); ++i)
             {
-                programs[i].shader = {1 - i};
+                programs[i].program = 1 - i;
                 programs[i].graphics.cull_mode = ECullMode::NONE;
                 programs[i].graphics.vertex_bindings = {{0, 8}};
                 programs[i].graphics.vertex_attributes = {{
                     vertex.interface.vertex_inputs.front().location, 0, 0, lux::rdesc::ETextureFormat::RG32_SFLOAT
                 }};
                 programs[i].geometry_locations = {3};
-                programs[i].source = ResourceProgramSource::from<CodeStorage, &CodeStorage::lookup>(item);
             }
-            if (linked.records) programs[1].parameters.setInlineConstant(ColorIndex{});
-            auto built = selection.setPrograms(linked.stream, std::move(shaders), programs);
-            if (!built) return lux::cxx::unexpected(built.error());
-            return std::make_unique<DrawMapping>(mapping);
+            if (records) programs[1].parameters.setInlineConstant(ColorIndex{});
+            auto transparent = programs[1];
+            transparent.graphics.blend.enabled = true;
+            transparent.graphics.blend.source_color = EBlendFactor::ZERO;
+            transparent.graphics.blend.destination_color = EBlendFactor::ONE;
+            programs.push_back(std::move(transparent));
+            result.programs = std::move(programs);
+            return result;
         }
 
         static RenderResult<void>
         prepare(
             const LinkedData& linked,
             const CpuFrameInputs<const ViewGpuParameters&>& inputs,
-            Workspace& workspace,
-            const DrawMapping* mapping
+            Workspace& workspace
         ) noexcept
         {
             auto& frame = inputs.frame;
-            CHECK(mapping);
+            if (linked.records)
+            {
+                auto ready = frame.selectRasterPrograms(linked.geometry, &TriangleBatch::programs);
+                if (!ready) return ready;
+            }
             const auto source = frame.readDrawResource(linked.geometry);
             if (!source) return lux::cxx::unexpected(source.error());
             CHECK(*source);
@@ -623,17 +456,23 @@ namespace sdk_programs
             const RasterStreamVertex vertex{0, selected_geometry->vertices};
             ColorIndex color{};
             std::array<RasterStreamDraw, 2> draws{};
+            const std::array indices = (*source)->swapped ? std::array{0u, 2u} : std::array{1u, 0u};
             for (std::uint32_t i = 0; i < draws.size(); ++i)
             {
-                auto program = frame.rasterProgram(linked.stream, (*mapping)[i]);
-                if (!program) return lux::cxx::unexpected(program.error());
+                auto program = linked.programs[indices[i]];
+                if (linked.records)
+                {
+                    const auto selected = frame.rasterProgram(linked.stream, indices[i]);
+                    if (!selected) return lux::cxx::unexpected(selected.error());
+                    program = *selected;
+                }
                 draws[i] = {
-                    *program, {}, {0, 1}, {},
+                    program, {}, {0, 1}, {},
                     RasterStreamIndexed{selected_geometry->indices, selected_geometry->index_type, 3}
                 };
-                if (linked.records && program->index == 1)
+                if (linked.records && program.index != 0)
                 {
-                    auto writer = frame.rasterRecord(*linked.records, *program);
+                    auto writer = frame.rasterRecord(*linked.records, program);
                     if (!writer) return lux::cxx::unexpected(writer.error());
                     const auto page = frame.readDrawResource(*linked.records);
                     if (!page) return lux::cxx::unexpected(page.error());
@@ -655,32 +494,12 @@ namespace sdk_programs
         }
     };
 
-    // These builders have valid signatures but cannot produce the values required by ProgramDraws.
-    struct WrongProgramInputs final
+    inline exec::task<AckResponse>
+    TriangleBatch::preparePrograms(TriangleBatch& storage, PrepareRecordPrograms::Request&& request) noexcept
     {
-        using LinkedData = std::uint32_t;
-        using DrawMapping = ProgramDraws::DrawMapping;
-
-        static RenderResult<std::unique_ptr<DrawMapping>>
-        build(
-            const LinkedData&, RasterProgramBuildContext&, const SnapshotValues<CodeSnapshot, CodeSnapshot>&,
-            const DrawMapping*
-        ) noexcept
-        {
-            CHECK(false);
-            return lux::cxx::unexpected(RenderError{kFrameContract});
-        }
-    };
-
-    struct MissingDrawMapping final
-    {
-        using LinkedData = ProgramDraws::LinkedData;
-
-        static RenderResult<void>
-        build(const LinkedData&, RasterProgramBuildContext&, const SnapshotValues<CodeSnapshot, CodeSnapshot>&) noexcept
-        {
-            CHECK(false);
-            return lux::cxx::unexpected(RenderError{kFrameContract});
-        }
-    };
+        auto description = ProgramDraws::describe(storage.device_.enabledFeatures().shader_target, true);
+        if (request.clear) description.programs.clear();
+        const auto result = co_await storage.programs.replace(std::move(description));
+        co_return AckResponse{result ? RenderError{} : result.error()};
+    }
 } // namespace sdk_programs

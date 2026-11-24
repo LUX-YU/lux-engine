@@ -5,11 +5,6 @@
 #include <lux/engine/render/runtime/commands/detail/ResponseRoute.hpp>
 #include <lux/engine/render/visibility.h>
 
-namespace lux::render::detail
-{
-    class DeviceEntry;
-}
-
 namespace lux::render
 {
     class ResourceRegistry;
@@ -31,9 +26,15 @@ namespace lux::render::runtime_detail
         ResourceRegistry& resources;
         ResourceInstanceId resource_id;
         void* resource = nullptr;
-        detail::DeviceEntry* device = nullptr;
+        platform::ipc::IpcMessage* local_response = nullptr;
+        [[nodiscard]] platform::ipc::IpcMessage& response() const noexcept;
     };
 
     LUX_RENDER_PUBLIC void finishResourceCommand(ResourceRegistry&, ResourceInstanceId) noexcept;
     LUX_RENDER_PUBLIC platform::ipc::IpcMessage& prepareResponse(ResponseOutbox&, ResponseRoute) noexcept;
+
+    inline platform::ipc::IpcMessage& CommandDispatchContext::response() const noexcept
+    {
+        return local_response ? *local_response : prepareResponse(outbox, response_route);
+    }
 } // namespace lux::render::runtime_detail

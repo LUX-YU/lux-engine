@@ -10,16 +10,11 @@
 #include <optional>
 #include <span>
 
-namespace lux::render
-{
-    class ReplicaMutation;
-}
+namespace lux::render::runtime_detail { struct DeviceRound; }
 
 namespace lux::render::detail
 {
     class DeviceSession;
-    class FrameOperation;
-    class PreparedUploadWindow;
     struct StagingRange;
     class StagingArena;
 
@@ -54,6 +49,12 @@ namespace lux::render::detail
         EImageUploadUse use = EImageUploadUse::SAMPLED;
         // Operation-owned until terminal delivery. Includes the known prefix on failure.
         SubmissionFrontiers* accepted = nullptr;
+    };
+
+    struct FrameCopyReceipt final
+    {
+        SubmissionPoint point;
+        std::size_t ranges = 0;
     };
 
     struct BufferWrite final
@@ -97,8 +98,10 @@ namespace lux::render::detail
         // Lazy device-thread task. Source ranges and their descriptors stay valid through terminal completion.
         // Success means Copy/Acquire acceptance; it does not wait for GPU completion. Partial failures still
         // require the caller to retain or defer-release targets already referenced by accepted work.
-        [[nodiscard]] Task
-        writeBuffers(std::span<const BufferWrite> writes, std::span<const BufferZero> fills = {}) noexcept;
+        // The optional destination accumulates actual accepted physical queue uses, including a partial submission.
+        [[nodiscard]] Task writeBuffers(
+            std::span<const BufferWrite> writes, std::span<const BufferZero> fills = {}, SubmissionFrontiers* accepted = nullptr
+        ) noexcept;
         // Each source spans the first element through the last element's end, including stride gaps.
         // Pack only element_bytes per element; destination ranges and byte admission use packed sizes.
         // The layout applies to this batch, keeping BufferWrite a compact borrowed range.
@@ -147,24 +150,21 @@ namespace lux::render::detail
         }
 
     private:
-        friend class ::lux::render::ReplicaMutation;
-        [[nodiscard]] Task writeReplicaBuffers(std::span<const BufferWrite>, SubmissionFrontiers&) noexcept;
-
         friend class DeviceEntry;
-        friend class FrameOperation;
+        friend struct runtime_detail::DeviceRound;
         // The current graph round reserves staging, without suspending independent transfers.
         void reservePreparationStaging(bool reserve) noexcept
         {
             preparation_reserved_ = reserve;
         }
 
-        [[nodiscard]] bool hasPendingTransfers() const noexcept { return progressing_ || ready_head_ || range_waiters_; }
+        [[nodiscard]] bool hasPendingTransfers() const noexcept { return submitting_frame_copies_ || progressing_ || ready_head_ || range_waiters_; }
         [[nodiscard]] bool canProgressTransfers() const noexcept;
-        [[nodiscard]] bool canSubmitPreparationCopies() const noexcept;
+        [[nodiscard]] exec::task<RenderResult<std::optional<FrameCopyReceipt>>> submitFrameCopies() noexcept;
+        [[nodiscard]] bool canSubmitFrameCopies() const noexcept;
         [[nodiscard]] Task submitReadyTransfers() noexcept;
         void cancelFrameCopies() noexcept;
 
-        friend class PreparedUploadWindow;
         [[nodiscard]] std::size_t stagedFrameCopyCount() const noexcept;
         [[nodiscard]] bool canBeginCommands(const SubmissionQueue&) const noexcept;
         void recordFrameCopies(nri::CommandBuffer&) noexcept;
@@ -175,7 +175,7 @@ namespace lux::render::detail
         void enqueue(UploadWindow&) noexcept;
         struct FrameCopy;
         std::vector<FrameCopy> frame_copies_;
-        std::uint64_t frame_copy_receipt_serial_ = 0;
+        bool submitting_frame_copies_ = false;
         ResourceUploader(DeviceSession&, TransferOptions, execution::CpuScheduler) noexcept;
         struct UploadRequest;
         [[nodiscard]] Task write(UploadRequest) noexcept;

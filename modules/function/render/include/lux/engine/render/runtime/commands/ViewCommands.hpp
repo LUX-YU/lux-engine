@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/runtime/commands/Command.hpp>
+#include <lux/engine/render/resource/view/Parameters.hpp>
 
 namespace lux::render
 {
@@ -21,6 +22,18 @@ namespace lux::render
         static constexpr std::string_view name{"render.view.create"};
         using Request = CreateViewRequest;
         using Response = ViewCreated;
+    };
+
+    struct UpdateView final
+    {
+        static constexpr std::string_view name{"render.view.update"};
+
+        struct Request final
+        {
+            ViewScope scope;
+            ViewGpuParameters parameters;
+        };
+        using Response = AckResponse;
     };
 
     struct RemoveView final

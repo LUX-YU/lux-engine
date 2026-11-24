@@ -138,51 +138,28 @@ namespace lux::render::detail
         return {};
     }
 
-    RenderResult<nri::PipelineLayout*>
-    createPipelineLayout(
-        nri::Device& device,
-        const nri::CoreInterface& core,
-        const PassBindings& program,
-        std::span<const nri::DescriptorRangeDesc> local,
-        const std::array<nri::DescriptorRangeDesc, 3>& shared,
-        std::uint32_t color_count,
-        std::uint32_t& max_colors
+    RenderResult<std::uint32_t>
+    qualifyPipelineLayout(
+        const nri::DeviceDesc& limits,
+        const nri::PipelineLayoutDesc& description,
+        std::uint32_t color_count
     ) noexcept
     {
-        std::vector<nri::DescriptorSetDesc> sets;
-        for (std::size_t kind = 0; kind < program.shared_sets.size(); ++kind)
-        {
-            const auto set = program.shared_sets[kind];
-            if (set == kGraphInvalidIndex)
-            {
-                continue;
-            }
-            if (shared[kind].descriptorNum == 0)
-            {
-                return cxx::unexpected(RenderError{kDeviceUnsupported});
-            }
-            sets.push_back({set, &shared[kind], 1});
-        }
-        if (!local.empty())
-        {
-            sets.push_back({program.private_set, local.data(), static_cast<std::uint32_t>(local.size())});
-        }
-        const auto& limits = core.GetDeviceDesc(device);
-        constexpr auto supported_stages =
-            nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER;
+        const std::span sets{description.descriptorSets, description.descriptorSetNum};
         const bool is_d3d12 = limits.graphicsAPI == nri::GraphicsAPI::D3D12;
-        if (program.parameter_bytes)
+        std::uint64_t root_bytes = is_d3d12 ? d3dTableBytes(sets) : 0;
+        for (const auto& block : std::span{description.rootConstants, description.rootConstantNum})
         {
-            const auto stages = static_cast<std::uint32_t>(program.parameter_stages);
-            const auto allowed = static_cast<std::uint32_t>(supported_stages);
-            const bool invalid_range = program.parameter_bytes % sizeof(std::uint32_t) != 0;
+            const auto stages = static_cast<std::uint32_t>(block.shaderStages);
+            const auto allowed = static_cast<std::uint32_t>(description.shaderStages);
+            const bool invalid_range = !block.size || block.size % sizeof(std::uint32_t) != 0;
             const bool invalid_stages = (stages & ~allowed) != 0;
             if (invalid_range || invalid_stages)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
+            root_bytes += block.size;
         }
-        const auto root_bytes = program.parameter_bytes + (is_d3d12 ? d3dTableBytes(sets) : 0);
         const auto root_limit = limits.pipelineLayout.rootConstantMaxSize;
         if (root_bytes > root_limit)
         {
@@ -234,7 +211,7 @@ namespace lux::render::detail
             EDeviceBudget::VERTEX_STAGE_RESOURCES, EDeviceBudget::FRAGMENT_STAGE_RESOURCES,
             EDeviceBudget::COMPUTE_STAGE_RESOURCES
         };
-        max_colors = UINT32_MAX;
+        std::uint32_t max_colors = UINT32_MAX;
         for (unsigned subset = 0; subset < 2; ++subset)
         {
             std::array<std::uint64_t, 5> totals{};
@@ -312,22 +289,7 @@ namespace lux::render::detail
                 }
             }
         }
-        const nri::RootConstantDesc parameters{0, program.parameter_bytes, program.parameter_stages};
-        nri::PipelineLayoutDesc description{};
-        description.flags = nri::PipelineLayoutBits::IGNORE_GLOBAL_SPIRV_OFFSETS;
-        description.rootRegisterSpace = is_d3d12 ? 255 : 0;
-        description.shaderStages = supported_stages;
-        description.descriptorSets = sets.data();
-        description.descriptorSetNum = static_cast<std::uint32_t>(sets.size());
-        description.rootConstants = program.parameter_bytes ? &parameters : nullptr;
-        description.rootConstantNum = unsigned(program.parameter_bytes != 0);
-        nri::PipelineLayout* layout = nullptr;
-        const auto created = core.CreatePipelineLayout(device, description, layout);
-        if (created != nri::Result::SUCCESS)
-        {
-            return cxx::unexpected(nativeError(created));
-        }
-        return layout;
+        return max_colors;
     }
 
     RenderResult<PassBindings>
@@ -595,7 +557,11 @@ namespace lux::render::detail
                     return rdesc::EDescriptorType::STORAGE_BUFFER;
                 }
             }();
-            if (kind != *slot->kind || binding.kind == EDescriptorKind::STORAGE_IMAGE)
+            // A Target publication supplies one color 2D view per descriptor element.
+            const bool accepts_target = binding.kind == EDescriptorKind::SAMPLED_IMAGE && binding.count &&
+                !binding.image_depth && !binding.image_arrayed;
+            const bool invalid_target = slot->target_format != rdesc::ETextureFormat::UNDEFINED && !accepts_target;
+            if (kind != *slot->kind || binding.kind == EDescriptorKind::STORAGE_IMAGE || invalid_target)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
             }
@@ -646,14 +612,14 @@ namespace lux::render::detail
     ) noexcept
     {
         ShaderBindingPlan plan;
-        plan.passes.resize(graph.passes().size());
+        plan.passes.reserve(analysis.execution_order.size());
         const auto declarations = graph.samplers();
         std::vector<std::uint32_t> sampler_slots(declarations.size(), kGraphInvalidIndex);
         for (const auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
             const auto input = pass.bindings();
-            auto& output = plan.passes[id.index];
+            auto& output = plan.passes.emplace_back();
             for (const auto& write : input.typed_buffer_writes)
             {
                 const auto binding = static_cast<std::uint32_t>(output.bindings.size());
@@ -707,66 +673,40 @@ namespace lux::render::detail
                 }
                 use.sampler = slot;
             }
-            plan.passes[id.index] = std::move(*program);
+            output = std::move(*program);
         }
         return plan;
     }
 
-    RenderResult<rdesc::ShaderProgramArtifact>
-    relocateShader(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept
+    bool requiresShaderRelocation(
+        const rdesc::ShaderProgramArtifact& shader, std::span<const ShaderBinding> locations
+    ) noexcept
     {
-        if (shader.target == rdesc::EShaderTarget::DXIL)
-        {
-            // Physical locations are carried by descriptor ranges in the same Pipeline layout.
-            // A DXIL container and its own reflection remain unchanged.
-            return shader;
-        }
-        const auto original_sets = std::exchange(shader.interface.sets, {});
-        std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
-        for (const auto& set : original_sets)
-        {
-            for (const auto& binding : set.bindings)
-            {
-                bindings.push_back(&binding);
-            }
-        }
-        if (locations.size() != bindings.size())
-        {
-            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        }
+        if (shader.target == rdesc::EShaderTarget::DXIL) return false;
+        // A canonical set list can be used in place when every field already has its final coordinates.
+        // Other representations pass through the normalizer, including empty and repeated set groups.
         std::size_t index = 0;
-        for (const auto& group : original_sets)
+        const auto sets = std::span(shader.interface.sets);
+        for (std::size_t i = 0; i < sets.size(); ++i)
         {
-            for (auto binding : group.bindings)
+            const auto& set = sets[i];
+            if (set.bindings.empty() || (i && sets[i - 1].set >= set.set)) return true;
+            for (const auto& field : set.bindings)
             {
-                binding.set = locations[index].set;
-                binding.binding = locations[index++].binding;
-                auto destination =
-                    std::ranges::find(shader.interface.sets, binding.set, &rdesc::DescriptorSetLayoutInfo::set);
-                if (destination == shader.interface.sets.end())
-                {
-                    shader.interface.sets.emplace_back(binding.set);
-                    destination = std::prev(shader.interface.sets.end());
-                }
-                destination->bindings.push_back(std::move(binding));
+                if (index == locations.size()) return true;
+                const auto& location = locations[index++];
+                if (field.set != set.set || field.set != location.set || field.binding != location.binding) return true;
             }
         }
-        // The compiler derived these locations from the validated field list. Only positions change.
-        const bool unchanged = std::ranges::equal(
-            bindings,
-            locations,
-            [](const auto* a, const auto& b) { return a->set == b.set && a->binding == b.binding; }
-        );
-        if (unchanged)
-        {
-            return shader;
-        }
-        // DXIL register assignments are fixed by target compilation. Never treat its container as SPIR-V.
-        if (shader.target != rdesc::EShaderTarget::SPIRV)
-        {
-            return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
-        }
-        for (auto& stage : shader.stages)
+        return index != locations.size();
+    }
+
+    namespace
+    {
+        RenderResult<void> patchSpirvStage(
+            rdesc::ShaderStageArtifact& stage, std::span<const rdesc::EDescriptorBindingInfo* const> bindings,
+            std::span<const ShaderBinding> locations
+        ) noexcept
         {
             const auto words = std::span<const std::uint32_t>(stage.words);
             const bool invalid_header = words.size() < 5 || words[0] != 0x07230203 || words[1] < 0x00010000 ||
@@ -907,7 +847,49 @@ namespace lux::render::detail
                 stage.words[patch.set_word] = locations[patch.field].set;
                 stage.words[patch.binding_word] = locations[patch.field].binding;
             }
-            // The pipeline boundary validates the relocated binary and complete declared ABI once.
+            return {};
+        }
+    } // namespace
+
+    RenderResult<rdesc::ShaderProgramArtifact>
+    relocateSpirv(rdesc::ShaderProgramArtifact shader, std::span<const ShaderBinding> locations) noexcept
+    {
+        auto original_sets = std::exchange(shader.interface.sets, {});
+        std::vector<const rdesc::EDescriptorBindingInfo*> bindings;
+        bindings.reserve(locations.size());
+        for (const auto& set : original_sets)
+            for (const auto& field : set.bindings) bindings.push_back(&field);
+        if (locations.size() != bindings.size()) return cxx::unexpected(RenderError{kGraphInvalidDescriptor});
+        const bool unchanged = std::ranges::equal(bindings, locations, [](const auto* field, const auto& location)
+        {
+            return field->set == location.set && field->binding == location.binding;
+        });
+        if (!unchanged)
+        {
+            for (auto& stage : shader.stages)
+            {
+                if (auto patched = patchSpirvStage(stage, bindings, locations); !patched)
+                    return cxx::unexpected(patched.error());
+            }
+        }
+
+        // Original coordinates were needed through the last stage. Move the complete field ABI into its native set.
+        std::size_t index = 0;
+        for (auto& group : original_sets)
+        {
+            for (auto& field : group.bindings)
+            {
+                const auto& location = locations[index++];
+                field.set = location.set;
+                field.binding = location.binding;
+                auto destination = std::ranges::find(shader.interface.sets, field.set, &rdesc::DescriptorSetLayoutInfo::set);
+                if (destination == shader.interface.sets.end())
+                {
+                    shader.interface.sets.emplace_back(field.set);
+                    destination = std::prev(shader.interface.sets.end());
+                }
+                destination->bindings.push_back(std::move(field));
+            }
         }
         return shader;
     }

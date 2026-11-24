@@ -13,7 +13,7 @@ namespace lux::render
     {
         bool compatibleUse(const VGraphResourceDesc& description, EGraphUse usage) noexcept
         {
-            if (usage > EGraphUse::UNIFORM_READ)
+            if (usage > EGraphUse::SHADER_BUFFER_READ)
             {
                 return false;
             }
@@ -34,6 +34,7 @@ namespace lux::render
             case EGraphUse::VERTEX:
             case EGraphUse::INDEX:
             case EGraphUse::INDIRECT:
+            case EGraphUse::SHADER_BUFFER_READ:
             case EGraphUse::UNIFORM_READ:
                 return !image;
             default:
@@ -73,8 +74,12 @@ namespace lux::render
                 const auto& image = std::get<GraphImageDesc>(resource.description);
                 const bool fixed = image.extent.source == EImageExtentSource::FIXED;
                 const bool is_invalid_extent = image.layers == 0 || (fixed && (!image.width || !image.height));
-                const bool is_invalid_mips =
-                    image.mips == 0 || (fixed && image.mips > std::bit_width(std::max(image.width, image.height)));
+                const auto depth = image.volume_depth.value_or(1);
+                const bool invalid_volume = image.volume_depth &&
+                    (!depth || image.layers != 1 || image.samples != 1 || image.runtime_layers);
+                const auto max_mips = std::bit_width(std::max({image.width, image.height, depth}));
+                const bool is_invalid_mips = image.mips == 0 || image.mips > std::numeric_limits<std::uint32_t>::digits ||
+                    (fixed && image.mips > max_mips);
                 const bool is_invalid_samples =
                     !std::has_single_bit(image.samples) || image.samples > 64 || (image.samples > 1 && image.mips != 1);
                 const bool is_invalid_format = rdesc::textureAspectMask(image.format) == 0;
@@ -82,7 +87,7 @@ namespace lux::render
                     !image.extent.numerator || !image.extent.denominator || !image.extent.alignment ||
                     image.extent.source > EImageExtentSource::IMPORTED ||
                     (image.extent.source == EImageExtentSource::IMPORTED && resource.origin != EGraphOrigin::IMPORTED);
-                if (is_invalid_extent || is_invalid_mips || is_invalid_samples || is_invalid_format ||
+                if (is_invalid_extent || invalid_volume || is_invalid_mips || is_invalid_samples || is_invalid_format ||
                     invalid_expression)
                 {
                     return cxx::unexpected(graphError(kGraphInvalidDescriptor));
@@ -304,7 +309,7 @@ namespace lux::render
             const bool incompatible_extent = fixed && (image->width != other.width || image->height != other.height);
             const bool compatible_views = image->format == other.format && image->samples == other.samples &&
                 image->mips == other.mips && image->layers == other.layers &&
-                image->runtime_layers == other.runtime_layers;
+                image->runtime_layers == other.runtime_layers && image->volume_depth == other.volume_depth;
             if (incompatible_extent || !compatible_views)
                 return reject(graphError(kGraphInvalidDescriptor, {}, second->resource));
         }
@@ -511,7 +516,7 @@ namespace lux::render
                 image && part && (is_relative || (image->width == target.width && image->height == target.height)) &&
                 image->format == target.format && image->samples == target.samples && part->aspects == 1 &&
                 part->first_mip == 0 && part->mip_count == 1 && part->first_layer == 0 && part->layer_count == 1 &&
-                image->mips == 1 && image->layers == 1;
+                image->mips == 1 && image->layers == 1 && !image->volume_depth;
             if (!is_compatible)
             {
                 return cxx::unexpected(graphError(kGraphConflictingOutput, {}, id));

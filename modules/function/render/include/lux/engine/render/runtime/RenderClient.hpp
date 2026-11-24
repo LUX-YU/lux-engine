@@ -6,7 +6,6 @@
 #include <lux/engine/render/visibility.h>
 #include <exec/completion_behavior.hpp>
 
-#include <lux/engine/render/frame/FrameData.hpp>
 #include <array>
 #include <memory>
 #include <tuple>
@@ -26,9 +25,10 @@ namespace lux::render
         };
 
         using CommonCommands = std::tuple<
-            QueryRenderJobInputLayout,
             UpdateFrameData,
             QueryResource,
+            ListResourceJobs,
+            RemoveResource,
             GetOrCreateResource,
             CreateScene,
             RemoveScene,
@@ -49,7 +49,6 @@ namespace lux::render
             RemoveRenderJob,
             RebindRenderJobEffect,
             SetRenderJobCadence,
-            SetRenderJobDependencies,
             RequestRenderJob,
             UpdateJobInputs,
             InvalidateHistory,
@@ -109,7 +108,6 @@ namespace lux::render
                 CommandId command;
                 typename C::Request& input;
                 Receiver receiver;
-                FrameData* borrowed_frame = nullptr;
 
                 Operation(
                     RenderClient& client,
@@ -127,11 +125,6 @@ namespace lux::render
                 ) noexcept
                 {
                     auto& operation = static_cast<Operation&>(node);
-                    if (operation.borrowed_frame)
-                    {
-                        operation.client.releaseFrame(*operation.borrowed_frame);
-                        operation.borrowed_frame = nullptr;
-                    }
                     if (error.type != 0)
                     {
                         typename C::Response response{};
@@ -147,19 +140,6 @@ namespace lux::render
 
                 void start() & noexcept
                 {
-                    if constexpr (requires { C::frameData(input); })
-                    {
-                        auto* packet = C::frameData(input);
-                        if (packet)
-                        {
-                            if (auto result = client.borrowFrame(*packet); !result)
-                            {
-                                RenderClient::deliver(*this, {}, result.error());
-                                return;
-                            }
-                        }
-                        borrowed_frame = packet;
-                    }
                     if (stdexec::get_stop_token(stdexec::get_env(receiver)).stop_requested())
                     {
                         RenderClient::deliver(*this, {}, {kCommandCancelled});
@@ -248,6 +228,18 @@ namespace lux::render
             );
         }
 
+        struct JobReplyHandler final
+        {
+            void* context;
+            void (*complete)(void*, JobSubmitted) noexcept;
+        };
+
+        // Publishes all Runs in one message. Each Job delivers once on the caller thread.
+        // The first Job returns the updates. A publication failure leaves them with the caller.
+        // Keep the callback target live through every terminal reply, including serverStopped delivery.
+        [[nodiscard]] RenderResult<void>
+        submitWindow(std::span<const RenderJobId> jobs, WindowUpdates& updates, JobReplyHandler handler) noexcept;
+
         // Host safe point only; limit is positive. Returns consumed messages, not outstanding requests.
         // A full batch needs another host dispatch. Transport faults reject new requests but retain
         // accepted borrows until real delivery or serverStopped. This never stops or joins Server.
@@ -262,8 +254,6 @@ namespace lux::render
         explicit RenderClient(std::unique_ptr<Impl>) noexcept;
         [[nodiscard]] CommandId commonCommand(std::size_t index) const noexcept;
         [[nodiscard]] RenderResult<void> send(CommandId, lux::platform::ipc::IpcMessage&, ResponseNode&) noexcept;
-        [[nodiscard]] RenderResult<void> borrowFrame(FrameData&) noexcept;
-        void releaseFrame(FrameData&) noexcept;
         static void deliver(ResponseNode&, lux::platform::ipc::IpcMessage&&, RenderError) noexcept;
         std::unique_ptr<Impl> impl_;
     };

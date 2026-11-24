@@ -107,6 +107,7 @@ namespace lux::render
                         ",\"format\":" + std::to_string(static_cast<unsigned>(image.format)) + ",\"target_relative\":" +
                         (image.extent.source == EImageExtentSource::TARGET ? "true" : "false") +
                         ",\"extent_source\":" + std::to_string(static_cast<unsigned>(image.extent.source));
+                    if (image.volume_depth) output += ",\"volume_depth\":" + std::to_string(*image.volume_depth);
                 }
                 output += ",\"initial_ranges\":[";
                 for (std::size_t range = 0; range < graph.resources()[i].initial_ranges.size(); ++range)

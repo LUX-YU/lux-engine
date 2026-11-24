@@ -2,11 +2,11 @@
 #include <lux/engine/render/runtime/commands/Error.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/Range.hpp>
-#include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/resource/InstalledProjection.hpp>
 
 namespace lux::render
 {
-    using runtime_detail::BoundStorageProjection;
+    using runtime_detail::BufferProductBinding;
 
     ResourceRegistry::ProjectionBuffer ResourceRegistry::ProjectionBuffer::part(GraphBufferRange range) const noexcept
     {
@@ -25,59 +25,73 @@ namespace lux::render
     {
         if (!buffer) return;
         auto& buffers = entries_.find(id)->product_buffers;
-        if (std::ranges::find(buffers, buffer, &ProductBufferUse::buffer) != buffers.end()) return;
+        if (buffers.contains(buffer)) return;
         const auto* device = deviceOf(id);
-        buffers.push_back({buffer, device->makeFrontiers(), device->makeFrontiers()});
+        buffers.emplace(buffer, ProductBufferUse{{device->makeFrontiers()}, {device->makeFrontiers()}});
     }
 
-    RenderResult<void> ResourceRegistry::replaceProductBacking(
-        ResourceInstanceId id, std::uint32_t projection, std::uint32_t first, std::span<const ProjectionBuffer> slices
+    bool ResourceRegistry::ProjectionBindings::hasWriter() const noexcept
+    {
+        return std::ranges::any_of(users, [](const auto& user) { return user.slot->output_range.has_value(); });
+    }
+
+    RenderResult<void> ResourceRegistry::qualifyProductReplacement(
+        ResourceInstanceId id, const GraphBufferPublication& update, std::uint32_t frame_count
     ) noexcept
     {
-        auto& entry = *entries_.find(id);
-        auto& products = entry.products;
+        const auto& entry = *entries_.find(id);
         if (entry.product_buffers.empty()) return {};
         const auto* device = deviceOf(id);
         const auto replaceable = [&](nri::Buffer* buffer)
         {
-            const auto use = std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
-            return use == entry.product_buffers.end() || (!use->prepared_readers && !use->prepared_writers &&
-                device->reached(use->reads) && device->reached(use->writes));
+            const auto found = entry.product_buffers.find(buffer);
+            if (found == entry.product_buffers.end()) return true;
+            const auto& use = found->second;
+            return !use.reads.prepared && !use.writes.prepared &&
+                device->reached(use.reads.accepted) && device->reached(use.writes.accepted);
         };
-        const auto binding = entry.graph_bindings.find(projection);
-        const bool has_writer = binding != entry.graph_bindings.end() &&
-            std::ranges::any_of(binding->second.users, [](const auto& user) { return user.writer.has_value(); });
-        if (has_writer)
-            for (std::size_t i = 0; i < slices.size(); ++i)
-            {
-                const auto& old = binding->second.backing.buffers[first + i];
-                if (old != slices[i] && !replaceable(old.buffer)) return cxx::unexpected(RenderError{kDeviceBusy});
-            }
-        for (const auto& product : products)
+        const ProjectionBuffer next{update.value.buffer, {update.value.offset, update.value.size}};
+        const auto binding = entry.graph_bindings.find(update.projection);
+        const bool has_writer = binding != entry.graph_bindings.end() && binding->second.hasWriter();
+        for (std::uint32_t i = 0; i < frame_count; ++i)
         {
-            if (product.projection != projection) continue;
-            for (std::size_t i = 0; i < slices.size(); ++i)
+            if (update.frame != UINT32_MAX && update.frame != i) continue;
+            if (has_writer)
             {
-                const auto& sample = product.samples[first + i];
-                if (slices[i].part(product.range) == sample.backing) continue;
-                if (!replaceable(sample.backing.buffer)) return cxx::unexpected(RenderError{kDeviceBusy});
+                const auto& old = binding->second.backing.buffers[i];
+                if (old != next && !replaceable(old.buffer)) return cxx::unexpected(RenderError{kDeviceBusy});
+            }
+            for (const auto& product : entry.products)
+            {
+                if (product.projection != update.projection) continue;
+                const auto& sample = product.samples[i];
+                if (next.part(product.range) != sample.backing && !replaceable(sample.backing.buffer))
+                    return cxx::unexpected(RenderError{kDeviceBusy});
             }
         }
-        for (auto& product : products)
+        return {};
+    }
+
+    void ResourceRegistry::adoptProductReplacement(
+        ResourceInstanceId id, const GraphBufferPublication& update, std::uint32_t frame_count
+    ) noexcept
+    {
+        auto& entry = *entries_.find(id);
+        if (entry.product_buffers.empty()) return;
+        const ProjectionBuffer replacement{update.value.buffer, {update.value.offset, update.value.size}};
+        for (auto& product : entry.products)
         {
-            if (product.projection != projection) continue;
-            for (std::size_t i = 0; i < slices.size(); ++i)
+            if (product.projection != update.projection) continue;
+            const auto next = replacement.part(product.range);
+            for (std::uint32_t i = 0; i < frame_count; ++i)
             {
-                auto& sample = product.samples[first + i];
-                const auto next = slices[i].part(product.range);
+                if (update.frame != UINT32_MAX && update.frame != i) continue;
+                auto& sample = product.samples[i];
                 if (next == sample.backing) continue;
                 sample.backing = next;
                 sample.writer = {};
             }
         }
-        if (has_writer)
-            for (const auto& slice : slices) reserveProductBuffer(id, slice.buffer);
-        return {};
     }
 
     void ResourceRegistry::pruneBufferProducts(ResourceInstanceId id) noexcept
@@ -94,20 +108,22 @@ namespace lux::render
             return projection == entry.graph_bindings.end() ||
                 std::ranges::none_of(projection->second.users, [&](const auto& user)
                 {
-                    return user.writer && detail::contains(*user.writer, product.range);
+                    const auto& written = user.slot->output_range;
+                    return written && detail::contains(*written, product.range);
                 });
         });
         const auto* device = deviceOf(id);
-        std::erase_if(entry.product_buffers, [&](const auto& use)
+        std::erase_if(entry.product_buffers, [&](const auto& row)
         {
-            const bool prepared = use.prepared_readers || use.prepared_writers;
-            if (prepared || !device->reached(use.reads) || !device->reached(use.writes)) return false;
+            const auto& [buffer, use] = row;
+            if (use.reads.prepared || use.writes.prepared) return false;
+            if (!device->reached(use.reads.accepted) || !device->reached(use.writes.accepted)) return false;
             for (const auto& product : entry.products)
                 for (const auto& sample : product.samples)
-                    if (sample.backing.buffer == use.buffer) return false;
+                    if (sample.backing.buffer == buffer) return false;
             for (const auto& [projection, bindings] : entry.graph_bindings)
                 for (const auto& slice : bindings.backing.buffers)
-                    if (slice.buffer == use.buffer) return false;
+                    if (slice.buffer == buffer) return false;
             return true;
         });
     }
@@ -135,71 +151,76 @@ namespace lux::render
         return cxx::unexpected(RenderError{has_revision ? kGraphInvalidRange : kRuntimeIdentity});
     }
 
-    RenderResult<bool> ResourceRegistry::pinBufferUse(const BoundStorageProjection& link, std::uint32_t slot) noexcept
+    RenderResult<bool> ResourceRegistry::pinBufferUse(BufferProductBinding& link, std::uint32_t slot) noexcept
     {
+        if (link.pin) std::terminate();
         auto& entry = *entries_.find(link.storage);
-        const auto* device = deviceOf(link.storage);
-        if (link.publication)
-        {
-            auto selected = selectProduct(link.storage, link.projection, *link.publication);
-            if (!selected) return cxx::unexpected(selected.error());
-            auto& use = *std::ranges::find(entry.product_buffers, selected->buffer, &ProductBufferUse::buffer);
-            if (use.prepared_writers || !device->reached(use.writes)) return false;
-            const bool shared_state = link.boundary.canShare(use.selected);
-            if (!shared_state && (use.prepared_readers || !device->reached(use.reads))) return false;
-            if (use.prepared_readers == UINT32_MAX) std::terminate();
-            ++use.prepared_readers;
-            use.selected = link.boundary;
-        }
-        else if (link.output_range)
-        {
-            const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
-            auto& use = *std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
-            if (use.prepared_readers || !device->reached(use.reads) || !device->reached(use.writes)) return false;
-            if (use.prepared_writers && !link.boundary.canShare(use.selected)) return false;
-            use.selected = link.boundary;
-            if (use.prepared_writers == UINT32_MAX) std::terminate();
-            ++use.prepared_writers;
-        }
-        return true;
-    }
-
-    void ResourceRegistry::unpinBufferUse(const BoundStorageProjection& link, std::uint32_t slot) noexcept
-    {
-        auto& entry = *entries_.find(link.storage);
+        nri::Buffer* buffer = nullptr;
         if (link.publication)
         {
             const auto selected = selectProduct(link.storage, link.projection, *link.publication);
-            if (!selected) std::terminate();
-            auto& use = *std::ranges::find(entry.product_buffers, selected->buffer, &ProductBufferUse::buffer);
-            if (!use.prepared_readers) std::terminate();
-            --use.prepared_readers;
+            if (!selected) return cxx::unexpected(selected.error());
+            buffer = selected->buffer;
         }
-        else if (link.output_range)
+        else
         {
-            const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
-            auto& use = *std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer);
-            if (!use.prepared_writers) std::terminate();
-            --use.prepared_writers;
+            buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
         }
+
+        const auto found = entry.product_buffers.find(buffer);
+        if (found == entry.product_buffers.end()) std::terminate();
+        auto& use = found->second;
+        const auto& device = *deviceOf(link.storage);
+        const bool shared_state = link.slot->boundary.canShare(use.selected);
+        if (link.publication)
+        {
+            // A prepared writer can still overwrite the publication. Once settled, its accepted
+            // queue points are GPU dependencies of the reader's first use on each physical queue.
+            if (use.writes.prepared) return false;
+            if (!shared_state && (use.reads.prepared || !device.reached(use.reads.accepted))) return false;
+            link.pin = &use.reads;
+        }
+        else
+        {
+            const bool gpu_busy = !device.reached(use.reads.accepted) || !device.reached(use.writes.accepted);
+            if (use.reads.prepared || gpu_busy) return false;
+            if (use.writes.prepared && !shared_state) return false;
+            link.pin = &use.writes;
+        }
+        if (link.pin->prepared == UINT32_MAX) std::terminate();
+        ++link.pin->prepared;
+        use.selected = link.slot->boundary;
+        return true;
+    }
+
+    void runtime_detail::BufferProductBinding::accept(detail::SubmissionPoint point) const noexcept
+    {
+        if (!pin) std::terminate();
+        pin->accepted.accept(point);
+    }
+
+    void runtime_detail::BufferProductBinding::releasePin() noexcept
+    {
+        auto* use = std::exchange(pin, nullptr);
+        if (!use || !use->prepared) std::terminate();
+        --use->prepared;
     }
 
     RenderResult<bool>
-    ResourceRegistry::pinBufferUses(std::span<const BoundStorageProjection> links, std::uint32_t slot) noexcept
+    ResourceRegistry::pinBufferUses(std::span<BufferProductBinding> links, std::uint32_t slot) noexcept
     {
         for (std::size_t i = 0; i < links.size(); ++i)
         {
-            const auto& link = links[i];
-            if (!link.output_range && !link.publication) continue;
+            auto& link = links[i];
             auto pinned = pinBufferUse(link, slot);
             if (pinned && *pinned) continue;
-            unpinBufferUses(links.first(i), slot);
+            unpinBufferUses(links.first(i));
             if (!pinned) return cxx::unexpected(pinned.error());
             // An overlap with another operand of this very execution cannot be resolved by waiting.
             auto alone = pinBufferUse(link, slot);
             if (alone && *alone)
             {
-                unpinBufferUse(link, slot);
+                link.releasePin();
                 return cxx::unexpected(RenderError{kGraphConflictingOutput});
             }
             return false;
@@ -207,30 +228,13 @@ namespace lux::render
         return true;
     }
 
-    void ResourceRegistry::unpinBufferUses(std::span<const BoundStorageProjection> links, std::uint32_t slot) noexcept
+    void ResourceRegistry::unpinBufferUses(std::span<BufferProductBinding> links) noexcept
     {
-        for (const auto& link : links)
-            if (link.output_range || link.publication) unpinBufferUse(link, slot);
-    }
-
-    void ResourceRegistry::acceptProductUse(
-        const BoundStorageProjection& link, std::uint32_t slot, const detail::SubmissionFrontiers& uses
-    ) noexcept
-    {
-        auto& entry = *entries_.find(link.storage);
-        if (link.publication)
-        {
-            const auto selected = selectProduct(link.storage, link.projection, *link.publication);
-            if (!selected) std::terminate();
-            std::ranges::find(entry.product_buffers, selected->buffer, &ProductBufferUse::buffer)->reads.merge(uses);
-            return;
-        }
-        const auto buffer = entry.graph_bindings.find(link.projection)->second.backing.buffers[slot].buffer;
-        std::ranges::find(entry.product_buffers, buffer, &ProductBufferUse::buffer)->writes.merge(uses);
+        for (auto& link : links) link.releasePin();
     }
 
     void ResourceRegistry::invalidateProduct(
-        const BoundStorageProjection& link, std::uint32_t slot, GraphBufferRange range
+        const BufferProductBinding& link, std::uint32_t slot, GraphBufferRange range
     ) noexcept
     {
         auto& entry = *entries_.find(link.storage);
@@ -240,7 +244,7 @@ namespace lux::render
                 if (dest.overlaps(sample.backing)) sample.writer = {};
     }
 
-    void ResourceRegistry::publishProduct(const BoundStorageProjection& link, FinalBufferVersion version) noexcept
+    void ResourceRegistry::publishProduct(const BufferProductBinding& link, FinalBufferVersion version) noexcept
     {
         auto& products = entries_.find(link.storage)->products;
         for (auto& product : products)

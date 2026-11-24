@@ -1,14 +1,11 @@
 #include <lux/engine/render/runtime/commands/CommandBinding.hpp>
 #include <lux/engine/render/runtime/commands/LightingCommands.hpp>
-#include <lux/engine/render/resource/ReplicaMutation.hpp>
-#include <lux/engine/render/resource/FrameDataCall.hpp>
 #include <lux/engine/render/resource/lighting/DirectLightingStorage.hpp>
 
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <bit>
 #include <cmath>
 #include <cstring>
-#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/device/Error.hpp>
 #include <lux/engine/render/device/DeviceSession.hpp>
 #include <lux/engine/render/graph/GraphResource.hpp>
@@ -18,30 +15,25 @@ namespace lux::render::detail
 {
     namespace
     {
-        exec::task<LightingCommands::CreateLights::Response>
-        createLights(
-            DirectLightingStorage& resource,
-            ReplicaMutation& mutation,
-            LightingCommands::CreateLights::Request&& input
+        void createLights(
+            DirectLightingStorage& owner, const LightingCommands::CreateLights::Request& input,
+            LightingCommands::CreateLights::Response& reply
         ) noexcept
         {
-            const auto sequence = input.data.sequence;
-            auto result = co_await resource.create(mutation, std::move(input.data));
-            co_return result ? LightingCommands::CreateLights::Response{{}, sequence, std::move(*result)}
-                             : LightingCommands::CreateLights::Response{result.error(), sequence};
+            reply.sequence = input.data.sequence;
+            auto result = owner.create(input.data);
+            reply.error = result ? RenderError{} : result.error();
+            if (result) reply.lights = std::move(*result);
         }
 
-        exec::task<LightingCommands::ReleaseLight::Response>
-        removeLight(
-            DirectLightingStorage& resource,
-            ReplicaMutation& mutation,
-            LightingCommands::ReleaseLight::Request&& input
+        void removeLight(
+            DirectLightingStorage& owner, const LightingCommands::ReleaseLight::Request& input,
+            LightingCommands::ReleaseLight::Response& reply
         ) noexcept
         {
-            auto result = co_await resource.remove(mutation, input.light);
-            co_return LightingCommands::ReleaseLight::Response{
-                result ? RenderError{} : result.error(), input.sequence
-            };
+            reply.sequence = input.sequence;
+            auto result = owner.remove(input.light);
+            reply.error = result ? RenderError{} : result.error();
         }
 
         RenderResult<void>
@@ -188,77 +180,61 @@ namespace lux::render::detail
         }
     }
 
-    exec::task<RenderResult<std::vector<LightId>>>
-    DirectLightingStorage::create(ReplicaMutation& mutation, LightData input) noexcept
+    RenderResult<std::vector<LightId>> DirectLightingStorage::create(const LightData& input) noexcept
     {
-        if (updating_)
-        {
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
-        }
-        updating_ = true;
-        ++preparation_revision_;
-        cxx::scope_exit finish([&]() noexcept { updating_ = false; });
         if (!input.shadows.empty() && input.shadows.size() != input.values.size())
+            return cxx::unexpected(RenderError{kStorageContract});
+        if (input.values.size() > UINT32_MAX - entries_.size()) return cxx::unexpected(RenderError{kStorageCapacity});
+        if (input.values.empty()) return std::vector<LightId>{};
+
+        auto required = counts();
+        for (std::size_t i = 0; i < input.values.size(); ++i)
         {
-            co_return cxx::unexpected(RenderError{kStorageContract});
+            const auto& light = input.values[i];
+            if (!validLight(light)) return cxx::unexpected(RenderError{kStorageContract});
+            const auto kind = light.index();
+            if (!input.shadows.empty() && !validShadow(input.shadows[i], kind))
+                return cxx::unexpected(RenderError{kStorageContract});
+            ++required[kind];
         }
-        for (std::size_t i = 0; i < input.shadows.size(); ++i)
+        const auto limit = device_.description().memory.storageBufferMaxRange;
+        for (std::size_t k = 0; k < required.size(); ++k)
+            if (std::uint64_t{required[k]} * strides[k] > limit) return cxx::unexpected(RenderError{kStorageCapacity});
+
+        for (std::size_t k = 0; k < required.size(); ++k)
         {
-            if (!validShadow(input.shadows[i], input.values[i].index()))
+            auto& array = arrays_[k];
+            const auto count = required[k];
+            const auto first = array.identities.size();
+            if (count == first) continue;
+            array.records.resize(std::max(array.records.size(), std::size_t{count} * strides[k]));
+            for (std::uint32_t f = 0; f < frame_count_; ++f)
             {
-                co_return cxx::unexpected(RenderError{kStorageContract});
+                auto& dirty = array.frames[f].dirty;
+                dirty.grow(count);
+                dirty.markRange(first, count - first);
             }
-        }
-        if (input.values.size() > UINT32_MAX - entries_.size())
-        {
-            co_return cxx::unexpected(RenderError{kStorageCapacity});
-        }
-        std::array<std::uint32_t, 3> counts;
-        for (std::size_t k = 0; k < counts.size(); ++k)
-        {
-            counts[k] = static_cast<std::uint32_t>(arrays_[k].identities.size());
-        }
-        std::vector<Write> writes;
-        writes.reserve(input.values.size());
-        for (const auto& value : input.values)
-        {
-            if (!validLight(value))
-            {
-                co_return cxx::unexpected(RenderError{kStorageContract});
-            }
-            const auto kind = static_cast<std::uint32_t>(value.index());
-            writes.push_back({kind, counts[kind]++, bytes(value)});
-        }
-        entries_.reserve(std::bit_ceil(entries_.size() + input.values.size() + 1));
-        for (std::size_t k = 0; k < counts.size(); ++k)
-        {
-            arrays_[k].identities.reserve(counts[k]);
-        }
-        if (auto accepted = co_await write(mutation, writes, counts); !accepted)
-        {
-            co_return cxx::unexpected(accepted.error());
         }
         std::vector<LightId> result;
-        result.reserve(writes.size());
-        for (const auto& value : writes)
+        result.reserve(input.values.size());
+        for (std::size_t i = 0; i < input.values.size(); ++i)
         {
-            const auto index = result.size();
-            auto key = entries_.emplace(
-                Entry{value.kind, value.position, input.shadows.empty() ? LightShadowSettings{} : input.shadows[index]}
-            );
-            arrays_[value.kind].identities.push_back(key);
+            const auto& light = input.values[i];
+            const auto kind = static_cast<std::uint32_t>(light.index());
+            auto& array = arrays_[kind];
+            const auto position = static_cast<std::uint32_t>(array.identities.size());
+            const auto key = entries_.emplace(Entry{kind, position, input.shadows.empty() ? LightShadowSettings{} : input.shadows[i]});
+            const auto source = bytes(light);
+            std::memcpy(array.records.data() + std::size_t{position} * strides[kind], source.data(), source.size());
+            array.identities.push_back(key);
             result.push_back(extension_detail::ResourceIdentity::make<LightId>(id_, key));
         }
-        ++shadow_revision_;
-        co_return result;
+        updateCounts();
+        return result;
     }
 
     RenderResult<std::uint32_t> DirectLightingStorage::update(std::span<const DirectLightUpdate> input) noexcept
     {
-        if (updating_)
-        {
-            return cxx::unexpected(RenderError{kDeviceBusy});
-        }
         if (input.size() > UINT32_MAX)
         {
             return cxx::unexpected(RenderError{kStorageContract});
@@ -279,7 +255,6 @@ namespace lux::render::detail
             }
         }
         bool shadow_changed = false;
-        bool changed = false;
         for (const auto& value : input)
         {
             auto* entry = entries_.find(extension_detail::ResourceIdentity::local(value.light));
@@ -318,61 +293,43 @@ namespace lux::render::detail
                 {
                     array.frames[frame].dirty.mark(entry->position);
                 }
-                changed = true;
             }
             entry->shadows = value.shadows;
         }
-        preparation_revision_ += changed;
-        shadow_revision_ += shadow_changed;
+        if (shadow_changed && ++shadow_revision_ == 0) std::terminate();
         return static_cast<std::uint32_t>(input.size());
     }
 
-    exec::task<RenderResult<void>> DirectLightingStorage::remove(ReplicaMutation& mutation, LightId light) noexcept
+    RenderResult<void> DirectLightingStorage::remove(LightId light) noexcept
     {
-        auto* entry = extension_detail::ResourceIdentity::parent(light) == id_
-                          ? entries_.find(extension_detail::ResourceIdentity::local(light))
-                          : nullptr;
-        if (!entry)
-        {
-            co_return cxx::unexpected(RenderError{kStorageIdentity});
-        }
-        if (updating_)
-        {
-            co_return cxx::unexpected(RenderError{kDeviceBusy});
-        }
-        updating_ = true;
-        ++preparation_revision_;
-        cxx::scope_exit finish([&]() noexcept { updating_ = false; });
-        std::array<std::uint32_t, 3> counts;
-        for (std::size_t k = 0; k < counts.size(); ++k)
-        {
-            counts[k] = static_cast<std::uint32_t>(arrays_[k].identities.size());
-        }
+        const auto key = extension_detail::ResourceIdentity::local(light);
+        const auto* entry = extension_detail::ResourceIdentity::parent(light) == id_ ? entries_.find(key) : nullptr;
+        if (!entry) return cxx::unexpected(RenderError{kStorageIdentity});
         auto& array = arrays_[entry->kind];
-        const auto last = --counts[entry->kind];
-        const auto stride = strides[entry->kind];
-        std::array<std::byte, sizeof(SpotLightGpu)> replacement_bytes;
-        std::array<Write, 1> replacement;
-        std::span<const Write> writes;
-        if (entry->position != last)
+        const auto last = array.identities.size() - 1;
+        const auto position = entry->position;
+        if (position != last)
         {
-            std::memcpy(replacement_bytes.data(), array.records.data() + last * stride, stride);
-            replacement[0] = {entry->kind, entry->position, std::span(replacement_bytes).first(stride)};
-            writes = replacement;
-        }
-        if (auto accepted = co_await write(mutation, writes, counts); !accepted)
-        {
-            co_return cxx::unexpected(accepted.error());
-        }
-        if (entry->position != last)
-        {
-            array.identities[entry->position] = array.identities.back();
-            entries_.find(array.identities.back())->position = entry->position;
+            const auto stride = strides[entry->kind];
+            std::memcpy(array.records.data() + position * stride, array.records.data() + last * stride, stride);
+            array.identities[position] = array.identities.back();
+            entries_.find(array.identities.back())->position = position;
+            for (std::uint32_t f = 0; f < frame_count_; ++f) array.frames[f].dirty.mark(position);
         }
         array.identities.pop_back();
-        entries_.erase(extension_detail::ResourceIdentity::local(light));
-        ++shadow_revision_;
-        co_return RenderResult<void>{};
+        entries_.erase(key);
+        updateCounts();
+        return {};
+    }
+
+    void DirectLightingStorage::updateCounts() noexcept
+    {
+        const auto sizes = counts();
+        const std::array<std::uint32_t, 4> header{sizes[0], sizes[1], sizes[2], 0};
+        auto& array = arrays_[3];
+        std::memcpy(array.records.data(), header.data(), sizeof(header));
+        for (std::uint32_t f = 0; f < frame_count_; ++f) array.frames[f].dirty.mark(0);
+        if (++shadow_revision_ == 0) std::terminate();
     }
 
     std::array<std::uint32_t, 3> DirectLightingStorage::counts() const noexcept
@@ -384,11 +341,10 @@ namespace lux::render::detail
         };
     }
 
-    RenderResult<SnapshotValue<ShadowLightSnapshot>> DirectLightingStorage::selectShadows() noexcept
+    RenderResult<ResourceViewValue<ShadowLightSnapshot>> DirectLightingStorage::selectShadows() noexcept
     {
-        if (updating_) return cxx::unexpected(RenderError{kDeviceBusy});
-        auto& snapshot = shadow_selection_;
-        if (snapshot.revision == shadow_revision_) return SnapshotValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
+        auto& snapshot = shadow_selection_.value;
+        if (shadow_selection_.revision == shadow_revision_) return ResourceViewValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
 
         snapshot.counts = counts();
         snapshot.casters.clear();
@@ -414,182 +370,8 @@ namespace lux::render::detail
         capture.template operator()<DirectionalLightGpu>(EDirectLightingBuffer::DIRECTIONAL);
         capture.template operator()<PointLightGpu>(EDirectLightingBuffer::POINT);
         capture.template operator()<SpotLightGpu>(EDirectLightingBuffer::SPOT);
-        snapshot.revision = shadow_revision_;
-        return SnapshotValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
-    }
-
-    exec::task<RenderResult<void>>
-    DirectLightingStorage::write(
-        ReplicaMutation& mutation,
-        std::span<const Write> changes,
-        const std::array<std::uint32_t,
-        3>& counts
-    ) noexcept
-    {
-        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
-        if (stop.stop_requested()) co_return cxx::unexpected(RenderError{kUploadStopped});
-        const std::array<std::uint32_t, 4> header{counts[0], counts[1], counts[2], 0};
-        const bool count_changed = std::memcmp(header.data(), arrays_[3].records.data(), sizeof(header)) != 0;
-        if (changes.empty() && !count_changed)
-        {
-            co_return RenderResult<void>{};
-        }
-        std::array<bool, 4> changed{};
-        for (const auto& write : changes)
-        {
-            changed[write.kind] = true;
-        }
-        changed[3] = count_changed;
-        for (std::size_t k = 0; k < 3; ++k)
-        {
-            const auto size = std::max<std::uint64_t>(counts[k], 1) * strides[k];
-            if (size > device_.description().memory.storageBufferMaxRange)
-            {
-                co_return cxx::unexpected(RenderError{kStorageCapacity});
-            }
-            arrays_[k].records.reserve(std::max(size, arrays_[k].records.size()));
-        }
-        auto replica = co_await mutation.select();
-        if (!replica) co_return cxx::unexpected(replica.error());
-        const auto frame = replica->slot;
-        std::array<nri::Buffer*, 4> candidates{};
-        std::array<std::size_t, 4> capacities{};
-        cxx::scope_exit rollback(
-            [&]() noexcept
-            {
-                for (auto*& candidate : candidates)
-                {
-                    releaseAfterGpu(device_, candidate);
-                }
-            }
-        );
-        std::array<std::vector<std::byte>, 4> existing_records;
-        std::vector<BufferWrite> writes;
-        writes.reserve(changes.size() + 5);
-        for (std::size_t k = 0; k < arrays_.size(); ++k)
-        {
-            if (!changed[k])
-            {
-                continue;
-            }
-            auto& array = arrays_[k];
-            auto& slice = array.frames[frame];
-            const auto count =
-                k == 3 ? 1u : std::max(counts[k], static_cast<std::uint32_t>(array.records.size() / strides[k]));
-            capacities[k] = std::max<std::size_t>(slice.capacity, std::bit_ceil(std::size_t(count)));
-            for (auto& other : array.frames)
-            {
-                other.dirty.grow(std::max(count, std::uint32_t(array.records.size() / strides[k])));
-            }
-            if (!slice.buffer || slice.capacity < count)
-            {
-                const nri::BufferDesc description{
-                    capacities[k] * strides[k],
-                    4,
-                    (nri::BufferUsageBits::SHADER_RESOURCE | nri::BufferUsageBits::SHADER_RESOURCE_STORAGE)
-                };
-                const auto status =
-                    device_.nriCore().CreatePlacedBuffer(device_.device(), NriDeviceHeap, description, candidates[k]);
-                if (status != nri::Result::SUCCESS)
-                {
-                    co_return cxx::unexpected(nativeError(status));
-                }
-                existing_records[k] = array.records;
-                writes.push_back({candidates[k], 0, existing_records[k]});
-            }
-        }
-        for (const auto& change : changes)
-        {
-            const auto k = change.kind;
-            writes.push_back(
-                {candidates[k] ? candidates[k] : arrays_[k].frames[frame].buffer,
-                 std::uint64_t(change.position) * strides[k],
-                 change.bytes}
-            );
-        }
-        if (count_changed)
-        {
-            writes.push_back(
-                {candidates[3] ? candidates[3] : arrays_[3].frames[frame].buffer, 0, std::as_bytes(std::span(header))}
-            );
-        }
-        auto accepted = co_await mutation.writeBuffers(writes);
-        if (accepted && stop.stop_requested()) accepted = cxx::unexpected(RenderError{kUploadStopped});
-        if (!accepted)
-        {
-            // In-place copies may have been accepted. Keep CPU values and repair those records before a Draw.
-            for (const auto& change : changes)
-            {
-                auto& array = arrays_[change.kind];
-                if (!candidates[change.kind] && change.position < array.identities.size())
-                {
-                    array.frames[frame].dirty.mark(change.position);
-                }
-            }
-            if (count_changed && !candidates[3])
-            {
-                arrays_[3].frames[frame].dirty.mark(0);
-            }
-            co_return cxx::unexpected(accepted.error());
-        }
-        // No suspension after acceptance: counts, records and resource identities publish together.
-        for (std::size_t k = 0; k < 3; ++k)
-        {
-            arrays_[k].records.resize(
-                std::max<std::size_t>(arrays_[k].records.size(), std::size_t(counts[k]) * strides[k])
-            );
-        }
-        for (const auto& change : changes)
-        {
-            auto& array = arrays_[change.kind];
-            std::memmove(
-                array.records.data() + std::size_t(change.position) * strides[change.kind],
-                change.bytes.data(),
-                change.bytes.size()
-            );
-            for (std::uint32_t f = 0; f < frame_count_; ++f)
-            {
-                if (f == frame)
-                {
-                    array.frames[f].dirty.acknowledgeRange(change.position, 1);
-                }
-                else
-                {
-                    array.frames[f].dirty.mark(change.position);
-                }
-            }
-        }
-        if (count_changed)
-        {
-            std::memcpy(arrays_[3].records.data(), header.data(), sizeof(header));
-            for (std::uint32_t f = 0; f < frame_count_; ++f)
-            {
-                if (f == frame)
-                {
-                    arrays_[3].frames[f].dirty.acknowledgeRange(0, 1);
-                }
-                else
-                {
-                    arrays_[3].frames[f].dirty.mark(0);
-                }
-            }
-        }
-        for (std::size_t k = 0; k < arrays_.size(); ++k)
-        {
-            if (!candidates[k])
-            {
-                continue;
-            }
-            auto& slice = arrays_[k].frames[frame];
-            releaseAfterGpu(device_, slice.candidate);
-            releaseAfterGpu(device_, slice.buffer);
-            slice.buffer = std::exchange(candidates[k], nullptr);
-            slice.capacity = capacities[k];
-            slice.candidate_capacity = 0;
-            slice.dirty.clear();
-            publish(static_cast<std::uint32_t>(k), frame);
-        }
-        co_return RenderResult<void>{};
+        shadow_selection_.revision = shadow_revision_;
+        return ResourceViewValue<ShadowLightSnapshot>{snapshot, shadow_revision_};
     }
 
     void DirectLightingStorage::publish(std::uint32_t kind, std::uint32_t frame) noexcept
@@ -634,14 +416,15 @@ namespace lux::render::detail
         {
             auto& array = arrays_[k];
             auto& slice = array.frames[frame];
-            if (slice.dirty.empty())
+            if (slice.dirty.empty() || !resources_.hasGraphInputUsers(id_, k))
             {
                 continue;
             }
             const auto records = array.records.size() / strides[k];
             if (std::max(slice.capacity, slice.candidate_capacity) < records)
             {
-                const auto capacity = std::bit_ceil(records);
+                const auto limit = device_.description().memory.storageBufferMaxRange / strides[k];
+                const auto capacity = std::min<std::uint64_t>(std::bit_ceil(records), limit);
                 nri::Buffer* candidate = nullptr;
                 const nri::BufferDesc description{
                     capacity * strides[k],
@@ -672,7 +455,7 @@ namespace lux::render::detail
                 {
                     auto source = std::span<const std::byte>(array.records)
                                       .subspan(std::size_t(first) * strides[k], std::size_t(count) * strides[k]);
-                    auto result = uploads.stageBuffer(
+                    auto result = uploads.stageBufferPrefix(
                         {slice.candidate ? slice.candidate : slice.buffer, std::size_t(first) * strides[k], source},
                         strides[k]
                     );
@@ -690,11 +473,7 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(copied.error());
             }
-            if (!slice.dirty.empty())
-            {
-                return cxx::unexpected(RenderError{kDeviceCapacity});
-            }
-            ready &= !slice.candidate;
+            ready &= slice.dirty.empty() && !slice.candidate;
         }
         return ready;
     }
@@ -730,23 +509,19 @@ namespace lux::render::detail
 
     ResourceRegistration DirectLightingStorage::factory() noexcept
     {
-        static const auto frame_call =
-            FrameDataCall::declare<LightResource, DirectLightingStorage, &updateLights>();
 
-        static constexpr auto snapshot =
-            StorageSnapshotOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::selectShadows>();
+        static constexpr auto cpu_view =
+            ResourceViewOps::make<DirectLightingStorage, ShadowLightSnapshot, &DirectLightingStorage::selectShadows>();
         static const StorageBindingOps binding{
-            [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
+            .prepareFrame = [](void* value, ReplicaFrame frame, ResourceUploader& uploads) noexcept
             { return static_cast<DirectLightingStorage*>(value)->prepareFrame(frame.slot, uploads); },
-            [](const void* value) noexcept
-            { return &static_cast<const DirectLightingStorage*>(value)->preparation_revision_; },
-            [](const void*, std::uint32_t projection) noexcept -> RenderResult<StorageGraphImport>
+            .describeGraphImport = [](const void*, std::uint32_t projection) noexcept -> RenderResult<ResourceProjection>
             {
                 if (projection >= strides.size()) return cxx::unexpected(RenderError{kStorageContract});
                 const auto bytes = strides[projection];
-                return StorageGraphImport{GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ};
+                return ResourceProjection{GraphBufferDesc{bytes}, {GraphBufferRange{0, bytes}}, EGraphUse::STORAGE_READ};
             },
-            [](void* value, std::uint32_t projection, const VGraphResourceDesc& resource,
+            .resolveGraphImport = [](void* value, std::uint32_t projection, const VGraphResourceDesc& resource,
                std::span<ResourceInput> output) noexcept -> RenderResult<void>
             {
                 if (projection >= strides.size()) return cxx::unexpected(RenderError{kStorageContract});
@@ -754,8 +529,8 @@ namespace lux::render::detail
                     resource, DirectLightingBinding{static_cast<EDirectLightingBuffer>(projection)}, output
                 );
             },
-            &snapshot,
-            [](void* value, const ReplicaSettlement& settlement) noexcept
+            .cpu_view = cpu_view,
+            .settleFrame = [](void* value, const ReplicaSettlement& settlement) noexcept
             { static_cast<DirectLightingStorage*>(value)->finishPreparation(settlement); }
         };
         using Created = RenderResult<std::unique_ptr<DirectLightingStorage>>;
@@ -768,9 +543,6 @@ namespace lux::render::detail
             }
             return std::make_unique<DirectLightingStorage>(dependencies, id);
         };
-        return makeResourceRegistration<LightResource, DirectLightingStorage, create>(
-            &binding,
-            frame_call
-        );
+        return makeResourceRegistration<LightResource, DirectLightingStorage, create, &updateLights>(&binding);
     }
 } // namespace lux::render::detail

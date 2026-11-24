@@ -6,7 +6,7 @@ namespace lux::render
 {
     struct RasterWork;
     struct ComputeWork;
-    struct TransferWork;
+    struct GraphTransferCommand;
 }
 
 namespace lux::render::detail
@@ -19,15 +19,6 @@ namespace lux::render::detail
         bool dynamic_depth_bias = false;
     };
 
-    struct PassCompileContext final
-    {
-        const nri::DeviceDesc& limits;
-        const rdesc::ShaderInfo* shader;
-        std::span<const GraphResource> resources;
-        std::uint32_t* raster_list_count = nullptr;
-        std::span<const std::uint8_t> materialized_resources;
-    };
-
     struct PassNativeAccess final
     {
         nri::AccessBits access;
@@ -35,29 +26,25 @@ namespace lux::render::detail
         nri::Layout layout = nri::Layout::UNDEFINED;
     };
 
-    struct RasterPass final
-    {
-        static RenderResult<RasterCommands> compile(const RasterWork&, PassCompileContext&) noexcept;
-    };
+    [[nodiscard]] RenderResult<RasterCommands>
+    compileRasterCommands(const RasterWork&, std::span<const CompiledResource>, const nri::DeviceDesc&, RecordingProgram&) noexcept;
 
-    struct ComputePass final
-    {
-        static RenderResult<ComputeCommands> compile(const ComputeWork&, PassCompileContext&) noexcept;
-    };
+    [[nodiscard]] RenderResult<ComputeCommands>
+    compileComputeCommands(const ComputeWork&, std::span<const CompiledResource>, const nri::DeviceDesc&) noexcept;
 
-    struct TransferPass final
-    {
-        static RenderResult<TransferCommands>
-        compile(
-            const TransferWork&, std::span<const ResourceAccess> storage_fills, PassCompileContext&, TransferProgram&
-        ) noexcept;
-        static std::optional<PassNativeAccess>
-        access(
-            const TransferWork&,
-            std::span<const ResourceAccess> storage_fills,
-            const ResourceAccess&,
-            const VGraphResourceDesc&,
-            nri::GraphicsAPI
-        ) noexcept;
-    };
+    [[nodiscard]] RenderResult<TransferCommands>
+    compileTransferCommands(
+        const GraphTransferCommand&,
+        std::span<const CompiledResource>,
+        nri::GraphicsAPI,
+        TransferProgram&
+    ) noexcept;
+
+    [[nodiscard]] std::optional<PassNativeAccess>
+    transferAccess(
+        const GraphTransferCommand&,
+        const ResourceAccess&,
+        const VGraphResourceDesc&,
+        nri::GraphicsAPI
+    ) noexcept;
 } // namespace lux::render::detail

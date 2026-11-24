@@ -63,49 +63,56 @@ namespace lux::render::detail
         if (recording.recording.exchange(true, std::memory_order_acquire))
             return cxx::unexpected(RenderError{kDeviceBusy});
         cxx::scope_exit release([&]() noexcept { recording.recording.store(false, std::memory_order_release); });
-        const auto& description = frame.plan.submissions()[batch];
-        const bool has_tail = description.output_begin != kGraphInvalidIndex;
-        const std::uint32_t first_part = has_tail && description.output_begin == description.first_pass ? 1u : 0u;
-        const std::uint32_t end_part = has_tail ? 2u : 1u;
-        for (auto part = first_part; part < end_part; ++part)
+        const auto parts = frame.plan.submissions()[batch].recordings;
+        for (std::size_t part = 0; part < parts.size(); ++part)
         {
-            const bool reusable = part == 0 && description.reusable_recording;
+            const bool reusable = parts[part].reusable;
             if (reusable && recording.revision == recording.recorded_revision) continue;
-            if (part == 0) recording.recorded_revision = 0;
+            if (reusable) recording.recorded_revision = 0;
             auto* command = native.commands[part];
             auto result = device.resetCommandAllocator(*native.allocators[part]);
             if (result == nri::Result::SUCCESS) result = device.beginCommandBuffer(*command, reusable);
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
-            recordBatchPart(frame, device.nriCore(), *command, {batch, part == 1});
+            recordBatchPart(frame, device.nriCore(), *command, parts[part]);
             result = device.nriCore().EndCommandBuffer(*command);
             if (result != nri::Result::SUCCESS) return cxx::unexpected(nativeError(result));
             if (reusable) recording.recorded_revision = recording.revision;
         }
-        return std::span<nri::CommandBuffer* const>{
-            native.commands.data() + first_part, end_part - first_part
-        };
+        return std::span<nri::CommandBuffer* const>{native.commands.data(), parts.size()};
     }
 
     void FrameExecutor::recordBatchPart(
         const FrozenRecordingFrame& frame,
         const nri::CoreInterface& core,
         nri::CommandBuffer& command,
-        BatchPart part
+        const BatchRecording& part
     ) noexcept
     {
-        const auto [batch_index, output_tail] = part;
         BindingState binding_state;
         const RasterEncoder raster{core, command, frame, binding_state};
         const auto& plan = frame.plan;
-        const auto& batch = plan.submissions_[batch_index];
-        const bool has_tail = batch.output_begin != kGraphInvalidIndex;
-        const bool first_part = !output_tail || batch.output_begin == batch.first_pass;
-        const bool last_part = output_tail || !has_tail;
-        if (batch_index == 0 && first_part)
-            recordHistoryInitialization(frame, core, command);
-        const auto first_pass = output_tail ? batch.output_begin : batch.first_pass;
-        const auto end_pass = !output_tail && has_tail ? batch.output_begin : batch.first_pass + batch.pass_count;
-        for (std::size_t p = first_pass; p < end_pass; ++p)
+        if (part.initialize_history) recordHistoryInitialization(frame, core, command);
+        const auto recordPassExit = [&](std::size_t pass) noexcept
+        {
+            const auto& recording = plan.recording_;
+            if (recording.transient_exit_offsets.empty() && recording.buffer_release_offsets.empty()) return;
+            const auto select = [pass](auto rows, const auto& offsets, std::size_t base)
+            {
+                if (offsets.empty()) return rows.first(0);
+                return rows.subspan(base + offsets[pass], offsets[pass + 1] - offsets[pass]);
+            };
+            const auto images = select(frame.exit_images, recording.transient_exit_offsets, recording.after.images.size());
+            const auto buffers = select(frame.exit_buffers, recording.buffer_release_offsets, recording.after.buffers.size());
+            if (!buffers.empty() || !images.empty())
+            {
+                const nri::BarrierDesc barrier{
+                    nullptr, 0, buffers.data(), static_cast<std::uint32_t>(buffers.size()),
+                    images.data(), static_cast<std::uint32_t>(images.size())
+                };
+                core.CmdBarrier(command, barrier);
+            }
+        };
+        for (std::size_t p = part.first_pass; p < part.end_pass; ++p)
         {
             const auto& pass = frame.passes[p];
             const auto& compiled = plan.passes()[p];
@@ -114,21 +121,24 @@ namespace lux::render::detail
                 // Establish the alias memory dependency before any new image layout transition.
                 core.CmdBarrier(command, {&*pass.alias_barrier, 1});
             }
-            if (!pass.images.empty() || !pass.buffers.empty())
+            if (compiled.entry_images.count || compiled.entry_buffers.count)
             {
+                const auto images = compiled.entry_images.select(frame.entry_images);
+                const auto buffers = compiled.entry_buffers.select(frame.entry_buffers);
                 const nri::BarrierDesc barrier{
                     nullptr,
                     0,
-                    pass.buffers.data(),
-                    static_cast<std::uint32_t>(pass.buffers.size()),
-                    pass.images.data(),
-                    static_cast<std::uint32_t>(pass.images.size())
+                    buffers.data(),
+                    static_cast<std::uint32_t>(buffers.size()),
+                    images.data(),
+                    static_cast<std::uint32_t>(images.size())
                 };
                 core.CmdBarrier(command, barrier);
             }
             // Both paths reach the compiled entry state. False preserves the validated predecessor contents.
             if (compiled.condition_region != kGraphInvalidIndex && !frame.enabled_regions[compiled.condition_region])
             {
+                recordPassExit(p);
                 continue;
             }
             const auto& delta = compiled.binding_join == kGraphInvalidIndex ? compiled.fixed_bindings :
@@ -167,7 +177,7 @@ namespace lux::render::detail
                 rendering.colors = pass.colors.data();
                 rendering.colorNum = static_cast<std::uint32_t>(pass.colors.size());
                 rendering.depth = pass.depth;
-                core.CmdBeginRendering(command, rendering);
+                raster.beginRendering(rendering, scope->initialize_resolve_targets);
             }
             if (group)
             {
@@ -193,22 +203,26 @@ namespace lux::render::detail
                         core.CmdDispatchIndirect(command, *dispatch.indirect_buffer, dispatch.indirect_offset);
                     else core.CmdDispatch(command, dispatch.dispatch);
                 }
-                else recordTransfers(packet, frame, command, core);
+                else
+                {
+                    recordTransfers(packet, frame, command, core);
+                    if (!packet.preserves_bindings) binding_state.invalidate();
+                }
             });
-            const bool clobbers = owns_draw_sections || std::holds_alternative<TransferCommandSlot>(compiled.commands);
-            if (clobbers) binding_state.invalidate();
+            if (owns_draw_sections) binding_state.invalidate();
             if (group && group->first_pass + group->pass_count == p + 1) core.CmdEndRendering(command);
+            recordPassExit(p);
         }
-        if (last_part && batch_index + 1 == plan.submissions_.size() &&
-            (!frame.final_images.empty() || !frame.final_buffers.empty()))
+        if (part.restore_graph &&
+            (!plan.recording_.after.images.empty() || !plan.recording_.after.buffers.empty()))
         {
             const nri::BarrierDesc barrier{
                 nullptr,
                 0,
-                frame.final_buffers.data(),
-                static_cast<std::uint32_t>(frame.final_buffers.size()),
-                frame.final_images.data(),
-                static_cast<std::uint32_t>(frame.final_images.size())
+                frame.exit_buffers.data(),
+                static_cast<std::uint32_t>(plan.recording_.after.buffers.size()),
+                frame.exit_images.data(),
+                static_cast<std::uint32_t>(plan.recording_.after.images.size())
             };
             core.CmdBarrier(command, barrier);
         }

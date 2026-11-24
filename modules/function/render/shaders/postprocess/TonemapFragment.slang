@@ -18,10 +18,14 @@ vec3 toneMapACES(vec3 value)
 
 void luxMain()
 {
-    vec3 value = max(texelFetch(hdr_color, ivec2(gl_FragCoord.xy), 0).rgb, vec3(0.0)) * exp2(parameters.exposure);
-    value = toneMapACES(value);
+    vec3 source = texelFetch(hdr_color, ivec2(gl_FragCoord.xy), 0).rgb;
+#ifdef OUTPUT_HDR_LINEAR
+    vec3 value = source * exp2(parameters.exposure);
+#else
+    vec3 value = toneMapACES(max(source, vec3(0.0)) * exp2(parameters.exposure));
 #ifdef OUTPUT_SRGB
     value = mix(1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055, 12.92 * value, lessThanEqual(value, vec3(0.0031308)));
+#endif
 #endif
     color = vec4(value, 1.0);
 }

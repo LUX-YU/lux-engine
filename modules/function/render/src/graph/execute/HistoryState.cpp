@@ -9,27 +9,27 @@
 
 namespace lux::render::detail
 {
+    void HistoryState::invalidateSamples() noexcept
+    {
+        retained_samples = 0;
+        latest = kGraphInvalidIndex;
+        clear_previous = true;
+    }
+
     bool HistoryState::select(const DeviceSession& session) noexcept
     {
-        if (invalidate)
-        {
-            retained_samples = 0;
-            latest = kGraphInvalidIndex;
-            invalidate = false;
-        }
-        previous = kGraphInvalidIndex;
-        current = kGraphInvalidIndex;
-        const auto distance = plan->description.distance;
+        auto next_previous = kGraphInvalidIndex;
+        auto next_current = kGraphInvalidIndex;
         const auto oldest = retained_samples ? sequence - (retained_samples - 1) : 0;
-        clear_previous = retained_samples < distance;
+        const bool needs_fallback = !hasPrevious();
         for (std::uint32_t i = 0; i < slots.size(); ++i)
         {
             const auto& slot = slots[i];
             if (oldest != 0 && sample_sequences[i] >= oldest)
             {
-                if (!clear_previous && sample_sequences[i] == oldest)
+                if (!needs_fallback && sample_sequences[i] == oldest)
                 {
-                    previous = i;
+                    next_previous = i;
                 }
                 continue;
             }
@@ -37,19 +37,19 @@ namespace lux::render::detail
             {
                 continue;
             }
-            if (clear_previous && previous == kGraphInvalidIndex)
+            if (needs_fallback && next_previous == kGraphInvalidIndex)
             {
-                previous = i;
+                next_previous = i;
             }
-            else if (current == kGraphInvalidIndex)
+            else if (next_current == kGraphInvalidIndex)
             {
-                current = i;
+                next_current = i;
             }
         }
-        if (previous == kGraphInvalidIndex || current == kGraphInvalidIndex)
-        {
-            return false;
-        }
+        if (next_previous == kGraphInvalidIndex || next_current == kGraphInvalidIndex) return false;
+        previous = next_previous;
+        current = next_current;
+        clear_previous = needs_fallback;
         clear_current = !slots[current].initialized;
         return true;
     }
@@ -168,12 +168,16 @@ namespace lux::render::detail
             const bool valid = !history.clear_previous;
             const bool validity_changed = static_cast<bool>(history_valid[h]) != valid;
             history_valid[h] = valid;
+            if (validity_changed)
+                for (auto region : dependencies.history_regions[h]) pending_regions.mark(region);
             const auto& description = history.plan->description;
             for (const auto [resource, selected] :
                  {std::pair{description.previous, history.previous}, std::pair{description.current, history.current}})
             {
-                const auto& physical = history.slots[selected];
+                auto& physical = history.slots[selected];
                 auto& binding = bindings[resource.index];
+                // A retained sample can be published before its producer's final layout transition retires.
+                binding.queue_uses = {&physical.last_use, &physical.last_use};
                 const bool unchanged = binding.image == physical.image && binding.buffer == physical.buffer &&
                     binding.buffer_size == physical.buffer_size;
                 if (unchanged && !validity_changed) continue;

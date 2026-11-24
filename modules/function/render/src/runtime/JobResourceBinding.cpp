@@ -1,12 +1,20 @@
 #include <lux/engine/render/graph/Range.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
+namespace lux::render::runtime_detail
+{
+    detail::InstalledFrameResource ResolvedResource::frameSource() const noexcept
+    {
+        return {id, instance, factory->storage().bindings()};
+    }
+}
+
 namespace lux::render
 {
     namespace
     {
         bool coversInitialRanges(
-            const detail::StorageGraphImport& owner, const detail::StorageGraphImport& required
+            const ResourceProjection& owner, const ResourceProjection& required
         ) noexcept
         {
             if (owner.initial_ranges == required.initial_ranges) return true;
@@ -33,7 +41,7 @@ namespace lux::render
             return remaining.empty();
         }
 
-        bool validStorageSchema(const detail::StorageGraphImport& schema) noexcept
+        bool validStorageSchema(const ResourceProjection& schema) noexcept
         {
             const bool buffer = std::holds_alternative<GraphBufferDesc>(schema.description);
             const bool invalid_writer = schema.final_buffer_output && (schema.read_use || !buffer);
@@ -45,10 +53,10 @@ namespace lux::render
         }
 
         RenderResult<void> qualifyGpuImport(
-            const EffectStorageImport& required, const detail::StorageGraphImport& actual
+            const EffectResourceManifest::GpuImport& required, const ResourceProjection& actual
         ) noexcept
         {
-            const auto& declared = std::get<detail::StorageGraphImport>(required.contract);
+            const auto& declared = required.contract;
             const bool missing_output = declared.final_buffer_output && !actual.final_buffer_output;
             const bool missing_concurrency = declared.concurrent_image_read &&
                 (!actual.concurrent_image_read || actual.read_use != declared.read_use);
@@ -71,98 +79,151 @@ namespace lux::render
         }
     }
 
-    RenderResult<std::vector<std::uint32_t>>
-    RenderServer::Impl::bindEffectResources(
-        detail::DeviceEntry& entry, ViewScope job_scope,
-        std::span<const EffectStorageImport> declarations,
+    RenderServer::Impl::ResolvedResources
+    RenderServer::Impl::installScopedInputs(
+        JobExecution& execution, ResourceRegistry::BindingChanges& installation, ViewScope scope
+    ) noexcept
+    {
+        const auto& graph = execution.graph();
+        const auto& manifest = execution.device_graph->resources.requirements;
+        if (manifest.empty()) return std::vector<ResolvedResource>{};
+        auto& device = *runtime_->device(execution.device);
+        std::vector<ResolvedResource> instances;
+        instances.reserve(manifest.size());
+        for (const auto& requirement : manifest)
+        {
+            auto context = device.resourceCreateContext();
+            auto owner = requirement.factory->descriptor->domain == EResourceDomain::JOB ?
+                jobResourceScope(device, execution, scope, &context) : resourceScope(device, scope, requirement.type, &context);
+            if (!owner) return cxx::unexpected(owner.error());
+            context.created_ = &installation.created;
+            auto instance = (*owner)->getOrCreate(context, requirement.type, requirement.key);
+            storages_created_.store(runtime_->resources_.creations(), std::memory_order_relaxed);
+            if (!instance) return cxx::unexpected(instance.error());
+            auto used = runtime_->resources_.useForBinding(installation, *instance, requirement.type, device);
+            if (!used) return cxx::unexpected(used.error());
+            instances.emplace_back(*instance, *used, requirement.factory);
+        }
+        const auto frameSource = [&](std::uint32_t slot) noexcept
+        {
+            auto binding = instances[slot].frameSource();
+            execution.useFrameResource(binding);
+            return binding;
+        };
+        const auto& resources = execution.device_graph->resources;
+        for (const auto& binding : resources.raster_sources)
+        {
+            const auto& stream = graph.programs().rasterStreams()[binding.stream];
+            if (binding.programs != kGraphInvalidIndex)
+            {
+                const auto source = frameSource(binding.programs);
+                const auto& publication = source.ops->rasterPrograms(source.instance);
+                if (auto bound = execution.bindPublication(stream, publication); !bound)
+                    return cxx::unexpected(bound.error());
+            }
+            if (binding.draw_list != kGraphInvalidIndex)
+            {
+                const auto source = frameSource(binding.draw_list);
+                execution.draw_list_sources.push_back({stream, source.instance, source.ops->readDrawList});
+            }
+        }
+        for (const auto field : resources.buffer_extents)
+        {
+            const auto source = frameSource(field.requirement);
+            const auto bytes = source.ops->bindBufferExtent(source.instance, field.field);
+            if (bytes.size() != execution.frameCount())
+                return cxx::unexpected(RenderError{kStorageContract, {field.requirement, field.field}});
+            execution.buffer_extents.push_back(bytes);
+        }
+        return instances;
+    }
+
+    RenderServer::Impl::ResolvedResources RenderServer::Impl::bindEffectResources(
+        JobExecution& execution, ResourceRegistry::BindingChanges& installation, ViewScope job_scope,
         std::span<const JobResourceInput> inputs
     ) noexcept
     {
-        auto& registry = runtime_->resources_;
+        if (inputs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
         if (std::ranges::adjacent_find(inputs, {}, &JobResourceInput::binding) != inputs.end())
             return cxx::unexpected(RenderError{kCommandContract});
-        if (inputs.size() >= kGraphInvalidIndex) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        std::vector<std::uint32_t> resolved(declarations.size(), kGraphInvalidIndex);
-        std::size_t matched = 0;
-        for (std::uint32_t i = 0; i < inputs.size(); ++i)
+        auto defaults = installScopedInputs(execution, installation, job_scope);
+        if (!defaults) return cxx::unexpected(defaults.error());
+        auto& entry = *runtime_->device(execution.device);
+        const auto& manifest = execution.device_graph->resources;
+        const auto& declarations = manifest.operands;
+        auto& registry = runtime_->resources_;
+        std::vector<ResolvedResource> resolved(declarations.size());
+        std::size_t next_input = 0;
+        for (std::size_t slot = 0; slot < declarations.size(); ++slot)
         {
-            const auto& input = inputs[i];
-            if (input.binding.empty()) return cxx::unexpected(RenderError{kCommandContract, {i}});
-            const auto found = std::ranges::lower_bound(
-                declarations, input.binding, {}, &EffectStorageImport::binding
-            );
-            if (found == declarations.end() || found->binding != input.binding) continue;
-            const auto& declaration = *found;
-            const auto* factory = registry.factory(registry.declarationOf(input.resource));
-            if (!factory) return cxx::unexpected(RenderError{kStorageIdentity, {i}});
-            if (registry.deviceOf(input.resource) != &entry.session())
-                return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-            if (registry.hasExclusiveCommand(input.resource)) return cxx::unexpected(RenderError{kDeviceBusy, {i}});
-            const auto* ops = factory->storage()->bindings();
-            const bool has_gpu_ops = ops && ops->resolveGraphImport && ops->describeGraphImport;
-            if (input.use == EJobResourceUse::GPU_BINDING && !has_gpu_ops)
-                return cxx::unexpected(RenderError{kStorageContract, {i}});
-            const bool wrong_owner = factory->descriptor->type.name() != declaration.type.name() ||
-                input.projection != declaration.projection;
-            if (wrong_owner) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-            if (input.publication && input.use != EJobResourceUse::GPU_BINDING)
-                return cxx::unexpected(RenderError{kStorageContract, {i}});
-            if (const auto* draw = std::get_if<EffectStorageImport::DrawContract>(&declaration.contract))
+            const auto& declaration = declarations[slot];
+            const auto* supplied = next_input < inputs.size() ? &inputs[next_input] : nullptr;
+            if (supplied && supplied->binding < declaration.binding) return cxx::unexpected(RenderError{kCommandContract});
+            if (supplied && supplied->binding != declaration.binding) supplied = nullptr;
+            const auto i = supplied ? next_input++ : slot;
+            auto& input = resolved[slot];
+            if (declaration.requirement != kGraphInvalidIndex)
             {
-                const auto type = factory->storage()->implementation_type;
-                const bool wrong_type = type.hash() != draw->hash || type.name() != draw->name;
-                if (input.use != EJobResourceUse::DRAW_RESOURCE || wrong_type)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                if ((draw->required_capabilities & ~entry.session().resourceCapabilities()) != 0)
-                    return cxx::unexpected(RenderError{kDeviceUnsupported, {i}});
+                input = (*defaults)[declaration.requirement];
+                if (supplied && supplied->resource != input.id) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
             }
-            else if (auto* type = std::get_if<EffectStorageImport::SnapshotContract>(&declaration.contract))
+            else if (supplied)
             {
-                const auto* ops_snapshot = ops ? ops->cpu_snapshot : nullptr;
-                if (input.use != EJobResourceUse::CPU_SNAPSHOT || !ops_snapshot)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                if (!ops_snapshot->select)
-                    return cxx::unexpected(RenderError{kStorageContract, {i}});
-                if (type->scope == ESnapshotScope::JOB_LOCAL)
+                const auto id = supplied->resource;
+                auto used = registry.useForBinding(installation, id, declaration.type, entry);
+                if (!used)
                 {
-                    const auto declaration_id = registry.declarationOf(input.resource);
-                    auto owner = resourceScope(entry, job_scope, declaration_id, false);
-                    if (!owner) return cxx::unexpected(owner.error());
-                    auto local = (*owner)->query(entry.resourceCreateContext(), declaration_id);
-                    if (!local) return cxx::unexpected(local.error());
-                    if (*local != input.resource) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+                    const auto error = used.error();
+                    if (error.type == kDeviceBusy) return cxx::unexpected(error);
+                    return cxx::unexpected(RenderError{error.type, {i}});
                 }
-                if (ops_snapshot->type.hash() != type->hash || ops_snapshot->type.name() != type->name)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+                input = {id, *used, registry.factory(declaration.type)};
             }
-            else
+            else if (declaration.optional) continue;
+            else return cxx::unexpected(RenderError{kStorageIdentity, {i}});
+
+            const auto* factory = input.factory;
+            if (supplied && supplied->projection != declaration.projection)
+                return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+            if (declaration.binding_error) return cxx::unexpected(RenderError{declaration.binding_error, {i}});
+            if (supplied && supplied->publication) input.publication = &*supplied->publication;
+            if (input.publication && declaration.gpu_import == kGraphInvalidIndex)
+                return cxx::unexpected(RenderError{kStorageContract, {i}});
+            bool job_local = false;
+            if (declaration.gpu_import != kGraphInvalidIndex)
             {
-                if (input.use != EJobResourceUse::GPU_BINDING)
-                    return cxx::unexpected(RenderError{kStorageMismatch, {i}});
-                auto actual = ops->describeGraphImport(registry.resourceInstance(input.resource), input.projection);
+                const auto& gpu = manifest.gpu_imports[declaration.gpu_import];
+                const auto* ops = factory->storage().bindings();
+                auto actual = ops->describeGraphImport(input.instance, declaration.projection);
                 if (!actual) return cxx::unexpected(actual.error());
+                job_local = actual->job_local || gpu.contract.job_local;
                 if (!validStorageSchema(*actual)) return cxx::unexpected(RenderError{kStorageContract, {i}});
                 if (input.publication)
                 {
                     if (!actual->final_buffer_output) return cxx::unexpected(RenderError{kStorageContract, {i}});
-                    auto selected = registry.selectProduct(input.resource, input.projection, *input.publication);
+                    auto selected = registry.selectProduct(input.id, declaration.projection, *input.publication);
                     if (!selected) return cxx::unexpected(selected.error());
                     actual->description = GraphBufferDesc{selected->size};
                     actual->initial_ranges = {GraphBufferRange{0, selected->size}};
                     actual->final_buffer_output = false;
                 }
-                if (auto valid = qualifyGpuImport(declaration, *actual); !valid)
+                if (auto valid = qualifyGpuImport(gpu, *actual); !valid)
                     return cxx::unexpected(valid.error());
             }
-            resolved[found - declarations.begin()] = i;
-            ++matched;
+            if (declaration.requirement != kGraphInvalidIndex) continue;
+            if (factory->descriptor->domain == EResourceDomain::JOB)
+            {
+                const auto* owner = execution.privateResources();
+                if (!owner || !owner->contains(input.id)) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+            }
+            else if (job_local)
+            {
+                auto owner = resourceScope(entry, job_scope, declaration.type, nullptr);
+                if (!owner) return cxx::unexpected(owner.error());
+                if (!(*owner)->contains(input.id)) return cxx::unexpected(RenderError{kStorageMismatch, {i}});
+            }
         }
-        for (std::size_t slot = 0; slot < resolved.size(); ++slot)
-        {
-            if (resolved[slot] == kGraphInvalidIndex && !declarations[slot].optional)
-                return cxx::unexpected(RenderError{kStorageIdentity, {slot}});
-        }
-        if (matched != inputs.size()) return cxx::unexpected(RenderError{kCommandContract});
+        if (next_input != inputs.size()) return cxx::unexpected(RenderError{kCommandContract});
         return resolved;
     }
 }

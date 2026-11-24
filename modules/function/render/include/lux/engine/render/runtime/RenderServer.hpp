@@ -21,8 +21,8 @@ namespace lux::execution
 namespace lux::render
 {
     struct ResourceRegistration;
-    struct EffectNodeDefinition;
-    struct EffectImplementation;
+    struct EffectCapability;
+    struct ImplementationEntry;
     class CommandBinding;
     class ResourceRegistry;
 
@@ -72,6 +72,8 @@ namespace lux::render
         // One immutable failure notification on RenderThread. Accepted replies are settled before the responder closes.
         void* failure_context = nullptr;
         void (*execution_failed)(void*, RenderError) noexcept = nullptr;
+        // Shared limit for deferred input messages and Run windows awaiting freeze across all connections.
+        std::size_t max_deferred_inputs = 64;
     };
 
     struct RenderServerStats final
@@ -96,15 +98,11 @@ namespace lux::render
         std::uint64_t dependency_edges = 0;
         std::uint64_t rounds_opened = 0;
         std::uint64_t slot_cpu_hold_ns = 0;
-        std::uint64_t program_preparations_holding_slot = 0;
-        std::uint64_t program_preparation_ns = 0;
         // Storage and sampled ranges from dynamic raster lists in accepted batches, accumulated across rounds.
         std::uint64_t raster_buffer_ranges = 0;
         std::uint64_t raster_buffer_bytes = 0;
         std::uint64_t raster_image_ranges = 0;
         std::uint64_t raster_image_subresources = 0;
-        std::uint64_t program_preparations = 0;
-        std::uint64_t discarded_preparations = 0;
         // Each growth is a new backing allocation made by a selection or topology vector.
         std::uint64_t job_selection_calls = 0;
         std::uint64_t job_selection_growths = 0;
@@ -138,9 +136,9 @@ namespace lux::render
         // Resource declaration and shared implementation metadata remain distinct at registration.
         [[nodiscard]] RenderResult<ResourceTypeId> registerResource(ResourceRegistration, ConfigValue = {}, std::span<const CommandBinding> commands = {}) noexcept;
 
-        [[nodiscard]] RenderResult<void> registerEffectCapability(EffectNodeDefinition, std::vector<CommandId> commands = {}) noexcept;
+        [[nodiscard]] RenderResult<void> registerEffectCapability(const EffectCapability&, std::vector<CommandId> commands = {}) noexcept;
         [[nodiscard]] RenderResult<void>
-        registerEffectImplementation(EffectImplementation, std::vector<CommandBindingLocation> bindings = {}) noexcept;
+        registerEffectImplementation(ImplementationEntry, std::vector<CommandBindingLocation> bindings = {}) noexcept;
         [[nodiscard]] RenderResult<CommandBindingLocation> registerNodeEffectCommand(const CommandBinding&) noexcept;
 
         // Stateless typed functions use the same command directory without a dummy Handler owner.

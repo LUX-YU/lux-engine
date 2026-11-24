@@ -6,7 +6,7 @@
 
 namespace lux::render
 {
-    ResourceSet::ResourceSet(ResourceRegistry& registry, detail::DeviceSession& device) noexcept
+    ResourceSet::ResourceSet(ResourceRegistry& registry, detail::DeviceEntry& device) noexcept
         : registry_(registry), domain_(EResourceDomain::DEVICE), device_(device), parent_(nullptr)
     {
     }
@@ -16,7 +16,8 @@ namespace lux::render
     {
         const bool is_direct_child =
             (parent.domain_ == EResourceDomain::DEVICE && domain_ == EResourceDomain::SCENE) ||
-            (parent.domain_ == EResourceDomain::SCENE && domain_ == EResourceDomain::VIEW);
+            (parent.domain_ == EResourceDomain::SCENE && domain_ == EResourceDomain::VIEW) ||
+            (parent.domain_ == EResourceDomain::VIEW && domain_ == EResourceDomain::JOB);
         if (!is_direct_child)
         {
             std::terminate();
@@ -40,10 +41,15 @@ namespace lux::render
         clear();
     }
 
-    ResourceInstanceId ResourceSet::find(ResourceTypeId type) const noexcept
+    bool ResourceSet::contains(ResourceInstanceId id) const noexcept
     {
-        const auto found = instances_by_type_.find(TypeKey{type.index, type.gen});
-        if (found == instances_by_type_.end())
+        return registry_.position(id, *this).has_value();
+    }
+
+    ResourceInstanceId ResourceSet::find(ResourceTypeId type, std::string_view binding) const noexcept
+    {
+        const auto found = instances_.find(std::tuple{type.index, type.gen, binding});
+        if (found == instances_.end())
         {
             return {};
         }
@@ -51,22 +57,22 @@ namespace lux::render
     }
 
     RenderResult<ResourceInstanceId>
-    ResourceSet::query(const ResourceCreateContext& context, ResourceTypeId type) const noexcept
+    ResourceSet::query(const ResourceCreateContext& context, ResourceTypeId type, std::string_view binding) const noexcept
     {
-        if (clearing_)
+        if (closed_ || clearing_)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const bool is_foreign_context = &device_ != &context.device || &registry_ != &context.resources;
+        const bool is_foreign_context = &device_ != &context.device_owner_ || &registry_ != &context.resources;
         if (is_foreign_context)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        if (const auto id = find(type); !id.isNull())
+        if (const auto id = find(type, binding); !id.isNull())
         {
             return id;
         }
-        if (auto qualified = registry_.qualify(type, domain_, context); !qualified)
+        if (auto qualified = registry_.qualify(type, domain_, context.device.resourceFeatures()); !qualified)
         {
             return cxx::unexpected(qualified.error());
         }
@@ -74,19 +80,19 @@ namespace lux::render
     }
 
     RenderResult<ResourceInstanceId>
-    ResourceSet::ensure(ResourceCreateContext& dependencies, ResourceTypeId type) noexcept
+    ResourceSet::getOrCreate(ResourceCreateContext& dependencies, ResourceTypeId type, std::string_view binding) noexcept
     {
-        if (clearing_)
+        if (closed_ || clearing_)
         {
             return cxx::unexpected(RenderError{kStorageIdentity});
         }
-        const bool is_foreign_context = &device_ != &dependencies.device || &registry_ != &dependencies.resources;
+        const bool is_foreign_context = &device_ != &dependencies.device_owner_ || &registry_ != &dependencies.resources;
         if (is_foreign_context)
         {
             return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        const auto key = TypeKey{type.index, type.gen};
-        if (const auto found = instances_by_type_.find(key); found != instances_by_type_.end())
+        const auto key = std::tuple{type.index, type.gen, binding};
+        if (const auto found = instances_.find(key); found != instances_.end())
         {
             auto* instance = registry_.resourceInstance(found->second);
             // A recursive request for this still-unpublished declaration is a construction cycle.
@@ -96,37 +102,30 @@ namespace lux::render
             }
             return found->second;
         }
-        if (auto qualified = registry_.qualify(type, domain_, dependencies); !qualified)
-        {
-            return cxx::unexpected(qualified.error());
-        }
-        const auto& configuration = *registry_.configuration(type);
-        const auto id = registry_.reserve(*this, type);
-        const auto type_position = instances_by_type_.emplace(key, id).first;
+        const auto qualified = registry_.qualifyType(type, domain_, dependencies.device.resourceFeatures());
+        if (!qualified) return cxx::unexpected(qualified.error());
+        const auto id = registry_.reserve(*this, **qualified);
+        const auto position = instances_.emplace(BindingKey{type.index, type.gen, std::string{binding}}, id).first;
         cxx::scope_exit rollback(
             [&]() noexcept
             {
-                instances_by_type_.erase(type_position);
+                instances_.erase(position);
                 registry_.revoke(id);
             }
         );
         ++constructing_;
-        auto instance = registry_.create(dependencies, id, configuration.data());
+        auto instance = registry_.create(dependencies, id);
         --constructing_;
         if (!instance || !*instance)
         {
             return cxx::unexpected(instance ? RenderError{kStorageFactory} : instance.error());
         }
-        records_.push_back(Record{id, type_position, std::move(*instance)});
+        records_.push_back(Record{id, position, std::move(*instance)});
         registry_.publish(id, records_.size() - 1, records_.back().instance.get());
+        // The candidate owns its entire Job scope. Only shared scopes need per-instance rollback.
+        if (dependencies.created_ && domain_ != EResourceDomain::JOB) dependencies.created_->push_back(id);
         rollback.release();
         return id;
-    }
-
-    RenderResult<ResourceInstanceId>
-    ResourceSet::getOrCreate(ResourceCreateContext& dependencies, ResourceTypeId type) noexcept
-    {
-        return ensure(dependencies, type);
     }
 
     RenderResult<void> ResourceSet::remove(ResourceInstanceId id) noexcept
@@ -146,22 +145,29 @@ namespace lux::render
 
     void ResourceSet::erase(std::size_t position) noexcept
     {
-        const auto& record = records_[position];
-        instances_by_type_.erase(record.type);
-        registry_.revoke(record.id);
+        const auto id = records_[position].id;
+        instances_.erase(records_[position].binding);
+        registry_.unpublish(id);
         auto instance = std::move(records_[position].instance);
-        // Keep construction order so dependent instances are destroyed before their dependencies.
         records_.erase(records_.begin() + position);
-        for (auto i = position; i < records_.size(); ++i)
-        {
-            registry_.relocate(records_[i].id, i);
-        }
-        // All indexes are repaired before a Implementation destructor can release another actual instance.
+        for (auto i = position; i < records_.size(); ++i) registry_.relocate(records_[i].id, i);
+
+        // Its ID is inaccessible, but its forward dependencies still protect the destructor's inputs.
+        instance.reset();
+        registry_.revoke(id);
+    }
+
+    void ResourceSet::retireJob(std::unique_ptr<ResourceSet> scope) noexcept
+    {
+        if (!scope) return;
+        if (scope->domain_ != EResourceDomain::JOB) std::terminate();
+        scope->close();
+        if (scope->hasBorrows()) scope->parent_->retiring_jobs_.push_back(std::move(scope));
     }
 
     bool ResourceSet::hasBorrows() const noexcept
     {
-        return std::ranges::any_of(
+        return constructing_ || clearing_ || !retiring_jobs_.empty() || std::ranges::any_of(
             records_,
             [&](const auto& record) noexcept { return registry_.hasBorrows(record.id); }
         );
@@ -169,21 +175,19 @@ namespace lux::render
 
     void ResourceSet::clear() noexcept
     {
-        if (constructing_ || clearing_ || hasBorrows())
-        {
-            std::terminate();
-        }
+        if (hasBorrows()) std::terminate();
+        if (records_.empty()) return;
+        if (registry_.hasSurvivingDependencyOn(*this)) std::terminate();
         clearing_ = true;
-        for (auto record = records_.rbegin(); record != records_.rend(); ++record)
-        {
-            registry_.revoke(record->id);
-        }
-        instances_by_type_.clear();
-        // Revoke the entire set before any destructor runs. No temporary container or allocation is needed.
+        for (const auto& record : records_) registry_.unpublish(record.id);
+        instances_.clear();
         while (!records_.empty())
         {
+            const auto id = records_.back().id;
             auto instance = std::move(records_.back().instance);
             records_.pop_back();
+            instance.reset();
+            registry_.revoke(id);
         }
         clearing_ = false;
     }

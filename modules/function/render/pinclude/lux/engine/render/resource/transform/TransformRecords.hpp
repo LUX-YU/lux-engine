@@ -17,7 +17,7 @@ namespace lux::render::detail
         [[nodiscard]] std::span<const TransformMatrix> matrices() const & noexcept { return matrices_; }
         std::span<const TransformMatrix> matrices() const && = delete;
 
-        [[nodiscard]] bool contains(TransformId id) const noexcept
+        [[nodiscard]] bool contains(TransformRef id) const noexcept
         {
             const auto key = Identity::local(id);
             if (Identity::parent(id) != owner_ || key.index >= entries_.size()) return false;
@@ -32,7 +32,7 @@ namespace lux::render::detail
         }
 
         // The batch caller preflights capacity and all matrix values before insertion.
-        [[nodiscard]] TransformId insert(const TransformMatrix& matrix) noexcept
+        [[nodiscard]] TransformRef insert(const TransformMatrix& matrix) noexcept
         {
             std::uint32_t index;
             if (reusable_.empty())
@@ -49,12 +49,12 @@ namespace lux::render::detail
             entry.occupied = true;
             if (index == matrices_.size()) matrices_.push_back(matrix);
             else matrices_[index] = matrix;
-            return Identity::make<TransformId>(owner_, cxx::SlotKey<TransformTag>{index, entry.generation});
+            return Identity::make<TransformRef>(owner_, cxx::SlotKey<TransformTag>{index, entry.generation});
         }
 
         void writeValidated(std::uint32_t index, const TransformMatrix& matrix) noexcept { matrices_[index] = matrix; }
 
-        void retainInstance(TransformId id) noexcept
+        void retainInstance(TransformRef id) noexcept
         {
             if (!contains(id)) std::terminate();
             auto& count = entries_[Identity::local(id).index].references;
@@ -62,7 +62,7 @@ namespace lux::render::detail
             ++count;
         }
 
-        void releaseInstance(TransformId id) noexcept
+        void releaseInstance(TransformRef id) noexcept
         {
             if (!contains(id)) std::terminate();
             auto& count = entries_[Identity::local(id).index].references;
@@ -70,7 +70,7 @@ namespace lux::render::detail
             --count;
         }
 
-        [[nodiscard]] RenderResult<void> release(TransformId id) noexcept
+        [[nodiscard]] RenderResult<void> release(TransformRef id) noexcept
         {
             if (!contains(id)) return cxx::unexpected(RenderError{kStorageIdentity});
             const auto index = Identity::local(id).index;

@@ -17,18 +17,46 @@ namespace lux::render::detail
     ) noexcept
     {
         const auto& core = session.nriCore();
-        for (const auto& transition : plan.recordingProgram().after.images)
+        const auto& entries = plan.recordingProgram().before;
+        entry_images.reserve(entries.images.size());
+        entry_buffers.reserve(entries.buffers.size());
+        for (const auto& barrier : entries.images)
+        {
+            auto native = barrier.native;
+            native.texture = bindings[barrier.resource].image;
+            if (!native.texture)
+            {
+                return cxx::unexpected(RenderError{kDeviceArgument});
+            }
+            entry_images.push_back(native);
+        }
+        for (const auto& barrier : entries.buffers)
+        {
+            auto native = barrier.native;
+            native.buffer = bindings[barrier.resource].buffer;
+            if (native.buffer && barrier.bind_initial_access)
+            {
+                const auto usage = core.GetBufferDesc(*native.buffer).usage;
+                native.before.access = bufferBoundaryAccess(session.description(), usage);
+            }
+            entry_buffers.push_back(native);
+        }
+        const auto bind_exit = [&](const ImageTransition& transition) noexcept
         {
             auto barrier = transition.native;
             barrier.texture = bindings[transition.resource].image;
-            final_images.push_back(barrier);
-        }
-        for (const auto& transition : plan.recordingProgram().after.buffers)
+            exit_images.push_back(barrier);
+        };
+        for (const auto& transition : plan.recordingProgram().after.images) bind_exit(transition);
+        for (const auto& transition : plan.recordingProgram().transient_exits) bind_exit(transition);
+        const auto bind_buffer_exit = [&](const BufferTransition& transition)
         {
             auto barrier = transition.native;
             barrier.buffer = bindings[transition.resource].buffer;
-            final_buffers.push_back(barrier);
-        }
+            exit_buffers.push_back(barrier);
+        };
+        for (const auto& transition : plan.recordingProgram().after.buffers) bind_buffer_exit(transition);
+        for (const auto& transition : plan.recordingProgram().buffer_read_releases) bind_buffer_exit(transition);
         auto attachmentView = [&](std::uint32_t index, GraphImageRange range, bool depth, nri::Descriptor*& result)
             -> RenderResult<void>
         {
@@ -109,27 +137,6 @@ namespace lux::render::detail
             if (!extent)
             {
                 return extent;
-            }
-            for (const auto& barrier : compiled_pass.before.images)
-            {
-                auto native = barrier.native;
-                native.texture = bindings[barrier.resource].image;
-                if (!native.texture)
-                {
-                    return cxx::unexpected(RenderError{kDeviceArgument});
-                }
-                pass.images.push_back(native);
-            }
-            for (const auto& barrier : compiled_pass.before.buffers)
-            {
-                auto native = barrier.native;
-                native.buffer = bindings[barrier.resource].buffer;
-                if (native.buffer && native.before.stages == nri::StageBits::ALL &&
-                    native.before.access == nri::AccessBits::NONE)
-                {
-                    native.before.access = bufferAccess(core.GetBufferDesc(*native.buffer).usage);
-                }
-                pass.buffers.push_back(native);
             }
             if (const auto* raster = plan.recordingProgram().rasterScope(compiled_pass))
             {
@@ -299,32 +306,32 @@ namespace lux::render::detail
                 source.dirty = false;
                 continue;
             }
-            for (const auto [p, index] : uses.barrier_uses)
+            for (const auto index : uses.barrier_uses)
             {
                 if (image)
                 {
-                    passes[p].images[index].texture = source.image;
+                    entry_images[index].texture = source.image;
                 }
                 else
                 {
-                    auto& barrier = passes[p].buffers[index];
+                    auto& barrier = entry_buffers[index];
                     barrier.buffer = source.buffer;
-                    const auto& pass = *passes[p].compiled_pass;
-                    if (pass.before.buffers[index].bind_initial_access)
+                    if (graph.recordingProgram().before.buffers[index].bind_initial_access)
                     {
-                        barrier.before.access = bufferAccess(source.buffer_description->usage);
+                        const auto usage = source.buffer_description->usage;
+                        barrier.before.access = bufferBoundaryAccess(session.description(), usage);
                     }
                 }
             }
-            for (auto index : uses.final_barrier_uses)
+            for (auto index : uses.exit_barrier_uses)
             {
                 if (image)
                 {
-                    final_images[index].texture = source.image;
+                    exit_images[index].texture = source.image;
                 }
                 else
                 {
-                    final_buffers[index].buffer = source.buffer;
+                    exit_buffers[index].buffer = source.buffer;
                 }
             }
             for (const auto [p, index] : uses.descriptor_uses)
@@ -345,22 +352,8 @@ namespace lux::render::detail
                         return cxx::unexpected(RenderError{kDeviceArgument});
                     }
                     const auto& range = std::get<GraphImageRange>(use.range);
-                    nri::TextureViewDesc description{
-                        source.image,
-                        use.kind == EDescriptorKind::STORAGE_IMAGE
-                            ? (program.bindings[use.field].image_arrayed ? nri::TextureView::STORAGE_TEXTURE_ARRAY
-                                                                         : nri::TextureView::STORAGE_TEXTURE)
-                            : (program.bindings[use.field].image_arrayed ? nri::TextureView::TEXTURE_ARRAY
-                                                                         : nri::TextureView::TEXTURE),
-                        imageFormat(std::get<GraphImageDesc>(uses.description).format).native,
-                        static_cast<nri::Dim_t>(range.first_mip),
-                        static_cast<nri::Dim_t>(range.mip_count),
-                        static_cast<nri::Dim_t>(range.first_layer),
-                        static_cast<nri::Dim_t>(range.layer_count)
-                    };
-                    description.planes = range.aspects == 1   ? nri::PlaneBits::COLOR
-                                         : range.aspects == 2 ? nri::PlaneBits::DEPTH
-                                                              : nri::PlaneBits::STENCIL;
+                    const auto description = graphImageView(source.image, program.bindings[use.field].image_type,
+                        imageFormat(std::get<GraphImageDesc>(uses.description).format).native, range);
                     status = core.CreateTextureView(description, candidate);
                 }
                 else

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/device/GpuResourceFeatures.hpp>
+
 #include <lux/engine/render/runtime/commands/Command.hpp>
 #include <lux/engine/render/device/DeviceId.hpp>
 #include <lux/engine/render/device/DeviceOptions.hpp>
@@ -60,7 +62,7 @@ namespace lux::render
         {
             RenderError error{};
             EGraphicsBackend backend{};
-            std::uint32_t resource_capabilities = 0;
+            GpuResourceFeatures resource_features;
             std::uint32_t max_attachment_dimension = 0;
             std::uint32_t physical_queues = 0;
             std::uint32_t frames_in_flight = 0;

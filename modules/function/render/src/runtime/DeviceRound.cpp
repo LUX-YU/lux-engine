@@ -1,135 +1,171 @@
+#include <lux/engine/render/device/SubmissionQueue.hpp>
+#include <lux/engine/render/graph/execute/FrameResources.hpp>
+#include <lux/engine/render/device/DeviceSession.hpp>
+#include <lux/engine/render/device/ResourceUploader.hpp>
+#include <lux/engine/render/runtime/DeviceEntry.hpp>
+#include <lux/engine/render/runtime/JobExecution.hpp>
+#include <lux/engine/render/device/JobGpuResources.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/render/frame/FrameError.hpp>
-#include <lux/engine/render/device/RasterProgramUpdate.hpp>
 #include <lux/engine/render/frame/FrameData.hpp>
 #include <lux/engine/render/runtime/RenderServerImpl.hpp>
 
 namespace lux::render
 {
-    void
-    RenderServer::Impl::queryFrameInputLayout(const RenderJobId& id, QueryRenderJobInputLayout::Response& output) noexcept
+    RenderResult<void> RenderServer::Impl::adoptFrameData(const FrameData& packet, FrameInputs* inputs) noexcept
     {
-        const auto* job = runtime_->jobs_.find(id);
-        if (!job || !job->control.running())
-        {
-            output.error = {job ? kJobStopped : kJobIdentity};
-            return;
-        }
-        output = {{}, job->execution->input_layout};
-    }
+        if (!packet) return cxx::unexpected(RenderError{kFrameContract});
+        auto& registry = runtime_->resources_;
 
-    RenderResult<void> RenderServer::Impl::adoptFrameData(const JobExecution& execution, const FrameData& packet) noexcept
-    {
-        const auto layout = packet.layoutKey();
-        if (!packet.sealed() || !layout.valid() || layout != execution.input_layout.key())
-        {
-            return cxx::unexpected(RenderError{kFrameContract});
-        }
-        const auto has_updates = [&](const auto& input) noexcept
-        {
-            for (std::uint32_t i = 0; i < input.columns.count; ++i)
+        // Owner-only, synchronous borrow window. Reserve every participating resource before the first write.
+        cxx::scope_exit release(
+            [&]() noexcept
             {
-                if (packet.column(input.columns.first + i).count != 0) return true;
+                for (const auto& update : selected_updates_) runtime_detail::finishResourceCommand(registry, update.id);
+                selected_updates_.clear();
             }
-            return false;
-        };
-        for (const auto& input : execution.inputs)
+        );
+
+        for (const auto& batch : packet.batches())
         {
-            if (!has_updates(input)) continue;
-            if (runtime_->resources_.hasExclusiveCommand(input.identity))
+            if (batch.target.server != instance_id_) return cxx::unexpected(RenderError{kFrameContract});
+
+            detail::FrameDataCall call{};
+            const auto selected = registry.selectFrameUpdate(batch, packet, call);
+            if (!selected) return cxx::unexpected(selected.error());
+            if (!*selected) continue;
+            auto& update = selected_updates_.emplace_back(call);
+            if (inputs && update.per_run)
             {
-                return cxx::unexpected(RenderError{kDeviceBusy});
+                const auto slot = inputs->storageSlot(update.id);
+                if (slot == UINT32_MAX || inputs->used_storages[slot] == FrameInputs::EResourceUse::UNUSED)
+                    return cxx::unexpected(RenderError{kFrameContract});
+                update.frame_resource = slot;
             }
         }
-        for (const auto& input : execution.inputs)
+        for (const auto& update : selected_updates_)
         {
-            if (!has_updates(input)) continue;
-            if (auto applied = input.apply(input.storage, packet, input.columns.first); !applied) return applied;
+            if (auto applied = update.apply(update.owner, packet, update.first_column); !applied) return applied;
+            if (update.frame_resource != SIZE_MAX)
+                inputs->used_storages[update.frame_resource] = FrameInputs::EResourceUse::INPUT_ONLY;
         }
         return {};
     }
 
-    void RenderServer::Impl::updateFrameData(const UpdateFrameData::Request& input, AckResponse& output) noexcept
+    RenderResult<void> RenderServer::Impl::applyWindowInputs(WindowUpdates& updates, FrameInputs& inputs) noexcept
     {
-        auto* job = runtime_->jobs_.find(input.job);
-        if (!job) { output.error = {kJobIdentity}; return; }
-        if (!job->control.running()) { output.error = {kJobStopped}; return; }
-        if (!input.data) { output.error = {kFrameContract}; return; }
-        const auto& execution = *job->execution;
-        if (const auto error = runtime_->device(execution.device)->admissionError(); error.type)
+        return updates.visit([&](auto& update) noexcept -> RenderResult<void>
         {
-            output.error = error;
-            return;
+            if constexpr (std::same_as<std::remove_cvref_t<decltype(update)>, FrameData>)
+                return adoptFrameData(update, &inputs);
+            else return applyWindowCommand(update, inputs);
+        });
+    }
+
+    RenderResult<void> RenderServer::Impl::applyWindowCommand(WindowCommand& update, FrameInputs& inputs) noexcept
+    {
+        const auto* entry = runtime_->command_registry_.findCommand(update.command);
+        if (!entry) return cxx::unexpected(RenderError{kCommandContract});
+        const auto& desc = *entry->description;
+        const bool is_input = entry->effect || entry->storage || desc.name.name() == UpdateView::name;
+        const bool valid = is_input && !desc.requires_idle_resource && !desc.failure_safe &&
+            desc.response == cxx::make_basic_type_info<AckResponse>() && update.request.typeHash() == desc.request.hash();
+        if (!valid) return cxx::unexpected(RenderError{kCommandContract});
+        ipc::IpcMessage response;
+        CommandDispatchContext context{
+            update.request, {}, response_outbox_, command_scope_,
+            server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery), runtime_->resources_, {}, nullptr, &response
+        };
+        std::uint32_t per_run_slot = UINT32_MAX;
+        if (entry->storage)
+        {
+            const auto id = entry->storage(update.request);
+            const auto* factory = runtime_->resources_.factoryOf(id);
+            if (!factory) return cxx::unexpected(RenderError{kStorageIdentity});
+            if (factory->descriptor->lifetime == EResourceContentLifetime::PER_RUN)
+            {
+                per_run_slot = inputs.storageSlot(id);
+                if (per_run_slot == UINT32_MAX || inputs.used_storages[per_run_slot] == FrameInputs::EResourceUse::UNUSED)
+                    return cxx::unexpected(RenderError{kFrameContract});
+            }
         }
-        const auto updated = adoptFrameData(execution, *input.data);
-        if (updated) job->last_run_error = {};
-        output.error = updated ? RenderError{} : updated.error();
+        auto call = resolveCommandCall(update.command, *entry, context);
+        if (!call) return cxx::unexpected(call.error());
+        if (!call->synchronous)
+        {
+            if (context.resource) finishResourceCommand(runtime_->resources_, context.resource_id);
+            return cxx::unexpected(RenderError{kCommandContract});
+        }
+        call->invoke(call->object, context);
+        const auto error = response.get<AckResponse>().error;
+        if (error.type) return cxx::unexpected(error);
+        if (per_run_slot != UINT32_MAX) inputs.used_storages[per_run_slot] = FrameInputs::EResourceUse::INPUT_ONLY;
+        return {};
+    }
+
+    UpdateFrameData::Response RenderServer::Impl::updateFrameData(UpdateFrameData::Request&& input) noexcept
+    {
+        const auto result = adoptFrameData(input.data);
+        return {result ? RenderError{} : result.error(), std::move(input.data)};
     }
 
     bool RenderServer::Impl::beginFrame(detail::DeviceEntry& entry) noexcept
     {
         auto& round = entry.round;
-        auto& progress = entry.frameProgress();
         const auto& inputs = round.inputs;
         const bool structure_changed = inputs.revision != job_structure_revision_;
         if (structure_changed) rebuildFrameInputs(entry);
-        const auto proposed_slot = progress.nextSlot();
-        if (const auto selection = selectFrameInputs(entry, proposed_slot); selection.type)
+        if (inputs.jobs.empty()) return false;
+        const auto available = entry.frameProgress().availableFrame(entry.session());
+        if (!available)
         {
-            for (const auto& job : inputs.jobs)
-            {
-                auto* live = runtime_->jobs_.find(job.id);
-                if (live && live->control.executionGeneration() == job.execution_generation)
-                    live->control.rejectUnadmitted(selection);
-            }
+            for (const auto& candidate : inputs.jobs)
+                if (auto* job = runtime_->jobs_.find(candidate.id)) job->rejectUnadmitted(available.error());
             return false;
         }
-        if (round.outputs.empty()) return false;
-        const auto release_pins = [&]
-        {
-            for (const auto& output : round.outputs)
-            {
-                const auto& execution = *runtime_->jobs_.find(output.job)->execution;
-                runtime_->resources_.unpinBufferUses(execution.productUses(), proposed_slot);
-            }
-        };
-        if (!progress.canBegin(entry.session()))
-        {
-            release_pins();
-            return false;
-        }
+        if (!*available) return false;
 
-        round.operation.emplace(entry, cpu_scheduler_);
-        round.operation->useRecordingWorkers(recording_workers_);
-        auto opened = round.operation->tryBegin();
-        if (!opened || !*opened)
+        const auto context = **available;
+        selectFrameInputs(entry, context);
+        if (!round.active())
         {
-            round.operation.reset();
-            release_pins();
-            if (!opened)
+            if (round.outputs.empty())
             {
-                for (const auto& output : round.outputs)
-                    runtime_->jobs_.find(output.job)->control.rejectUnadmitted(opened.error());
+                round.inputs.releaseTargetReads();
+                return false;
             }
-            return false;
+            round.begin(context, entry.uploader());
         }
-        const auto context = round.operation->context();
-        round.frame = context;
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         round.opened_at = std::chrono::steady_clock::now();
         rounds_opened_.fetch_add(1, std::memory_order_relaxed);
 #endif
-        round.stage = DeviceRound::EStage::ACQUIRING_OUTPUTS;
-        for (auto& output : round.outputs)
+        for (const auto& output : round.outputs)
         {
-            output.submitted = false;
-            auto& job = *runtime_->jobs_.find(output.job);
-            auto& control = job.control;
-            if (!control.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
-            if (output.execution_generation != control.executionGeneration()) std::terminate();
+            auto& job = *runtime_->jobs_.find(output.job.id);
+            if (!job.tryAdmit(context.frame_index, context.slot_index)) std::terminate();
+            if (output.job.execution_generation != job.executionGeneration()) std::terminate();
             round.executions.push_back(job.execution.get());
-            ++round.run_count;
         }
-        if (auto applied = selectGraphInputs(entry, round.slot()); !applied) round.error = applied.error();
+        for (std::size_t i = 0; i < inputs.storages.size(); ++i)
+        {
+            const auto& resource = inputs.storages[i];
+            const auto use = inputs.used_storages[i];
+            const bool consumes = use == FrameInputs::EResourceUse::INPUT_ONLY || use == FrameInputs::EResourceUse::GRAPH;
+            if (use == FrameInputs::EResourceUse::GRAPH && resource.ops->prepareFrame)
+                round.resource_uploads.emplace_back(static_cast<std::uint32_t>(i));
+            if (consumes && resource.ops->selectRun)
+                resource.ops->selectRun(resource.instance, round.replicaFrame());
+        }
+        if (round.outputs.empty())
+        {
+            // Only rejected input consumed this slot. Its PER_RUN rows have now been consumed as well.
+            finishFrame(entry, {kJobState});
+            return true;
+        }
+        if (round.error.type) return true;
+        if (auto selected = round.selectConstants(); !selected) round.error = selected.error();
+        else bindSelectedTargets(entry, round.slot());
         return true;
     }
 
@@ -137,17 +173,16 @@ namespace lux::render
     {
         auto& round = entry.round;
         const auto slot = round.slot();
-        if (round.operation->active())
+        if (round.active())
         {
-            round.operation->cancel(error);
+            round.cancel(error);
         }
-        round.operation.reset();
 #ifdef LUX_RENDER_DEVELOPMENT_METRICS
         const auto held_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - round.opened_at
         ).count();
         slot_cpu_hold_ns_.fetch_add(held_ns, std::memory_order_relaxed);
-        const auto reads = entry.frameWorkspace().submissions.takeRasterReads();
+        const auto reads = round.submissions.takeRasterReads();
         raster_buffer_ranges_.fetch_add(reads.buffer_ranges, std::memory_order_relaxed);
         raster_buffer_bytes_.fetch_add(reads.buffer_bytes, std::memory_order_relaxed);
         raster_image_ranges_.fetch_add(reads.image_ranges, std::memory_order_relaxed);
@@ -155,144 +190,24 @@ namespace lux::render
         raster_geometry_ranges_.fetch_add(reads.geometry_ranges, std::memory_order_relaxed);
         raster_geometry_bytes_.fetch_add(reads.geometry_bytes, std::memory_order_relaxed);
 #endif
-        round.error = {};
-        const auto completed = std::exchange(round.run_count, 0);
+        const auto completed = round.executions.size();
+        round.executions.clear();
         const auto failure = error.type ? error : RenderError{kJobState};
         for (auto& output : std::span{round.outputs}.first(completed))
         {
-            auto& job = *runtime_->jobs_.find(output.job);
-            runtime_->resources_.unpinBufferUses(job.execution->productUses(), slot);
+            auto& job = *runtime_->jobs_.find(output.job.id);
+            auto& frame = job.execution->frame(slot);
+            frame.target_reads.clear();
+            frame.target_bindings.clear();
+            ResourceRegistry::unpinBufferUses(job.execution->buffer_products);
             job.last_run_error = output.submitted ? RenderError{} : failure;
-            output.completion = job.control.finishRun(
-                output.execution_generation, output.submitted ? RenderResult<void>{} : cxx::unexpected(failure)
-            );
+            job.finishRun(output.job.execution_generation, job.last_run_error);
             retireStoppedExecution(job);
         }
-        round.executions.clear();
-        round.clearReadSelections();
-        for (auto& output : std::span{round.outputs}.first(completed))
-        {
-            if (auto completion = std::exchange(output.completion, std::nullopt))
-                std::move(*completion).deliver();
-        }
-    }
-
-    bool RenderServer::Impl::progressProgramPreparations(detail::DeviceEntry& entry) noexcept
-    {
-        auto& round = entry.round;
-        if (round.operation || stop_requested_.load() || entry.admissionError().type) return false;
-
-        if (entry.pendingProgramBindings().empty()) return false;
-        bool progressed = false;
-        for (const auto binding : entry.pendingProgramBindings())
-        {
-            auto* job = runtime_->jobs_.find(binding.job);
-            if (!job || !job->execution || job->execution->binding_identity != binding) continue;
-            if (!job->control.eligible() || !job->control.hasRequest()) continue;
-            auto& programs = job->execution->programs;
-            const auto error = programs.reportableError();
-            if (error.type && programs.nextBuild() == kGraphInvalidIndex)
-            {
-                job->control.rejectUnadmitted(error);
-                progressed = true;
-                break;
-            }
-        }
-        if (entry.program_update) return progressed;
-        const auto pending = entry.pendingProgramBindings();
-        for (std::size_t offset = 0; offset < pending.size(); ++offset)
-        {
-            const auto index = (round.preparation_cursor + offset) % pending.size();
-            const auto binding = pending[index];
-            auto* job = runtime_->jobs_.find(binding.job);
-            if (!job || !job->execution || job->execution->binding_identity != binding) continue;
-            if (!job->readyToRun() || !jobTargetReady(*job)) continue;
-            auto& execution = *job->execution;
-            const auto build = execution.programs.nextBuild();
-            if (build == kGraphInvalidIndex) continue;
-            round.preparation_cursor = (index + 1) % pending.size();
-            startProgramPreparation(entry, execution, build);
-            return true;
-        }
-        return progressed;
-    }
-
-    void RenderServer::Impl::startProgramPreparation(
-        detail::DeviceEntry& entry, JobExecution& execution, std::uint32_t build
-    ) noexcept
-    {
-        entry.program_update = std::make_unique<detail::RasterProgramUpdate>(entry.session(), execution.binding_identity);
-        auto& update = *entry.program_update;
-        update.build = build;
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        program_preparations_.fetch_add(1, std::memory_order_relaxed);
-#endif
-        // All user callbacks, snapshots and graph linkage finish on the owner before the operation leaves it.
-        if (auto selected = execution.programs.select(update); !selected)
-        {
-            update.returned = selected.error();
-            return;
-        }
-        const bool needs_native = std::ranges::any_of(update.streams, [](const auto& stream) noexcept
-        {
-            return !stream.programs.empty();
-        });
-        if (!needs_native)
-        {
-            update.returned = RenderError{};
-            (void)settleProgramCompilation(entry);
-            return;
-        }
-        const auto scheduler = server_context_.get_scheduler(cxx::execution::ScheduleMode::delivery);
-        auto prepared = recording_workers_.beginCompilation() |
-            stdexec::let_value([op = &update, cpu = program_scheduler_]() noexcept { return op->compile(cpu); }) |
-            stdexec::upon_error([](std::exception_ptr) noexcept -> RenderResult<void> { std::terminate(); }) |
-            stdexec::upon_stopped([]() noexcept -> RenderResult<void>
-            {
-                return cxx::unexpected(RenderError{kCommandCancelled});
-            }) |
-            stdexec::continues_on(scheduler) |
-            stdexec::upon_error([](cxx::execution::ScheduleError) noexcept -> RenderResult<void>
-            {
-                std::terminate();
-            }) |
-            stdexec::then([this, op = &update](RenderResult<void> result) noexcept
-            {
-                recording_workers_.endCompilation();
-                op->returned = result ? RenderError{} : result.error();
-            });
-        stdexec::spawn(
-            std::move(prepared), command_scope_.get_token(),
-            stdexec::env{stdexec::prop{stdexec::get_scheduler, scheduler}}
-        );
-    }
-
-    bool RenderServer::Impl::settleProgramCompilation(detail::DeviceEntry& entry) noexcept
-    {
-        auto& op = entry.program_update;
-        if (!op) return false;
-        auto* job = runtime_->jobs_.find(op->binding.job);
-        const bool installed = job && job->execution && job->execution->device == entry.id &&
-            job->execution->binding_identity == op->binding;
-        auto* execution = installed ? job->execution.get() : nullptr;
-        const bool running = installed && job->control.running();
-        const bool stale = running && !execution->programs.current(*op);
-        if (!running || stale || stop_requested_.load() || entry.admissionError().type) op->stop.request_stop();
-        if (!op->returned) return false;
-        const bool discarded = op->stop.stop_requested();
-        const bool installs_bindings = running && !discarded && !op->returned->type;
-        if (installs_bindings && (execution->programs.inputsBusy(op->build) || executionTargetsResizing(*execution)))
-            return false;
-        if (execution && !discarded) execution->settlePrograms(*op);
-#ifdef LUX_RENDER_DEVELOPMENT_METRICS
-        const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - op->started
-        ).count();
-        program_preparation_ns_.fetch_add(ns, std::memory_order_relaxed);
-        if (discarded) discarded_preparations_.fetch_add(1, std::memory_order_relaxed);
-#endif
-        op.reset();
-        return true;
+        round.outputs.clear();
+        round.inputs.releaseTargetReads();
+        round.error = {};
+        round.stage = DeviceRound::EStage::IDLE;
     }
 
     void RenderServer::Impl::submitFrameRendering(detail::DeviceEntry& entry) noexcept
@@ -314,7 +229,7 @@ namespace lux::render
                         auto& round = entry.round;
                         round.pending = false;
                         if (!result && !round.error.type) round.error = result.error();
-                        if (round.error.type || !round.operation->active()) finishFrame(entry, round.error);
+                        if (round.error.type || !round.active()) finishFrame(entry, round.error);
                     }
                 ),
             command_scope_.get_token()
@@ -324,32 +239,379 @@ namespace lux::render
     bool RenderServer::Impl::progressFrame(detail::DeviceEntry& entry) noexcept
     {
         auto& round = entry.round;
-        if (!round.operation)
+        const bool opening = round.stage == DeviceRound::EStage::IDLE;
+        if (opening)
         {
-            return !stop_requested_.load() && !entry.admissionError().type && beginFrame(entry);
+            if (stop_requested_.load() || entry.admissionError().type || !beginFrame(entry)) return false;
+            if (!round.active() && !round.error.type) return true;
         }
         if (round.pending) return false;
-        if (round.error.type)
+
+        const auto ready = round.prepareNativeWork();
+        if (!ready || round.error.type)
         {
-            finishFrame(entry, round.error);
+            finishFrame(entry, round.error.type ? round.error : ready.error());
             return true;
         }
-        if (round.stage == DeviceRound::EStage::ACQUIRING_OUTPUTS)
-        {
-            const auto acquired = acquireFrameOutputs(entry, round.slot());
-            if (!acquired)
-            {
-                finishFrame(entry, acquired.error());
-                return true;
-            }
-            if (!*acquired) return false;
-            round.stage = DeviceRound::EStage::SUBMITTING;
-        }
-        if (round.stage == DeviceRound::EStage::SUBMITTING && round.operation->canRun())
-        {
-            submitFrameRendering(entry);
-            return true;
-        }
-        return false;
+        if (*ready) submitFrameRendering(entry);
+        return opening || *ready;
     }
 } // namespace lux::render
+
+namespace lux::render::runtime_detail
+{
+    using namespace detail;
+    DeviceRound::DeviceRound(DeviceSession& device, FrameProgress& progress) noexcept
+        : submissions(progress.frameCount(), device.queueCount()), device_(device), progress_(progress)
+    {
+    }
+
+    DeviceRound::~DeviceRound() noexcept
+    {
+        if (advancing_ || pending) std::terminate();
+        if (active()) cancel(RenderError{kCommandCancelled});
+    }
+
+    void DeviceRound::begin(FrameContext selected, ResourceUploader* uploads) noexcept
+    {
+        if (stage != EStage::IDLE || (uploads && &uploads->device_ != &device_)) std::terminate();
+        progress_.beginFrame(selected);
+        frame = selected;
+        error = {};
+        stage = EStage::RESOURCES;
+        waiting_for_gpu_ = false;
+        uploads_ = uploads;
+        submission_.emplace(device_, progress_, frame, submissions);
+        if (uploads_) uploads_->reservePreparationStaging(true);
+    }
+
+    void DeviceRound::finish() noexcept
+    {
+        for (auto* job : frozen_jobs_)
+            job->frame(slot()).finishSubmission(job->graph(), device_);
+        const bool unknown = error.type == kOutcomeUnknown;
+        buffers_.finish(unknown);
+        device_.descriptors().releaseFramePools(held_pools_);
+        submission_.reset();
+        frozen_jobs_.clear();
+        buffer_uploads_.clear();
+        next_upload_ = 0;
+        progress_.endFrame(frame);
+        stage = EStage::SETTLED;
+        if (uploads_) uploads_->reservePreparationStaging(false);
+        uploads_ = nullptr;
+    }
+
+    void DeviceRound::settleFrameCopies(FrameCopyReceipt receipt, RenderError failure) noexcept
+    {
+        if (settling_) std::terminate();
+        settling_ = true;
+        cxx::scope_exit settled([&]() noexcept { settling_ = false; });
+        if (failure.type && uploads_) uploads_->cancelFrameCopies();
+        buffers_.settle(receipt.point, failure);
+        const auto acceptedPoint = [&](ReplicaCopyRange range) noexcept -> SubmissionPoint
+        {
+            if (failure.type || !range.count) return {};
+            const bool outside = range.first > receipt.ranges || range.count > receipt.ranges - range.first;
+            if (outside || !receipt.point.serial) std::terminate();
+            return receipt.point;
+        };
+        const auto replica = replicaFrame();
+        for (const auto& upload : std::span{resource_uploads}.first(attempted_uploads_))
+        {
+            const auto& source = inputs.storages[upload.slot];
+            const auto point = acceptedPoint(upload.copies);
+            if (source.ops->settleFrame)
+                source.ops->settleFrame(source.instance, {replica, upload.copies, point, failure});
+        }
+        if (attempted_uploads_)
+        {
+            if (failure.type)
+                resource_uploads.clear();
+            else
+                std::erase_if(resource_uploads, [](const ResourceUpload& upload) { return upload.ready; });
+            attempted_uploads_ = 0;
+        }
+        // One staging window covers consecutive uploads and can end partway through its last buffer.
+        while (next_upload_ < buffer_uploads_.size())
+        {
+            auto& upload = buffer_uploads_[next_upload_];
+            if (!upload.ranges.count) break;
+            upload.settle(acceptedPoint(upload.ranges), failure);
+            if (upload.end != upload.bytes.size()) break;
+            ++next_upload_;
+        }
+    }
+
+    void DeviceRound::cancel(RenderError failure) noexcept
+    {
+        if (!active()) return;
+        if (!error.type) error = failure;
+        if (advancing_ || settling_) return;
+        settleFrameCopies({}, error);
+        submission_->rejectSuffix(error);
+        finish();
+    }
+
+    RenderResult<bool> DeviceRound::prepareNativeWork() noexcept
+    {
+        if (error.type) return cxx::unexpected(error);
+        if (const auto failure = device_.terminalError(); failure.type) return cxx::unexpected(failure);
+        if (!active() || advancing_ || settling_) return cxx::unexpected(RenderError{kFrameContract});
+        if (stage == EStage::SUBMITTING) return submission_->canSubmit();
+        if (stage == EStage::FROZEN) return true;
+        if (uploads_ && uploads_->hasFrameCopies()) return uploads_->canSubmitFrameCopies();
+        if (waiting_for_gpu_ && device_.pendingGpuWork())
+        {
+            const auto& observed = blocked_completion_.serials();
+            bool advanced = false;
+            for (std::size_t i = 0; !advanced && i < observed.size(); ++i)
+                advanced = device_.physicalQueue(i).completed() != observed[i];
+            if (!advanced) return false;
+        }
+
+        // Resource callbacks may request cancellation. Keep their inputs alive until the owner call returns.
+        advancing_ = true;
+        cxx::scope_exit done([this]() noexcept { advancing_ = false; });
+        if (stage == EStage::RESOURCES)
+        {
+            const auto resources = stageResourceUploads();
+            if (!resources) return cxx::unexpected(resources.error());
+            if (error.type) return cxx::unexpected(error);
+            if (uploads_ && !uploads_->hasFrameCopies()) settleFrameCopies();
+            if (error.type) return cxx::unexpected(error);
+            if (*resources)
+            {
+                if (auto selected = selectFrameInputs(); !selected) return cxx::unexpected(selected.error());
+                if (error.type) return cxx::unexpected(error);
+                stage = EStage::FREEZE;
+            }
+        }
+
+        auto waiting = EExecutionOutcome::RESOURCE_PREPARATION_PENDING;
+        bool ready = false;
+        if (stage == EStage::FREEZE)
+        {
+            const auto staged = stagePreparedBuffers();
+            if (!staged) return cxx::unexpected(staged.error());
+            if (*staged)
+            {
+                const auto frozen = freezeJobs();
+                if (!frozen) return cxx::unexpected(frozen.error());
+                ready = *frozen;
+                waiting = EExecutionOutcome::HISTORY_PENDING;
+            }
+            else if (!(uploads_ && uploads_->hasFrameCopies()) && !device_.pendingGpuWork())
+                return cxx::unexpected(RenderError{kDeviceCapacity});
+        }
+        if (error.type) return cxx::unexpected(error);
+        // Drain a bounded staging window before reusing it. Its actual receipt supplies the graph's waits.
+        if (uploads_ && uploads_->hasFrameCopies()) return uploads_->canSubmitFrameCopies();
+        if (!ready)
+        {
+            if (!blocked_completion_.size()) blocked_completion_ = device_.makeFrontiers();
+            device_.readCompleted(blocked_completion_);
+            waiting_for_gpu_ = true;
+            for (auto* job : executions) ++job->progress.counts[static_cast<std::size_t>(waiting)];
+            return false;
+        }
+
+        waiting_for_gpu_ = false;
+        settleFrameCopies();
+        if (error.type) return cxx::unexpected(error);
+        if (uploads_) uploads_->reservePreparationStaging(false);
+        if (auto prepared = submission_->prepare(frozen_jobs_, job_order); !prepared)
+            return cxx::unexpected(prepared.error());
+        stage = EStage::FROZEN;
+        return true;
+    }
+
+    exec::task<RenderResult<std::uint32_t>>
+    DeviceRound::submitNativeWork(execution::CpuScheduler cpu, RecordingWorkers* workers) noexcept
+    {
+        if (!active() || advancing_ || settling_)
+        {
+            co_return cxx::unexpected(RenderError{kFrameContract});
+        }
+        advancing_ = true;
+        cxx::scope_exit settle([this]() noexcept
+        {
+            advancing_ = false;
+            if (error.type) cancel(error);
+        });
+        const auto stop = co_await stdexec::read_env(stdexec::get_stop_token);
+        if (stop.stop_requested()) error = RenderError{kCommandCancelled};
+        if (const auto failure = device_.terminalError(); failure.type) error = failure;
+        if (error.type) co_return cxx::unexpected(error);
+
+        if (stage == EStage::RESOURCES || stage == EStage::FREEZE)
+        {
+            if (!uploads_ || !uploads_->hasFrameCopies()) co_return cxx::unexpected(RenderError{kFrameContract});
+            const auto accepted = co_await uploads_->submitFrameCopies();
+            if (!accepted)
+            {
+                error = accepted.error();
+                co_return cxx::unexpected(error);
+            }
+            if (*accepted)
+            {
+                submission_->acceptPreparation((*accepted)->point);
+                settleFrameCopies(**accepted);
+            }
+            if (error.type) co_return cxx::unexpected(error);
+            co_return *accepted ? 1u : 0u;
+        }
+        if (stage == EStage::FROZEN)
+        {
+            RenderResult<void> recorded;
+            if (!workers)
+                recorded = co_await submission_->record(cpu, true);
+            else if (workers->compilations_)
+                recorded = co_await submission_->record(workers->independent_, false);
+            else
+                recorded = co_await workers->recordings_.nest(submission_->record(cpu, true));
+            if (!recorded)
+            {
+                error = recorded.error();
+                co_return cxx::unexpected(error);
+            }
+            stage = EStage::SUBMITTING;
+        }
+        auto accepted = co_await submission_->submit(error);
+        if (!accepted) error = accepted.error();
+        else if (submission_->complete()) finish();
+        co_return accepted;
+    }
+
+    RenderResult<void> DeviceRound::selectFrameInputs() noexcept
+    {
+        // Shared views are owner-thread borrows. End them before staging can yield or the next mutation can run.
+        cxx::scope_exit release_views([this]() noexcept { selected_views_.clear(); });
+        std::size_t first_buffer = 0;
+        for (std::size_t i = 0; i < executions.size(); ++i)
+        {
+            auto& job = *executions[i];
+            const std::span<const std::uint32_t> slots = job.view_sources.empty() ? std::span<const std::uint32_t>{} :
+                std::span<const std::uint32_t>{outputs[i].job.view_slots};
+            if (!slots.empty() && selected_views_.empty()) selected_views_.resize(inputs.views.size());
+            for (const auto index : slots)
+            {
+                auto& value = selected_views_[index];
+                if (value.value) continue;
+                const auto& source = inputs.views[index];
+                auto selected = source.select(source.instance);
+                if (!selected) return cxx::unexpected(selected.error());
+                if (!selected->value) return cxx::unexpected(RenderError{kStorageContract});
+                value = *selected;
+            }
+            const auto count = job.graph().preparedBufferCount();
+            if (count > buffer_inputs_.max_size() - first_buffer) return cxx::unexpected(RenderError{kDeviceCapacity});
+            const auto end = first_buffer + count;
+            if (end > buffer_inputs_.size()) buffer_inputs_.resize(end);
+            auto prepared = job.selectFrameInputs(
+                slot(),
+                std::span{buffer_inputs_}.subspan(first_buffer, count),
+                {job.targetDescription(), selected_views_, slots},
+                buffer_uploads_
+            );
+            if (!prepared) return prepared;
+            first_buffer = end;
+        }
+        buffer_inputs_.resize(first_buffer);
+        return {};
+    }
+
+    RenderResult<bool> DeviceRound::stagePreparedBuffers() noexcept
+    {
+        for (auto& upload : std::span{buffer_uploads_}.subspan(next_upload_))
+        {
+            if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (upload.destination.generation != upload.generation) std::terminate();
+            const auto first = uploads_->stagedFrameCopyCount();
+            auto staged = uploads_->stageBufferPrefix({
+                upload.destination.buffer, upload.begin, upload.bytes.subspan(upload.begin)
+            });
+            if (!staged) return cxx::unexpected(staged.error());
+            upload.end = upload.begin + *staged;
+            upload.ranges = {first, uploads_->stagedFrameCopyCount() - first};
+            if (upload.end != upload.bytes.size()) return false;
+        }
+        return true;
+    }
+
+    RenderResult<void> DeviceRound::selectConstants() noexcept
+    {
+        for (auto* job : executions)
+        {
+            if (!job->device_graph) continue;
+            auto& destination = job->frame_bindings.frames[slot()];
+            for (const auto& block : job->device_graph->inline_blocks)
+                destination.applyInlineConstant(job->graph(), block.pass, block.bytes, 0);
+            for (const auto& input : job->device_graph->constant_buffers)
+                if (auto selected = buffers_.select(input); !selected) return selected;
+        }
+        return {};
+    }
+
+    RenderResult<bool> DeviceRound::stageResourceUploads() noexcept
+    {
+        if (!resource_uploads.empty() && !uploads_) return cxx::unexpected(RenderError{kDeviceArgument});
+        const auto frame = replicaFrame();
+        if (!buffers_.empty())
+        {
+            if (!uploads_) return cxx::unexpected(RenderError{kDeviceUnsupported});
+            if (!blocked_completion_.size()) blocked_completion_ = device_.makeFrontiers();
+            device_.readCompleted(blocked_completion_);
+            const auto ready = buffers_.prepare(blocked_completion_, *uploads_);
+            if (!ready || !*ready) return ready;
+        }
+        bool resources_ready = true;
+        for (auto& upload : resource_uploads)
+        {
+            const auto& source = inputs.storages[upload.slot];
+            ++attempted_uploads_;
+            upload.copies.first = uploads_->stagedFrameCopyCount();
+            const auto ready = source.ops->prepareFrame(source.instance, frame, *uploads_);
+            upload.copies.count = uploads_->stagedFrameCopyCount() - upload.copies.first;
+            if (!ready) return cxx::unexpected(ready.error());
+            upload.ready = *ready;
+            resources_ready &= upload.ready;
+            if (error.type) return cxx::unexpected(error);
+        }
+        if (resources_ready && !buffers_.empty())
+        {
+            for (auto* job : executions)
+            {
+                if (!job->device_graph) continue;
+                for (const auto& input : job->device_graph->constant_buffers)
+                {
+                    const auto binding = buffers_.binding(*input.storage);
+                    job->frame_bindings.frames[frame.slot].bindResource(job->graph(), device_, input.resource.index, binding);
+                }
+            }
+        }
+        return resources_ready;
+    }
+
+    RenderResult<bool> DeviceRound::freezeJobs() noexcept
+    {
+        auto& frozen = frozen_jobs_;
+        while (frozen.size() < executions.size())
+        {
+            auto& job = *executions[frozen.size()];
+            const auto prepared = job.freezeFrame(slot(), freeze_draws_);
+            if (!prepared)
+            {
+                return cxx::unexpected(prepared.error());
+            }
+            if (!*prepared)
+            {
+                return false;
+            }
+            device_.descriptors().retainFramePools(held_pools_);
+            job.frame_bindings.frames[slot()].frozen_for_submission = true;
+            frozen.push_back(&job);
+        }
+        return true;
+    }
+} // namespace lux::render::runtime_detail

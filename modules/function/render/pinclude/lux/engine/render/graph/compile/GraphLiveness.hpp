@@ -9,7 +9,6 @@ namespace lux::render::detail
         struct Producer final
         {
             std::vector<GraphPassId> passes;
-            std::vector<std::uint32_t> inputs;
             bool live = false;
         };
 

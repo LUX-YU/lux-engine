@@ -202,16 +202,14 @@ static constexpr std::uint32_t readback_frames = history_distance + 1;
 static constexpr std::uint32_t fallback_value = 17;
 static constexpr std::uint32_t expected_value = 42;
 
-static EffectNodeDefinition routedDefinition()
-{
-    return {
-        .identity = {graph::nodeTypeId(routed_capability), std::string{routed_capability}, 1},
-        .ports = {
-            {previous_color, "previous", {std::string{color_type}, 1}, graph::EPinDirection::INPUT},
-            {output_color, "color", {std::string{color_type}, 1}, graph::EPinDirection::OUTPUT}
-        }
-    };
-}
+inline constexpr EffectPortDefinition kRoutedCapabilityPorts[]{
+            {previous_color, "previous", {color_type, 1}, graph::EPinDirection::INPUT},
+            {output_color, "color", {color_type, 1}, graph::EPinDirection::OUTPUT}
+        };
+
+inline constexpr EffectCapability kRoutedCapability{
+    .id = graph::nodeTypeId(routed_capability), .canonical_name = routed_capability, .ports = kRoutedCapabilityPorts
+};
 
 static RenderResult<ResourceVersion> clearColor(EffectCompileContext& context) noexcept
 {
@@ -351,10 +349,10 @@ struct ProbeStorage final
     {
         const detail::StorageBindingOps binding{
             .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
-                -> RenderResult<detail::StorageGraphImport>
+                -> RenderResult<ResourceProjection>
             {
                 if (projection != 0) return cxx::unexpected(RenderError{kStorageContract});
-                return detail::StorageGraphImport{
+                return ResourceProjection{
                     GraphBufferDesc{4096}, {}, EGraphUse::TRANSFER_DESTINATION
                 };
             },
@@ -530,10 +528,10 @@ struct ProbeReadback final
     {
         const detail::StorageBindingOps binding{
             .describeGraphImport = [](const void*, std::uint32_t projection) noexcept
-                -> RenderResult<detail::StorageGraphImport>
+                -> RenderResult<ResourceProjection>
             {
                 if (projection != 0) return cxx::unexpected(RenderError{kStorageContract});
-                return detail::StorageGraphImport::bufferOutput(transfer_bytes, EGraphUse::TRANSFER_DESTINATION);
+                return ResourceProjection::bufferOutput(transfer_bytes, EGraphUse::TRANSFER_DESTINATION);
             },
             .resolveGraphImport = [](
                 void* object, std::uint32_t, const VGraphResourceDesc&, std::span<detail::ResourceInput> outputs
@@ -550,16 +548,14 @@ struct ProbeReadback final
     }
 };
 
-static EffectNodeDefinition transferDefinition()
-{
-    return {
-        .identity = {graph::nodeTypeId(transfer_capability), std::string{transfer_capability}, 1},
-        .ports = {
-            {output_color, "color", {std::string{color_type}, 1}, graph::EPinDirection::OUTPUT},
+inline constexpr EffectPortDefinition kTransferCapabilityPorts[]{
+            {output_color, "color", {color_type, 1}, graph::EPinDirection::OUTPUT},
             {readback_value, "value", {"example.graph.readback", 1}, graph::EPinDirection::OUTPUT}
-        }
-    };
-}
+        };
+
+inline constexpr EffectCapability kTransferCapability{
+    .id = graph::nodeTypeId(transfer_capability), .canonical_name = transfer_capability, .ports = kTransferCapabilityPorts
+};
 
 static RenderResult<void> buildTransfer(EffectCompileContext& context, std::string_view) noexcept
 {
@@ -572,7 +568,7 @@ static RenderResult<void> buildTransfer(EffectCompileContext& context, std::stri
     if (!context.outputDemanded(readback_value)) return {};
 
     const auto readback = context.importFinalBuffer(
-        readback_binding, {ResourceName{ProbeReadback::Descriptor::descriptor.type.name()}},
+        readback_binding, ProbeReadback::Descriptor::descriptor.type,
         {"", GraphBufferDesc{transfer_bytes}, EGraphOrigin::IMPORTED, {}, EGraphUse::TRANSFER_DESTINATION}
     );
     if (!readback) return cxx::unexpected(readback.error());
@@ -810,7 +806,7 @@ int main(int argc, char** argv)
         CommandBinding::declareForEffect<ProbeEffectCommand, ProbeEffectState, &updateRouted<29>>()
     ));
     CHECK(setter_a.command == setter_b.command && setter_a.binding != setter_b.binding);
-    const auto routed = routedDefinition();
+    const auto routed = kRoutedCapability;
     CHECK(server->registerEffectCapability(routed, {setter_a.command}));
     CHECK(server->registerEffectImplementation(routedImplementation(route_b, initializeRouted<29>), {setter_b}));
     CHECK(server->registerEffectImplementation(routedImplementation(route_a, initializeRouted<17>), {setter_a}));
@@ -821,7 +817,7 @@ int main(int argc, char** argv)
             return cxx::unexpected(RenderError{kInvalidConfig});
         }
     ), {setter_a}));
-    const auto transfer = transferDefinition();
+    const auto transfer = kTransferCapability;
     CHECK(server->registerEffectCapability(transfer));
     CHECK(server->registerEffectImplementation(transferImplementation()));
 

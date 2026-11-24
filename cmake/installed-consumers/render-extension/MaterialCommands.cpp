@@ -1,4 +1,9 @@
+#include <lux/engine/render/resource/mesh/Resource.hpp>
+#include <lux/engine/render/resource/texture/Resource.hpp>
+#include <lux/engine/render/resource/material/Resource.hpp>
 #include <lux/engine/render/runtime/commands/MaterialCommands.hpp>
+#include <lux/engine/render/runtime/commands/MeshCommands.hpp>
+#include <lux/engine/description/Mesh.hpp>
 #include "MaterialFixture.hpp"
 #include "SceneCapture.hpp"
 #include <lux/engine/core/execution/ExecutionRuntime.hpp>
@@ -42,7 +47,8 @@ int main(int argc, char** argv)
     const auto session = call<CreateDeviceSession>(*client, commands, device).device;
     const std::array current{
         CommandName{R::name}, CommandName{C::name}, CommandName{MaterialCommands::Update::name},
-        CommandName{MaterialCommands::ReleaseInstance::name}, CommandName{U::name}
+        CommandName{MaterialCommands::ReleaseInstance::name}, CommandName{U::name},
+        CommandName{MaterialCommands::PrepareMeshPipelines::name}
     };
     const auto directory = call<QueryCommandIds>(*client, commands, current);
     CHECK(directory.ids.size() == current.size());
@@ -72,6 +78,29 @@ int main(int argc, char** argv)
     const auto first = call<R>(*client, commands, {materials.resource_id, program}).program;
     const auto second = call<R>(*client, commands, {materials.resource_id, program}).program;
     CHECK(!first.isNull() && !second.isNull() && first != second);
+    const auto geometry = call<GetOrCreateResource>(*client, commands, {session, DeviceScope{}, kMeshResourceName}).resource_id;
+    rdesc::Mesh triangle;
+    triangle.vertices.resize(3);
+    triangle.vertices[0].position = {0, 0, 0};
+    triangle.vertices[1].position = {1, 0, 0};
+    triangle.vertices[2].position = {0, 1, 0};
+    for (auto& vertex : triangle.vertices)
+    {
+        vertex.normal = {0, 0, 1};
+        vertex.uv = {0, 0};
+        vertex.tangent = {1, 0, 0};
+        vertex.bitangent = {0, 1, 0};
+    }
+    triangle.indices = {0, 1, 2};
+    triangle.bounds = lux::math::AABB{{0, 0, 0}, {1, 1, 0}};
+    const auto mesh = call<MeshCommands::UploadMesh>(*client, commands, {geometry, &triangle}).mesh;
+    using Prepare = MaterialCommands::PrepareMeshPipelines;
+    const Prepare::Request use{first, rdesc::EMaterialPurpose::FORWARD, {{mesh}}};
+    call<Prepare>(*client, commands, use);
+    call<MeshCommands::ReleaseMesh>(*client, commands, {mesh});
+    CHECK(call<Prepare>(*client, commands, use, false).error.type == kStorageIdentity);
+    call<Prepare>(*client, commands, {first, rdesc::EMaterialPurpose::FORWARD, {}});
+    std::puts("INSTALLED MESH PIPELINE PASS: prepared both windings before any Job and released the declared use");
     CHECK(call<C>(*client, commands, {first, {}, {}}, false).error.type == kStorageContract);
     const auto instance = createMaterialInstance(*client, commands, first, values);
     const auto second_instance = createMaterialInstance(*client, commands, second, values);

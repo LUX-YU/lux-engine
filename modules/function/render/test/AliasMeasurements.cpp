@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/PlanDiagnostics.hpp>
 #include <lux/engine/render/device/SubmissionQueue.hpp>
 #include <lux/engine/render/runtime/JobExecution.hpp>
 #include <lux/engine/render/device/JobGpuResources.hpp>
@@ -7,7 +8,7 @@
 #include "NativeDevice.hpp"
 #include "RetirementFence.hpp"
 #include <lux/engine/render/graph/compile/GraphDefinition.hpp>
-#include <lux/engine/render/graph/compile/GraphCompiler.hpp>
+#include <lux/engine/render/graph/compile/RenderGraphCompiler.hpp>
 #include <lux/engine/render/graph/execute/ResizeResources.hpp>
 #include <lux/engine/render/target/OffscreenTarget.hpp>
 #include <algorithm>
@@ -424,17 +425,21 @@ namespace
         const auto analysis = take(analyzeRenderGraph(workload.graph));
         const TargetDesc target{256, 256, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
         const GraphOutputRequirements contract{target.format, 1};
-        auto candidate = stdexec::sync_wait(GraphCompiler::compile(
+        GraphCompileDiagnostics report;
+        auto candidate = stdexec::sync_wait(RenderGraphCompiler::compileNative(
             device, lux::execution::ExecutionRuntime::instance().cpuScheduler(), {workload.graph, analysis},
-            {contract, ETransientAllocation::ALIAS_MEMORY, multiple}
+            {contract, ETransientAllocation::ALIAS_MEMORY, multiple, &report}
         ));
         CHECK(candidate);
-        auto plan = take(std::move(std::get<0>(*candidate)));
+        PreparedRenderGraph plan{take(std::move(std::get<0>(*candidate))), std::move(report)};
         std::array<SubmissionQueue*, 2> queues;
+        std::array<std::uint32_t, 2> dispatch_batches;
         for (unsigned i = 0; i < queues.size(); ++i)
         {
             const auto slot = plan.diagnostics.passSlot(workload.dispatches[i]);
-            queues[i] = &device.queue(plan.graph.passes()[slot].queue);
+            const auto& pass = plan.graph.passes()[slot];
+            queues[i] = &device.queue(pass.queue);
+            dispatch_batches[i] = pass.submission;
         }
         const bool distinct = queues[0] != queues[1];
         std::printf("TOPOLOGY,%s,%s,%u,%zu,%zu,%zu\n", backend == EGraphicsBackend::VULKAN ? "Vulkan" : "D3D12",
@@ -442,6 +447,24 @@ namespace
                     device.queueIndex(*queues[1]), plan.graph.submissions().size());
         if (multiple && !distinct) return 77;
         CHECK(multiple == distinct);
+        if (distinct)
+        {
+            // Both hash dispatches need the seed fill. Only the final color work needs both hashes.
+            // Check the compiled order independently of how much work this GPU actually overlaps.
+            const auto batches = plan.graph.submissions();
+            std::vector<unsigned> completed(batches.size());
+            for (std::size_t b = 0; b < batches.size(); ++b)
+            {
+                for (const auto& wait : batches[b].dependencies) completed[b] |= completed[wait.producer];
+                for (unsigned lane = 0; lane < dispatch_batches.size(); ++lane)
+                {
+                    if (b != dispatch_batches[lane]) continue;
+                    CHECK(completed[b] == 0);
+                    completed[b] |= 1u << lane;
+                }
+            }
+            CHECK(completed.back() == 3u);
+        }
         if (!queues[0]->properties().timestamp_bits || !queues[1]->properties().timestamp_bits) return 77;
 
         auto initial = take(OffscreenTarget::create(device, target, 1));
@@ -455,11 +478,15 @@ namespace
             JobExecution instance_job{instance_gpu, plan.graph, testInstallation(), initial.output()};
             CHECK(instance_job.initialize());
             std::string dump;
-            CHECK(instance_job.dumpResources({&dump, [](void* p, std::string_view value) noexcept
+            const DumpSink sink{&dump, [](void* p, std::string_view value) noexcept
             {
                 static_cast<std::string*>(p)->append(value);
                 return true;
-            }}));
+            }};
+            CHECK(dumpPlan(plan, EGraphDumpFormat::JSON, sink));
+            std::printf("PLAN,%s\n", dump.c_str());
+            dump.clear();
+            CHECK(instance_job.dumpResources(sink));
             CHECK(dump.find("\"reason\":\"aliased\"") != std::string::npos);
             std::printf("PLACEMENT,%s\n", dump.c_str());
             capture.describeMemory("initial");
